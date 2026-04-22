@@ -23,11 +23,12 @@ AI_STRATEGY_CACHE_FILE = os.path.join(CACHE_DIR, "ai_strategies.json")
 CACHE_TTL = 86400  # 24 小时
 
 
-def get_coin_list(force_refresh: bool = False) -> dict:
+def get_coin_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取可用币种列表（带缓存）
     
     Args:
+        token: 用户登录 token
         force_refresh: 强制刷新缓存
     
     Returns:
@@ -45,9 +46,10 @@ def get_coin_list(force_refresh: bool = False) -> dict:
     
     # 请求 API
     url = f"{API_BASE}/Strategy/coin_lists"
+    data = {"usertoken": token}
     
     try:
-        resp = requests.post(url, timeout=30)
+        resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         
@@ -61,11 +63,12 @@ def get_coin_list(force_refresh: bool = False) -> dict:
         return {"error": str(e)}
 
 
-def get_ai_time_list(force_refresh: bool = False) -> dict:
+def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取 AI 回测时间列表（带缓存）
     
     Args:
+        token: 用户登录 token
         force_refresh: 强制刷新缓存
     
     Returns:
@@ -83,9 +86,10 @@ def get_ai_time_list(force_refresh: bool = False) -> dict:
     
     # 请求 API
     url = f"{API_BASE}/Extend/ai_time_lists"
+    data = {"usertoken": token}
     
     try:
-        resp = requests.post(url, timeout=30)
+        resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         
@@ -99,11 +103,12 @@ def get_ai_time_list(force_refresh: bool = False) -> dict:
         return {"error": str(e)}
 
 
-def get_ai_strategy_list(force_refresh: bool = False) -> dict:
+def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取 AI 回测策略列表（带缓存）
     
     Args:
+        token: 用户登录 token
         force_refresh: 强制刷新缓存
     
     Returns:
@@ -121,9 +126,10 @@ def get_ai_strategy_list(force_refresh: bool = False) -> dict:
     
     # 请求 API
     url = f"{API_BASE}/Extend/ai_strategy_lists"
+    data = {"usertoken": token}
     
     try:
-        resp = requests.post(url, timeout=30)
+        resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         
@@ -189,7 +195,7 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
         return {"error": str(e)}
 
 
-def get_version_info(strategy_type: int, version: str) -> dict:
+def get_version_info(token: str, strategy_type: int, version: str) -> dict:
     """
     根据策略类型和版本获取版本信息
     
@@ -200,7 +206,7 @@ def get_version_info(strategy_type: int, version: str) -> dict:
     Returns:
         dict: 版本信息（不含 id 和 name）
     """
-    strategies = get_ai_strategy_list()
+    strategies = get_ai_strategy_list(token)
     info = strategies.get("info", [])
     
     for strategy in info:
@@ -407,7 +413,10 @@ def main():
     
     # 列出币种
     if args.list_coins:
-        result = get_coin_list(force_refresh=args.refresh_cache)
+        if not args.token:
+            print("错误: 需要 --token")
+            return
+        result = get_coin_list(args.token, force_refresh=args.refresh_cache)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -419,7 +428,10 @@ def main():
     
     # 列出 AI 回测时间
     if args.list_ai_times:
-        result = get_ai_time_list(force_refresh=args.refresh_cache)
+        if not args.token:
+            print("错误: 需要 --token")
+            return
+        result = get_ai_time_list(args.token, force_refresh=args.refresh_cache)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -431,7 +443,10 @@ def main():
     
     # 列出 AI 回测策略
     if args.list_strategies:
-        result = get_ai_strategy_list(force_refresh=args.refresh_cache)
+        if not args.token:
+            print("错误: 需要 --token")
+            return
+        result = get_ai_strategy_list(args.token, force_refresh=args.refresh_cache)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -504,7 +519,7 @@ def main():
     # 获取版本额外信息
     version_extra = None
     if args.strategy_type and args.version:
-        version_extra = get_version_info(args.strategy_type, args.version)
+        version_extra = get_version_info(args.token, args.strategy_type, args.version)
     
     result = query_backtest(
         token=args.token,

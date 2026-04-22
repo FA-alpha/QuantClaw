@@ -138,10 +138,10 @@ python skills/backtest-query/query.py --token <token> --detail <回测ID>
 
 ```bash
 # 列出可用币种（使用缓存，24小时有效）
-python skills/backtest-query/query.py --list-coins
+python skills/backtest-query/query.py --token <token> --list-coins
 
 # 强制刷新币种缓存
-python skills/backtest-query/query.py --refresh-coins
+python skills/backtest-query/query.py --token <token> --list-coins --refresh-cache
 ```
 
 缓存文件：`~/.quantclaw/cache/coins.json`
