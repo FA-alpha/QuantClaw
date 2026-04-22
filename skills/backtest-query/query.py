@@ -332,7 +332,9 @@ def main():
     current_year = datetime.now().year
     parser.add_argument("--year", dest="search_year", type=int,
                         choices=range(2011, current_year + 1), metavar="YEAR",
-                        help=f"年份（2011-{current_year}）")
+                        help=f"按年份查询（2011-{current_year}），与 --ai-time-id 二选一")
+    parser.add_argument("--ai-time-id", dest="ai_time_id",
+                        help="按时间ID查询，与 --year 二选一")
     parser.add_argument("--strategy-type", dest="strategy_type", type=int,
                         help="策略类型")
     parser.add_argument("--version", dest="version", help="策略版本")
@@ -387,6 +389,11 @@ def main():
         print("错误: 查询回测数据需要 --token")
         return
     
+    # 验证互斥参数
+    if args.search_year and args.ai_time_id:
+        print("错误: --year 和 --ai-time-id 参数不能同时使用，请选择其一")
+        return
+    
     # 验证方向参数
     if args.search_direction and args.strategy_type not in (1, 7, 11):
         print(f"警告: 策略类型 {args.strategy_type} 不支持方向参数，已忽略")
@@ -414,6 +421,7 @@ def main():
         version=args.version,
         version_extra=version_extra,
         search_direction=args.search_direction,
+        ai_time_id=args.ai_time_id,
     )
     
     print(format_result(result, args.output_format))

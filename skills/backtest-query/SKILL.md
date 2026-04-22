@@ -29,7 +29,8 @@ python skills/backtest-query/query.py --token <用户token> [选项]
 | `--sort` | 排序：1最新 2收益率 3夏普 4回撤 | `--sort 2` |
 | `--coin` | 币种，多选逗号分割 | `--coin BTC,ETH` |
 | `--type` | 类型：1个人 2AI推荐 3别人推荐 | `--type 2` |
-| `--year` | 年份 | `--year 2024` |
+| `--year` | 按年份查询（与 --ai-time-id 二选一） | `--year 2024` |
+| `--ai-time-id` | 按时间ID查询（与 --year 二选一） | `--ai-time-id xxx` |
 | | | |
 | `--direction` | 方向：long做多 short做空（仅策略类型1,7,11支持） | `--direction long` |
 | `--format` | 输出格式：json/table/summary | `--format json` |
@@ -108,3 +109,4 @@ python skills/backtest-query/query.py --refresh-coins
 - 币种列表缓存 24 小时，如需更新用 `--refresh-cache`
 - **方向参数限制**：只有策略类型 1、7、11 支持 `--direction` 参数，其他策略类型不传方向
 - **版本参数**：如果策略类型有版本列表，需要同时传 `--strategy-type` 和 `--version`
+- **时间参数**：`--year` 按年份查询，`--ai-time-id` 按具体时间ID查询，二选一使用
