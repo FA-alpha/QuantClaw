@@ -19,22 +19,22 @@ python skills/backtest-query/query.py --token <用户token> [选项]
 | 参数 | 说明 | 示例 |
 |-----|-----|-----|
 | `--token` | 用户 token（必填） | `--token qc_xxx` |
-| `--page` | 页码 | `--page 1` |
-| `--limit` | 每页数量，-1获取全部 | `--limit 20` |
+| `--coin` | 币种（必填），多选逗号分割 | `--coin BTC` |
+| `--amt-type` | 类型（必填）：1现货 2合约 | `--amt-type 2` |
+| `--sort` | 排序（必填）：1最新 2收益率 3夏普 4回撤 | `--sort 2` |
+| `--strategy-type` | 策略类型（必填） | `--strategy-type 11` |
+| `--year` | 按年份查询（与 --ai-time-id 二选一必传） | `--year 2024` |
+| `--ai-time-id` | 按时间ID查询（与 --year 二选一必传） | `--ai-time-id xxx` |
+| `--status` | 状态（默认3-成功）：-1删除 2回测中 3成功 4失败 | `--status 3` |
+| `--direction` | 方向（策略类型1,7,11必填）：long/short | `--direction long` |
+| `--page` | 页码（默认1） | `--page 1` |
+| `--limit` | 每页数量（默认10），-1获取全部 | `--limit 20` |
 | `--name` | 策略名称 | `--name "BTC网格"` |
-| `--status` | 状态：-1删除 2回测中 3成功 4失败 | `--status 3` |
 | `--start-date` | 开始日期 | `--start-date 2024-01-01` |
 | `--end-date` | 结束日期 | `--end-date 2024-12-31` |
-| `--amt-type` | 类型：1现货 2合约 | `--amt-type 2` |
-| `--sort` | 排序：1最新 2收益率 3夏普 4回撤 | `--sort 2` |
-| `--coin` | 币种，多选逗号分割 | `--coin BTC,ETH` |
-| `--type` | 类型：1个人 2AI推荐 3别人推荐 | `--type 2` |
-| `--year` | 按年份查询（与 --ai-time-id 二选一） | `--year 2024` |
-| `--ai-time-id` | 按时间ID查询（与 --year 二选一） | `--ai-time-id xxx` |
 | `--pct` | 比例选择 | `--pct 60` |
 | `--recommand-type` | 推荐类型：1推荐 2交易中策略 | `--recommand-type 1` |
-| | | |
-| `--direction` | 方向：long做多 short做空（仅策略类型1,7,11支持） | `--direction long` |
+| `--version` | 策略版本 | `--version 1.0` |
 | `--format` | 输出格式：json/table/summary | `--format json` |
 
 ## 使用示例

@@ -65,7 +65,7 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
     data = {"usertoken": token}
     
     try:
-        resp = requests.post(url, json=data, timeout=30)
+        resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
         
@@ -110,7 +110,7 @@ def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
     data = {"usertoken": token}
     
     try:
-        resp = requests.post(url, json=data, timeout=30)
+        resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
         
@@ -155,7 +155,7 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
     data = {"usertoken": token}
     
     try:
-        resp = requests.post(url, json=data, timeout=30)
+        resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
         
@@ -194,7 +194,7 @@ def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
     }
     
     try:
-        resp = requests.post(url, json=data, timeout=30)
+        resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
         
@@ -226,7 +226,7 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
     }
     
     try:
-        resp = requests.post(url, json=data, timeout=30)
+        resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
         
@@ -282,6 +282,9 @@ def query_backtest(
     ai_time_id: str = None,
     search_recommand_type: int = None,
     version: str = None,
+    leverage: int = None,
+    search_extend: str = None,
+    app_v: str = "1.0.1",
     version_extra: dict = None,
 ) -> dict:
     """
@@ -352,8 +355,16 @@ def query_backtest(
     if version_extra:
         data.update(version_extra)
     
+    # 额外参数
+    if leverage is not None:
+        data["leverage"] = leverage
+    if search_extend:
+        data["search_extend"] = search_extend
+    if app_v:
+        data["app_v"] = app_v
+    
     try:
-        resp = requests.post(url, json=data, timeout=30)
+        resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
         
@@ -433,16 +444,21 @@ def main():
     parser.add_argument("--page", type=int, default=1, help="页码")
     parser.add_argument("--limit", type=int, default=10, help="每页数量，-1获取全部")
     parser.add_argument("--name", dest="search_val", help="策略名称")
-    parser.add_argument("--status", dest="search_status", type=int, 
+    
+    # 必填参数
+    parser.add_argument("--coin", dest="search_coin", required=True, help="币种（必填），多选逗号分割")
+    parser.add_argument("--amt-type", dest="search_amt_type", type=int,
+                        choices=[1, 2], help="类型: 1现货 2合约")
+    parser.add_argument("--sort", dest="sort_type", type=int, required=True,
+                        choices=[1, 2, 3, 4], help="排序（必填）: 1最新 2收益率 3夏普 4回撤")
+    parser.add_argument("--strategy-type", dest="strategy_type", type=int, required=True,
+                        help="策略类型（必填）")
+    
+    # 可选参数
+    parser.add_argument("--status", dest="search_status", type=int,
                         choices=[-1, 2, 3, 4], help="状态: -1删除 2回测中 3成功 4失败")
     parser.add_argument("--start-date", dest="search_bgn_date", help="开始日期")
     parser.add_argument("--end-date", dest="search_end_date", help="结束日期")
-    parser.add_argument("--amt-type", dest="search_amt_type", type=int,
-                        choices=[1, 2], help="类型: 1现货 2合约")
-    parser.add_argument("--sort", dest="sort_type", type=int,
-                        choices=[1, 2, 3, 4], help="排序: 1最新 2收益率 3夏普 4回撤")
-    parser.add_argument("--coin", dest="search_coin", help="币种，多选逗号分割")
-    # type 固定为 2（AI 回测推荐）
     current_year = datetime.now().year
     parser.add_argument("--year", dest="search_year", type=int,
                         choices=range(2011, current_year + 1), metavar="YEAR",
@@ -453,11 +469,11 @@ def main():
                         choices=[1, 2], help="推荐类型: 1推荐 2交易中策略")
     parser.add_argument("--pct", dest="search_pct", 
                         help="比例选择 (BTC: 10/20/30/40/50/60/80/100/120, 其他: 60/80/100/120/140)")
-    parser.add_argument("--strategy-type", dest="strategy_type", type=int,
-                        help="策略类型")
     parser.add_argument("--version", dest="version", help="策略版本")
+    parser.add_argument("--leverage", type=int, help="杠杆倍数")
+    parser.add_argument("--search-extend", dest="search_extend", help="扩展参数")
     parser.add_argument("--direction", dest="search_direction",
-                        choices=["long", "short"], help="方向: long做多 short做空")
+                        choices=["long", "short"], help="方向: long做多 short做空（策略类型1,7,11需要）")
     parser.add_argument("--format", dest="output_format", default="summary",
                         choices=["json", "table", "summary"], help="输出格式")
     
@@ -544,9 +560,12 @@ def main():
         print("错误: 查询回测数据需要 --token")
         return
     
-    # 验证互斥参数
+    # 验证时间参数（二选一必传）
     if args.search_year and args.ai_time_id:
         print("错误: --year 和 --ai-time-id 参数不能同时使用，请选择其一")
+        return
+    if not args.search_year and not args.ai_time_id:
+        print("错误: --year 或 --ai-time-id 必须传一个")
         return
     
     # 验证方向参数
@@ -593,6 +612,8 @@ def main():
         ai_time_id=args.ai_time_id,
         search_pct=args.search_pct,
         search_recommand_type=args.search_recommand_type,
+        leverage=args.leverage,
+        search_extend=args.search_extend,
     )
     
     print(format_result(result, args.output_format))
