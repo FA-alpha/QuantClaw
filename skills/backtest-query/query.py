@@ -23,6 +23,21 @@ AI_STRATEGY_CACHE_FILE = os.path.join(CACHE_DIR, "ai_strategies.json")
 CACHE_TTL = 86400  # 24 小时
 
 
+def check_auth(response: dict) -> tuple[bool, str]:
+    """
+    检查 API 响应的认证状态
+    
+    Args:
+        response: API 响应数据
+    
+    Returns:
+        tuple: (is_ok, error_message)
+    """
+    if response.get("status") == 0 and response.get("info") == "nologin":
+        return False, "❌ 认证失败: token 无效或已过期，请重新登录"
+    return True, ""
+
+
 def get_coin_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取可用币种列表（带缓存）
@@ -51,14 +66,19 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
     try:
         resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
-        data = resp.json()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
         
         # 保存缓存
         os.makedirs(CACHE_DIR, exist_ok=True)
         with open(COIN_CACHE_FILE, "w") as f:
-            json.dump({"timestamp": time.time(), "data": data}, f)
+            json.dump({"timestamp": time.time(), "data": result}, f)
         
-        return data
+        return result
     except requests.RequestException as e:
         return {"error": str(e)}
 
@@ -91,14 +111,19 @@ def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
     try:
         resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
-        data = resp.json()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
         
         # 保存缓存
         os.makedirs(CACHE_DIR, exist_ok=True)
         with open(AI_TIME_CACHE_FILE, "w") as f:
-            json.dump({"timestamp": time.time(), "data": data}, f)
+            json.dump({"timestamp": time.time(), "data": result}, f)
         
-        return data
+        return result
     except requests.RequestException as e:
         return {"error": str(e)}
 
@@ -131,14 +156,19 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
     try:
         resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
-        data = resp.json()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
         
         # 保存缓存
         os.makedirs(CACHE_DIR, exist_ok=True)
         with open(AI_STRATEGY_CACHE_FILE, "w") as f:
-            json.dump({"timestamp": time.time(), "data": data}, f)
+            json.dump({"timestamp": time.time(), "data": result}, f)
         
-        return data
+        return result
     except requests.RequestException as e:
         return {"error": str(e)}
 
@@ -165,7 +195,14 @@ def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
     try:
         resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
-        return resp.json()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
+        
+        return result
     except requests.RequestException as e:
         return {"error": str(e)}
 
@@ -190,7 +227,14 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
     try:
         resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
-        return resp.json()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
+        
+        return result
     except requests.RequestException as e:
         return {"error": str(e)}
 
@@ -310,7 +354,14 @@ def query_backtest(
     try:
         resp = requests.post(url, json=data, timeout=30)
         resp.raise_for_status()
-        return resp.json()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
+        
+        return result
     except requests.RequestException as e:
         return {"error": str(e)}
 
