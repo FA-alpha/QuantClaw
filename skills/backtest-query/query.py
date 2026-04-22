@@ -35,10 +35,7 @@ def check_auth(response: dict) -> tuple[bool, str]:
     """
     if response.get("status") == 0:
         info = response.get("info", "未知错误")
-        if info == "nologin":
-            return False, "❌ 认证失败: token 无效或已过期，请重新登录"
-        else:
-            return False, f"❌ {info}"
+        return False, str(info)
     return True, ""
 
 
