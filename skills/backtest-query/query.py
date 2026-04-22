@@ -25,7 +25,7 @@ CACHE_TTL = 86400  # 24 小时
 
 def check_auth(response: dict) -> tuple[bool, str]:
     """
-    检查 API 响应的认证状态
+    检查 API 响应状态
     
     Args:
         response: API 响应数据
@@ -33,8 +33,12 @@ def check_auth(response: dict) -> tuple[bool, str]:
     Returns:
         tuple: (is_ok, error_message)
     """
-    if response.get("status") == 0 and response.get("info") == "nologin":
-        return False, "❌ 认证失败: token 无效或已过期，请重新登录"
+    if response.get("status") == 0:
+        info = response.get("info", "未知错误")
+        if info == "nologin":
+            return False, "❌ 认证失败: token 无效或已过期，请重新登录"
+        else:
+            return False, f"❌ {info}"
     return True, ""
 
 
