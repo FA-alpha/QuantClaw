@@ -1,0 +1,108 @@
+// QuantClaw 配置示例
+// 复制到 ~/.clawdbot/clawdbot.json
+
+{
+  // ============ 插件配置 ============
+  plugins: {
+    enabled: true,
+    load: {
+      paths: ["~/work/QuantClaw/extensions"]
+    },
+    entries: {
+      "quantclaw-auth": {
+        enabled: true,
+        config: {
+          // 用户数据库
+          dataPath: "~/.quantclaw/users.yaml",
+          
+          // 用户 workspace 存放目录
+          workspaceBase: "~/quantclaw-users",
+          
+          // 新 Agent 默认模型
+          defaultModel: "anthropic/claude-sonnet-4-5",
+          
+          // 沙箱模式: "all" 推荐用于多租户
+          sandboxMode: "all",
+          
+          // Webhook 路径
+          webhookPath: "/webhook/quantclaw",
+          
+          // Webhook 签名密钥 (可选，推荐生产环境使用)
+          // webhookSecret: "your-random-secret-here"
+        }
+      }
+    }
+  },
+
+  // ============ 管理员 Agent ============
+  agents: {
+    list: [
+      {
+        id: "admin",
+        default: true,
+        name: "QuantClaw Admin",
+        workspace: "~/quantclaw",
+        model: "anthropic/claude-sonnet-4-5",
+        sandbox: { mode: "off" }
+      }
+      // 用户 Agent 通过 CLI 注册后
+      // 需要将 ~/.quantclaw/agents-config.yaml 内容合并到这里
+    ]
+  },
+
+  // ============ 路由绑定 ============
+  bindings: [
+    // 管理员路由
+    {
+      agentId: "admin",
+      match: {
+        channel: "whatsapp",
+        peer: { kind: "dm", id: "+8618758363209" }
+      }
+    }
+    // 用户路由通过 Webhook API Key 自动识别，无需手动配置
+  ]
+}
+
+/*
+============ 使用流程 ============
+
+1. 安装插件:
+   clawdbot plugins install -l ~/work/QuantClaw/extensions/quantclaw-auth
+
+2. 合并此配置到 ~/.clawdbot/clawdbot.json
+
+3. 重启 Gateway:
+   clawdbot gateway restart
+
+4. 注册用户 (CLI):
+   clawdbot quantclaw register alice
+   clawdbot quantclaw register bob --binance-key xxx --binance-secret xxx
+
+5. 查看生成的配置:
+   clawdbot quantclaw config
+
+6. 合并 Agent 配置后重启:
+   clawdbot gateway restart
+
+7. 外部系统通过 Webhook 发送请求:
+   curl -X POST http://localhost:3000/webhook/quantclaw \
+     -H "Content-Type: application/json" \
+     -d '{"apiKey":"qc_xxx","message":"查询 BTC 价格"}'
+
+
+============ 目录结构 ============
+
+~/.quantclaw/
+├── users.yaml           # 用户数据库 (自动生成)
+└── agents-config.yaml   # Agent 配置 (需合并到主配置)
+
+~/quantclaw-users/
+├── qc-alice/            # 用户 alice 的 workspace
+│   ├── AGENTS.md
+│   ├── SOUL.md
+│   ├── .credentials.yaml
+│   └── ...
+└── qc-bob/
+    └── ...
+*/

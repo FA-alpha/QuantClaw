@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  quantclaw-server:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - QUANTCLAW_WEBHOOK_URL=http://host.docker.internal:3000/webhook/quantclaw
+      - QUANTCLAW_WEBHOOK_SECRET=${QUANTCLAW_WEBHOOK_SECRET:-}
+      - QUANTCLAW_DATA_DIR=/app/data
+    restart: unless-stopped

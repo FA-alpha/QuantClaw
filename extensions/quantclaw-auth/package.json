@@ -1,0 +1,23 @@
+{
+  "name": "quantclaw-auth",
+  "version": "0.1.0",
+  "description": "Authentication and authorization plugin for QuantClaw",
+  "main": "index.ts",
+  "type": "module",
+  "clawdbot": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "clawdbot": ">=2026.1.0"
+  },
+  "keywords": [
+    "clawdbot",
+    "plugin",
+    "quantclaw",
+    "crypto",
+    "authentication"
+  ],
+  "author": "FourierAlpha",
+  "license": "MIT"
+}

@@ -1,0 +1,64 @@
+{
+  "id": "quantclaw-auth",
+  "name": "QuantClaw Authentication",
+  "version": "0.4.0",
+  "description": "CLI user management + Webhook with message filtering for QuantClaw",
+  "author": "FourierAlpha",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "dataPath": {
+        "type": "string",
+        "default": "~/.quantclaw/users.yaml",
+        "description": "Path to users database"
+      },
+      "workspaceBase": {
+        "type": "string",
+        "default": "~/quantclaw-users",
+        "description": "Base directory for user workspaces"
+      },
+      "defaultModel": {
+        "type": "string",
+        "default": "anthropic/claude-sonnet-4-5",
+        "description": "Default model for new agents"
+      },
+      "sandboxMode": {
+        "type": "string",
+        "enum": ["off", "all", "non-main"],
+        "default": "all",
+        "description": "Sandbox mode for new agents"
+      },
+      "webhookPath": {
+        "type": "string",
+        "default": "/webhook/quantclaw",
+        "description": "HTTP path for webhook endpoint"
+      },
+      "webhookSecret": {
+        "type": "string",
+        "description": "HMAC secret for webhook signature verification"
+      },
+      "filterMode": {
+        "type": "string",
+        "enum": ["keywords", "llm", "hybrid"],
+        "default": "hybrid",
+        "description": "Message filter mode: keywords=fast keyword matching, llm=use LLM classifier, hybrid=keywords first then LLM"
+      },
+      "filterModel": {
+        "type": "string",
+        "default": "anthropic/claude-haiku",
+        "description": "Model for LLM-based message classification (use lightweight model)"
+      }
+    }
+  },
+  "uiHints": {
+    "dataPath": { "label": "Users Database Path" },
+    "workspaceBase": { "label": "User Workspaces Directory" },
+    "defaultModel": { "label": "Default Model" },
+    "sandboxMode": { "label": "Sandbox Mode" },
+    "webhookPath": { "label": "Webhook Path" },
+    "webhookSecret": { "label": "Webhook Secret", "sensitive": true },
+    "filterMode": { "label": "Message Filter Mode" },
+    "filterModel": { "label": "Filter Classifier Model" }
+  }
+}
