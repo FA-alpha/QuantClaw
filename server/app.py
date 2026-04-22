@@ -80,6 +80,42 @@ class ChatStore:
 chat_store = ChatStore(DATA_DIR / 'chats')
 
 
+# ============ 认证辅助函数 ============
+
+async def check_auth_token(token: str, session_id: str = 'main') -> dict:
+    """
+    调用 Gateway Webhook 验证 token
+    
+    Returns:
+        dict: {'success': bool, 'error'?: str, 'needLogin'?: bool, 'userId'?: str, 'agentId'?: str, ...}
+    """
+    webhook_data = {'token': token, 'message': '__auth_check__', 'sessionId': session_id}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{GATEWAY_URL}{WEBHOOK_PATH}',
+                json=webhook_data,
+                headers={'Content-Type': 'application/json'}
+            ) as resp:
+                result = await resp.json()
+        
+        if not result.get('success'):
+            error = result.get('error', '认证失败')
+            # 检查是否需要重新登录
+            need_login = 'nologin' in str(error).lower()
+            return {
+                'success': False,
+                'error': error,
+                'needLogin': need_login
+            }
+        
+        return result
+    
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
 # ============ HTTP 处理器 ============
 
 async def handle_chat(request):
