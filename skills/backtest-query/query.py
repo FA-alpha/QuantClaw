@@ -13,7 +13,7 @@ from datetime import datetime
 import requests
 
 # API 配置
-API_BASE = "https://www.fourieralpha.com"
+API_BASE = "https://www.fourieralpha.com/Mobile"
 
 # 缓存配置
 CACHE_DIR = os.path.expanduser("~/.quantclaw/cache")
