@@ -1,0 +1,423 @@
+#!/usr/bin/env python3
+"""
+回测数据查询脚本
+用法: python query.py --token <token> [选项]
+"""
+
+import argparse
+import json
+import sys
+import os
+import time
+from datetime import datetime
+import requests
+
+# API 配置
+API_BASE = "https://api.example.com"  # TODO: 替换为实际地址
+
+# 缓存配置
+CACHE_DIR = os.path.expanduser("~/.quantclaw/cache")
+COIN_CACHE_FILE = os.path.join(CACHE_DIR, "coins.json")
+AI_TIME_CACHE_FILE = os.path.join(CACHE_DIR, "ai_times.json")
+AI_STRATEGY_CACHE_FILE = os.path.join(CACHE_DIR, "ai_strategies.json")
+CACHE_TTL = 86400  # 24 小时
+
+
+def get_coin_list(force_refresh: bool = False) -> dict:
+    """
+    获取可用币种列表（带缓存）
+    
+    Args:
+        force_refresh: 强制刷新缓存
+    
+    Returns:
+        dict: API 响应数据
+    """
+    # 检查缓存
+    if not force_refresh and os.path.exists(COIN_CACHE_FILE):
+        try:
+            with open(COIN_CACHE_FILE, "r") as f:
+                cache = json.load(f)
+            if time.time() - cache.get("timestamp", 0) < CACHE_TTL:
+                return cache.get("data", {})
+        except:
+            pass
+    
+    # 请求 API
+    url = f"{API_BASE}/Strategy/coin_lists"
+    
+    try:
+        resp = requests.post(url, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        # 保存缓存
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(COIN_CACHE_FILE, "w") as f:
+            json.dump({"timestamp": time.time(), "data": data}, f)
+        
+        return data
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
+def get_ai_time_list(force_refresh: bool = False) -> dict:
+    """
+    获取 AI 回测时间列表（带缓存）
+    
+    Args:
+        force_refresh: 强制刷新缓存
+    
+    Returns:
+        dict: API 响应数据
+    """
+    # 检查缓存
+    if not force_refresh and os.path.exists(AI_TIME_CACHE_FILE):
+        try:
+            with open(AI_TIME_CACHE_FILE, "r") as f:
+                cache = json.load(f)
+            if time.time() - cache.get("timestamp", 0) < CACHE_TTL:
+                return cache.get("data", {})
+        except:
+            pass
+    
+    # 请求 API
+    url = f"{API_BASE}/Extend/ai_time_lists"
+    
+    try:
+        resp = requests.post(url, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        # 保存缓存
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(AI_TIME_CACHE_FILE, "w") as f:
+            json.dump({"timestamp": time.time(), "data": data}, f)
+        
+        return data
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
+def get_ai_strategy_list(force_refresh: bool = False) -> dict:
+    """
+    获取 AI 回测策略列表（带缓存）
+    
+    Args:
+        force_refresh: 强制刷新缓存
+    
+    Returns:
+        dict: API 响应数据
+    """
+    # 检查缓存
+    if not force_refresh and os.path.exists(AI_STRATEGY_CACHE_FILE):
+        try:
+            with open(AI_STRATEGY_CACHE_FILE, "r") as f:
+                cache = json.load(f)
+            if time.time() - cache.get("timestamp", 0) < CACHE_TTL:
+                return cache.get("data", {})
+        except:
+            pass
+    
+    # 请求 API
+    url = f"{API_BASE}/Extend/ai_strategy_lists"
+    
+    try:
+        resp = requests.post(url, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        # 保存缓存
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(AI_STRATEGY_CACHE_FILE, "w") as f:
+            json.dump({"timestamp": time.time(), "data": data}, f)
+        
+        return data
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
+def get_version_info(strategy_type: int, version: str) -> dict:
+    """
+    根据策略类型和版本获取版本信息
+    
+    Args:
+        strategy_type: 策略类型
+        version: 策略版本
+    
+    Returns:
+        dict: 版本信息（不含 id 和 name）
+    """
+    strategies = get_ai_strategy_list()
+    info = strategies.get("info", [])
+    
+    for strategy in info:
+        if strategy.get("strategy_type") == strategy_type:
+            for v in strategy.get("versions", []):
+                if str(v.get("version")) == str(version):
+                    # 返回除 id 和 name 外的所有字段
+                    return {k: v for k, v in v.items() if k not in ("id", "name")}
+    return {}
+
+
+def query_backtest(
+    token: str,
+    page: int = 1,
+    limit: int = 10,
+    search_val: str = None,
+    search_status: int = None,
+    search_bgn_date: str = None,
+    search_end_date: str = None,
+    search_amt_type: int = None,
+    sort_type: int = None,
+    search_coin: str = None,
+    type_: int = None,
+    search_year: str = None,
+    search_pct: str = None,
+    strategy_type: int = None,
+    search_direction: str = None,
+    ai_time_id: str = None,
+    search_recommand_type: int = None,
+    version: str = None,
+    version_extra: dict = None,
+) -> dict:
+    """
+    查询回测列表
+    
+    Args:
+        token: 用户登录 token
+        page: 第几页（默认第一页）
+        limit: 每页几个（默认10个，-1获取全部）
+        search_val: 策略名称
+        search_status: 回测状态（-1已删除 2回测中 3回测成功 4回测失败）
+        search_bgn_date: 回测搜索开始日期
+        search_end_date: 回测搜索结束日期
+        search_amt_type: 类型（1现货 2合约）
+        sort_type: 排序类型（1最新 2收益率最高 3夏普率最高 4回撤率最低）
+        search_coin: 币种选择（多选逗号分割）
+        type_: 类型（1个人回测 2AI回测推荐 3别人回测推荐）
+        search_year: 年份
+        search_pct: 比例选择
+        strategy_type: 策略类型（1风霆 3鲲鹏v1）
+        search_direction: 方向选择（long做多 short做空）
+        ai_time_id: 时间ID
+        search_recommand_type: 推荐类型（1推荐 2交易中策略）
+        version: 策略版本
+    
+    Returns:
+        dict: API 响应数据
+    """
+    url = f"{API_BASE}/Backtrack/lists"
+    
+    data = {"usertoken": token}
+    
+    if page is not None:
+        data["page"] = page
+    if limit is not None:
+        data["limit"] = limit
+    if search_val:
+        data["search_val"] = search_val
+    if search_status is not None:
+        data["search_status"] = search_status
+    if search_bgn_date:
+        data["search_bgn_date"] = search_bgn_date
+    if search_end_date:
+        data["search_end_date"] = search_end_date
+    if search_amt_type is not None:
+        data["search_amt_type"] = search_amt_type
+    if sort_type is not None:
+        data["sort_type"] = sort_type
+    if search_coin:
+        data["search_coin"] = search_coin
+    data["type"] = 2  # 固定为 AI 回测推荐
+    if search_year:
+        data["search_year"] = search_year
+    if search_pct:
+        data["search_pct"] = search_pct
+    if strategy_type is not None:
+        data["strategy_type"] = strategy_type
+    if search_direction:
+        data["search_direction"] = search_direction
+    if ai_time_id:
+        data["ai_time_id"] = ai_time_id
+    if search_recommand_type is not None:
+        data["search_recommand_type"] = search_recommand_type
+    if version:
+        data["version"] = version
+    
+    # 合并版本额外信息
+    if version_extra:
+        data.update(version_extra)
+    
+    try:
+        resp = requests.post(url, json=data, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
+def format_result(data: dict, output_format: str = "table") -> str:
+    """
+    格式化输出结果
+    
+    Args:
+        data: API 响应数据
+        output_format: 输出格式（json/table/summary）
+    
+    Returns:
+        str: 格式化后的字符串
+    """
+    if "error" in data:
+        return f"错误: {data['error']}"
+    
+    if output_format == "json":
+        return json.dumps(data, indent=2, ensure_ascii=False)
+    
+    info = data.get("info", [])
+    if not info:
+        return "未找到回测数据"
+    
+    if output_format == "summary":
+        lines = [f"共找到 {len(info)} 条回测记录:\n"]
+        for i, item in enumerate(info, 1):
+            lines.append(
+                f"{i}. {item.get('name', 'N/A')} | "
+                f"年化: {item.get('year_rate', 'N/A')}% | "
+                f"夏普: {item.get('sharp_rate', 'N/A')} | "
+                f"回撤: {item.get('max_loss', 'N/A')}% | "
+                f"胜率: {item.get('win_rate', 'N/A')}%"
+            )
+        return "\n".join(lines)
+    
+    # table format
+    lines = [
+        "| ID | 名称 | 年化收益 | 夏普比率 | 最大回撤 | 胜率 | 状态 |",
+        "|---|---|---|---|---|---|---|"
+    ]
+    status_map = {1: "排队中", 2: "回测中", 3: "成功", 4: "失败"}
+    for item in info:
+        lines.append(
+            f"| {item.get('id', '')} "
+            f"| {item.get('name', '')[:20]} "
+            f"| {item.get('year_rate', '')}% "
+            f"| {item.get('sharp_rate', '')} "
+            f"| {item.get('max_loss', '')}% "
+            f"| {item.get('win_rate', '')}% "
+            f"| {status_map.get(item.get('status'), '')} |"
+        )
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="查询回测数据")
+    parser.add_argument("--token", help="用户 token")
+    parser.add_argument("--list-coins", action="store_true", help="列出可用币种")
+    parser.add_argument("--list-ai-times", action="store_true", help="列出 AI 回测时间")
+    parser.add_argument("--list-strategies", action="store_true", help="列出 AI 回测策略")
+    parser.add_argument("--refresh-cache", action="store_true", help="强制刷新缓存")
+    parser.add_argument("--page", type=int, default=1, help="页码")
+    parser.add_argument("--limit", type=int, default=10, help="每页数量，-1获取全部")
+    parser.add_argument("--name", dest="search_val", help="策略名称")
+    parser.add_argument("--status", dest="search_status", type=int, 
+                        choices=[-1, 2, 3, 4], help="状态: -1删除 2回测中 3成功 4失败")
+    parser.add_argument("--start-date", dest="search_bgn_date", help="开始日期")
+    parser.add_argument("--end-date", dest="search_end_date", help="结束日期")
+    parser.add_argument("--amt-type", dest="search_amt_type", type=int,
+                        choices=[1, 2], help="类型: 1现货 2合约")
+    parser.add_argument("--sort", dest="sort_type", type=int,
+                        choices=[1, 2, 3, 4], help="排序: 1最新 2收益率 3夏普 4回撤")
+    parser.add_argument("--coin", dest="search_coin", help="币种，多选逗号分割")
+    # type 固定为 2（AI 回测推荐）
+    current_year = datetime.now().year
+    parser.add_argument("--year", dest="search_year", type=int,
+                        choices=range(2011, current_year + 1), metavar="YEAR",
+                        help=f"年份（2011-{current_year}）")
+    parser.add_argument("--strategy-type", dest="strategy_type", type=int,
+                        help="策略类型")
+    parser.add_argument("--version", dest="version", help="策略版本")
+    parser.add_argument("--direction", dest="search_direction",
+                        choices=["long", "short"], help="方向: long做多 short做空")
+    parser.add_argument("--format", dest="output_format", default="summary",
+                        choices=["json", "table", "summary"], help="输出格式")
+    
+    args = parser.parse_args()
+    
+    # 列出币种
+    if args.list_coins:
+        result = get_coin_list(force_refresh=args.refresh_cache)
+        if "error" in result:
+            print(f"错误: {result['error']}")
+        else:
+            info = result.get("info", [])
+            print("可用币种:")
+            for item in info:
+                print(f"  {item.get('coin')} - {item.get('name')}")
+        return
+    
+    # 列出 AI 回测时间
+    if args.list_ai_times:
+        result = get_ai_time_list(force_refresh=args.refresh_cache)
+        if "error" in result:
+            print(f"错误: {result['error']}")
+        else:
+            info = result.get("info", [])
+            print("AI 回测时间:")
+            for item in info:
+                print(f"  {item.get('id')} - {item.get('name')}")
+        return
+    
+    # 列出 AI 回测策略
+    if args.list_strategies:
+        result = get_ai_strategy_list(force_refresh=args.refresh_cache)
+        if "error" in result:
+            print(f"错误: {result['error']}")
+        else:
+            info = result.get("info", [])
+            print("AI 回测策略:")
+            for item in info:
+                print(f"  [{item.get('strategy_type')}] {item.get('name')} (id: {item.get('id')})")
+                versions = item.get("versions", [])
+                for v in versions:
+                    print(f"      - {v.get('name')} (版本: {v.get('version')}, 杠杆: {v.get('leverage')})")
+        return
+    
+    # 查询回测需要 token
+    if not args.token:
+        print("错误: 查询回测数据需要 --token")
+        return
+    
+    # 验证方向参数
+    if args.search_direction and args.strategy_type not in (1, 7, 11):
+        print(f"警告: 策略类型 {args.strategy_type} 不支持方向参数，已忽略")
+        args.search_direction = None
+    
+    # 获取版本额外信息
+    version_extra = None
+    if args.strategy_type and args.version:
+        version_extra = get_version_info(args.strategy_type, args.version)
+    
+    result = query_backtest(
+        token=args.token,
+        page=args.page,
+        limit=args.limit,
+        search_val=args.search_val,
+        search_status=args.search_status,
+        search_bgn_date=args.search_bgn_date,
+        search_end_date=args.search_end_date,
+        search_amt_type=args.search_amt_type,
+        sort_type=args.sort_type,
+        search_coin=args.search_coin,
+        # type 固定为 2
+        search_year=args.search_year,
+        strategy_type=args.strategy_type,
+        version=args.version,
+        version_extra=version_extra,
+        search_direction=args.search_direction,
+    )
+    
+    print(format_result(result, args.output_format))
+
+
+if __name__ == "__main__":
+    main()
