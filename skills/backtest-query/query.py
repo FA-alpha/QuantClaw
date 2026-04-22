@@ -13,7 +13,7 @@ from datetime import datetime
 import requests
 
 # API 配置
-API_BASE = "https://api.example.com"  # TODO: 替换为实际地址
+API_BASE = "https://www.fourieralpha.com"
 
 # 缓存配置
 CACHE_DIR = os.path.expanduser("~/.quantclaw/cache")
@@ -133,6 +133,58 @@ def get_ai_strategy_list(force_refresh: bool = False) -> dict:
             json.dump({"timestamp": time.time(), "data": data}, f)
         
         return data
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
+def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
+    """
+    创建策略组
+    
+    Args:
+        token: 用户登录 token
+        strategy_tokens: 策略 token（多个逗号分隔）
+        name: 策略组名称
+    
+    Returns:
+        dict: API 响应数据
+    """
+    url = f"{API_BASE}/Strategy/group_adds_do"
+    data = {
+        "usertoken": token,
+        "strategy_token": strategy_tokens,
+        "name": name
+    }
+    
+    try:
+        resp = requests.post(url, json=data, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
+def get_backtest_detail(token: str, back_id: int) -> dict:
+    """
+    获取回测详细统计信息
+    
+    Args:
+        token: 用户登录 token
+        back_id: 回测记录 ID
+    
+    Returns:
+        dict: API 响应数据
+    """
+    url = f"{API_BASE}/Backtrack/stat_info"
+    data = {
+        "usertoken": token,
+        "back_id": back_id
+    }
+    
+    try:
+        resp = requests.post(url, json=data, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
     except requests.RequestException as e:
         return {"error": str(e)}
 
@@ -312,6 +364,10 @@ def format_result(data: dict, output_format: str = "table") -> str:
 def main():
     parser = argparse.ArgumentParser(description="查询回测数据")
     parser.add_argument("--token", help="用户 token")
+    parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
+    parser.add_argument("--create-group", action="store_true", help="创建策略组")
+    parser.add_argument("--group-name", help="策略组名称")
+    parser.add_argument("--strategy-tokens", help="策略 token（多个逗号分隔）")
     parser.add_argument("--list-coins", action="store_true", help="列出可用币种")
     parser.add_argument("--list-ai-times", action="store_true", help="列出 AI 回测时间")
     parser.add_argument("--list-strategies", action="store_true", help="列出 AI 回测策略")
@@ -335,6 +391,10 @@ def main():
                         help=f"按年份查询（2011-{current_year}），与 --ai-time-id 二选一")
     parser.add_argument("--ai-time-id", dest="ai_time_id",
                         help="按时间ID查询，与 --year 二选一")
+    parser.add_argument("--recommand-type", dest="search_recommand_type", type=int,
+                        choices=[1, 2], help="推荐类型: 1推荐 2交易中策略")
+    parser.add_argument("--pct", dest="search_pct", 
+                        help="比例选择 (BTC: 10/20/30/40/50/60/80/100/120, 其他: 60/80/100/120/140)")
     parser.add_argument("--strategy-type", dest="strategy_type", type=int,
                         help="策略类型")
     parser.add_argument("--version", dest="version", help="策略版本")
@@ -384,6 +444,34 @@ def main():
                     print(f"      - {v.get('name')} (版本: {v.get('version')}, 杠杆: {v.get('leverage')})")
         return
     
+    # 创建策略组
+    if args.create_group:
+        if not args.token:
+            print("错误: 创建策略组需要 --token")
+            return
+        if not args.group_name:
+            print("错误: 需要 --group-name")
+            return
+        if not args.strategy_tokens:
+            print("错误: 需要 --strategy-tokens")
+            return
+        result = create_strategy_group(args.token, args.strategy_tokens, args.group_name)
+        if "error" in result:
+            print(f"错误: {result['error']}")
+        else:
+            group_id = result.get("info", {}).get("id")
+            print(f"✅ 策略组创建成功: {args.group_name} (ID: {group_id})")
+        return
+    
+    # 查看详情
+    if args.back_id:
+        if not args.token:
+            print("错误: 查看详情需要 --token")
+            return
+        result = get_backtest_detail(args.token, args.back_id)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    
     # 查询回测需要 token
     if not args.token:
         print("错误: 查询回测数据需要 --token")
@@ -398,6 +486,20 @@ def main():
     if args.search_direction and args.strategy_type not in (1, 7, 11):
         print(f"警告: 策略类型 {args.strategy_type} 不支持方向参数，已忽略")
         args.search_direction = None
+    
+    # 验证 search_pct 参数
+    if args.strategy_type == 3 and args.search_recommand_type == 2 and args.search_pct:
+        print(f"警告: 策略类型3 + 推荐类型2 时不需要 search_pct 参数，已忽略")
+        args.search_pct = None
+    elif args.search_pct:
+        # 验证 search_pct 值是否有效
+        btc_opts = ['10', '20', '30', '40', '50', '60', '80', '100', '120']
+        other_opts = ['60', '80', '100', '120', '140']
+        is_btc = args.search_coin and 'BTC' in args.search_coin.upper()
+        valid_opts = btc_opts if is_btc else other_opts
+        if args.search_pct not in valid_opts:
+            print(f"警告: search_pct 值 '{args.search_pct}' 无效，{'BTC' if is_btc else '其他币种'} 可选: {', '.join(valid_opts)}")
+            args.search_pct = None
     
     # 获取版本额外信息
     version_extra = None
@@ -422,6 +524,8 @@ def main():
         version_extra=version_extra,
         search_direction=args.search_direction,
         ai_time_id=args.ai_time_id,
+        search_pct=args.search_pct,
+        search_recommand_type=args.search_recommand_type,
     )
     
     print(format_result(result, args.output_format))
