@@ -141,19 +141,22 @@
             background: #30363d;
             border-color: #58a6ff;
         }
-        .login-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
+        .login-page {
             display: none;
+            width: 100%;
+            height: 100vh;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            background: #0d1117;
         }
-        .login-modal.active { display: flex; }
+        .login-page.active { display: flex; }
+        .chat-page {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100vh;
+        }
+        .chat-page.hidden { display: none; }
         .login-box {
             background: #161b22;
             padding: 32px;
@@ -209,26 +212,28 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <span class="logo">📈</span>
-        <h1>QuantClaw</h1>
-        <span id="status" class="status new">新用户</span>
-        <span id="userInfo" class="user-info"></span>
-        <button onclick="showLoginModal()" style="margin-left: 12px; padding: 6px 12px; background: #21262d; color: #58a6ff; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 0.9em;">🔑 登录</button>
-    </div>
-
-    <div id="loginModal" class="login-modal">
+    <!-- 登录页面 -->
+    <div id="loginPage" class="login-page active">
         <div class="login-box">
-            <h2>🔑 登录</h2>
+            <h2>🔑 QuantClaw 登录</h2>
             <input type="text" id="tokenInput" placeholder="输入您的 Token" />
             <div class="buttons">
                 <button class="btn-login" onclick="loginWithToken()">登录</button>
-                <button class="btn-cancel" onclick="hideLoginModal()">取消</button>
             </div>
         </div>
     </div>
 
-    <div id="chat" class="chat-container">
+    <!-- 聊天页面 -->
+    <div id="chatPage" class="chat-page hidden">
+        <div class="header">
+            <span class="logo">📈</span>
+            <h1>QuantClaw</h1>
+            <span id="status" class="status auth">已登录</span>
+            <span id="userInfo" class="user-info"></span>
+            <button onclick="logout()" style="margin-left: 12px; padding: 6px 12px; background: #21262d; color: #f85149; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 0.9em;">🚪 退出</button>
+        </div>
+
+        <div id="chat" class="chat-container">
         <div class="welcome">
             <h2>👋 欢迎使用 QuantClaw</h2>
             <p>我是您的量化交易助手，可以帮您分析市场、制定策略。</p>
@@ -240,11 +245,12 @@
                 <span class="example" onclick="askExample(this)">最近有什么大户动向</span>
             </div>
         </div>
-    </div>
+        </div>
 
-    <div class="input-area">
-        <input type="text" id="input" placeholder="输入量化相关问题..." onkeypress="handleKeyPress(event)">
-        <button id="sendBtn" onclick="sendMessage()">发送</button>
+        <div class="input-area">
+            <input type="text" id="input" placeholder="输入量化相关问题..." onkeypress="handleKeyPress(event)">
+            <button id="sendBtn" onclick="sendMessage()">发送</button>
+        </div>
     </div>
 
     <script>
@@ -262,15 +268,10 @@
         // 初始化
         async function init() {
             if (!token) {
-                token = 'device_' + crypto.randomUUID();
-                localStorage.setItem(TOKEN_KEY, token);
-                document.getElementById('status').textContent = '新用户';
-                document.getElementById('status').className = 'status new';
+                // 没有 token，显示登录页面
+                showLoginPage();
             } else {
-                document.getElementById('status').textContent = '已认证';
-                document.getElementById('status').className = 'status auth';
-                
-                // 已有 token，尝试认证并加载历史
+                // 有 token，尝试认证
                 try {
                     const resp = await fetch('/api/auth', {
                         method: 'POST',
@@ -280,9 +281,11 @@
                     const data = await resp.json();
                     
                     if (data.success) {
+                        // 认证成功，进入聊天页面
                         userId = data.userId;
                         agentId = data.agentId;
                         sessionKey = data.sessionKey;
+                        showChatPage();
                         document.getElementById('userInfo').textContent = userId || '';
                         
                         // 加载本地历史
@@ -290,11 +293,31 @@
                         
                         // 连接 WebSocket
                         connectWebSocket();
+                    } else {
+                        // 认证失败，清除 token 并显示登录页
+                        if (data.needLogin || data.error === 'nologin') {
+                            clearToken();
+                            showLoginPage();
+                            addMessage('⚠️ Token 已失效，请重新登录', 'system');
+                        }
                     }
                 } catch (e) {
                     console.error('Auth failed:', e);
+                    showLoginPage();
                 }
             }
+        }
+
+        // 显示登录页面
+        function showLoginPage() {
+            document.getElementById('loginPage').classList.add('active');
+            document.getElementById('chatPage').classList.add('hidden');
+        }
+
+        // 显示聊天页面
+        function showChatPage() {
+            document.getElementById('loginPage').classList.remove('active');
+            document.getElementById('chatPage').classList.remove('hidden');
         }
 
         // WebSocket 连接
@@ -523,25 +546,27 @@
             }
         }
 
-        // 清除 token（调试用）
+        // 退出登录
+        function logout() {
+            if (confirm('确认退出登录？')) {
+                clearToken();
+                showLoginPage();
+                // 清空聊天
+                document.getElementById('chat').innerHTML = '';
+            }
+        }
+
+        // 清除 token
         function clearToken() {
             localStorage.removeItem(TOKEN_KEY);
             token = null;
-            document.getElementById('status').textContent = '新用户';
-            document.getElementById('status').className = 'status new';
-            document.getElementById('userInfo').textContent = '';
-        }
-
-        // 显示登录框
-        function showLoginModal() {
-            document.getElementById('loginModal').classList.add('active');
-            document.getElementById('tokenInput').focus();
-        }
-
-        // 隐藏登录框
-        function hideLoginModal() {
-            document.getElementById('loginModal').classList.remove('active');
-            document.getElementById('tokenInput').value = '';
+            userId = null;
+            agentId = null;
+            sessionKey = null;
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
         }
 
         // 使用 token 登录
@@ -569,11 +594,11 @@
                     agentId = data.agentId;
                     sessionKey = data.sessionKey;
 
-                    document.getElementById('status').textContent = '已认证';
-                    document.getElementById('status').className = 'status auth';
                     document.getElementById('userInfo').textContent = userId || '';
+                    document.getElementById('tokenInput').value = '';
 
-                    hideLoginModal();
+                    // 进入聊天页面
+                    showChatPage();
                     addMessage('✅ 登录成功', 'system');
 
                     // 加载历史
