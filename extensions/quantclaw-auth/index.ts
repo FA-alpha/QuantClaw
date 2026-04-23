@@ -32,6 +32,7 @@ interface PluginConfig {
   filterMode: 'keywords' | 'strict' | 'off';
   autoRegister: boolean;  // 是否允许自动注册
   skillsPath: string;  // QuantClaw 技能路径
+  templatePath?: string;  // Agent workspace 模板路径
 }
 
 // ============ 消息过滤器 ============
@@ -133,7 +134,8 @@ class UserManager {
     const hash = crypto.createHash('sha256').update(clientToken).digest('hex').substring(0, 12);
     const userId = `u_${hash}`;
     const agentId = `qc-${hash}`;
-    const workspace = path.join(this.expandPath(this.config.workspaceBase), agentId);
+    // 使用 clawd- 前缀，让 Gateway 自动发现（fallback 机制）
+    const workspace = this.expandPath(`~/clawd-${agentId}`);
 
     await this.createWorkspace(workspace, userId);
 
@@ -161,7 +163,8 @@ class UserManager {
 
     const token = 'qc_' + crypto.randomBytes(24).toString('hex');
     const agentId = `qc-${userId.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-    const workspace = path.join(this.expandPath(this.config.workspaceBase), agentId);
+    // 使用 clawd- 前缀，让 Gateway 自动发现（fallback 机制）
+    const workspace = this.expandPath(`~/clawd-${agentId}`);
 
     await this.createWorkspace(workspace, userId);
 
@@ -186,33 +189,35 @@ class UserManager {
   private async createWorkspace(workspace: string, userId: string) {
     if (!fs.existsSync(workspace)) fs.mkdirSync(workspace, { recursive: true });
     
-    const agentsMd = `# ${userId} 量化工作区
-
-## 项目结构
-- strategies/ - 交易策略
-- data/ - 市场数据
-- backtests/ - 回测结果
-- skills/ - 量化技能（链接自 QuantClaw）
-
-## 使用说明
-你可以询问关于加密货币、交易策略、市场分析等问题。
-`;
-    fs.writeFileSync(path.join(workspace, 'AGENTS.md'), agentsMd);
+    // 从模板复制 MD 文件
+    const templatePath = this.expandPath(this.config.templatePath || '~/work/QuantClaw/templates/agent-workspace');
     
-    const soulMd = `# QuantClaw - ${userId} 的量化助手
-
-## 核心能力
-- 加密货币行情查询
-- 交易策略分析  
-- 链上数据分析
-- 风险评估
-
-## 工作风格
-- 数据驱动
-- 风险优先
-- 系统化思维
-`;
-    fs.writeFileSync(path.join(workspace, 'SOUL.md'), soulMd);
+    if (fs.existsSync(templatePath)) {
+      const templateFiles = fs.readdirSync(templatePath).filter(f => f.endsWith('.md'));
+      
+      for (const file of templateFiles) {
+        const srcPath = path.join(templatePath, file);
+        const destPath = path.join(workspace, file);
+        
+        if (!fs.existsSync(destPath)) {
+          try {
+            fs.copyFileSync(srcPath, destPath);
+            this.logger.info(`[quantclaw-auth] Copied template: ${file}`);
+          } catch (err) {
+            this.logger.warn(`[quantclaw-auth] Failed to copy ${file}: ${err}`);
+          }
+        }
+      }
+    } else {
+      this.logger.warn(`[quantclaw-auth] Template path not found: ${templatePath}, using fallback`);
+      
+      // 回退：创建基础文件
+      const agentsMd = `# ${userId} 量化工作区\n\n## 使用说明\n你可以询问关于加密货币、交易策略、市场分析等问题。\n`;
+      fs.writeFileSync(path.join(workspace, 'AGENTS.md'), agentsMd);
+      
+      const soulMd = `# QuantClaw\n\n## 核心能力\n- 量化分析\n- 数据驱动\n`;
+      fs.writeFileSync(path.join(workspace, 'SOUL.md'), soulMd);
+    }
 
     for (const d of ['strategies', 'data', 'backtests', 'analysis']) {
       const p = path.join(workspace, d);
@@ -301,6 +306,7 @@ export default function register(api: any) {
     filterMode: cfg.filterMode || 'keywords',
     autoRegister: cfg.autoRegister ?? true,
     skillsPath: cfg.skillsPath || '~/work/QuantClaw/skills',
+    templatePath: cfg.templatePath || '~/work/QuantClaw/templates/agent-workspace',
   };
 
   const userManager = new UserManager(config, api.logger);

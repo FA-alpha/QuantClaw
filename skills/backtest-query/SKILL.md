@@ -1,12 +1,15 @@
 # 回测数据查询
 
-查询 AI 回测数据，支持多条件筛选。
+查询 AI 回测数据，支持多条件筛选，并支持将多个优选策略组合成策略组。
 
 ## 使用场景
 
 - 查询回测结果
 - 按条件筛选策略
+- **⭐ 创建策略组合（核心功能）**
 - 获取策略列表用于组合
+- 查看 AI 回测时间列表
+- 查看 AI 回测策略类型
 
 ## 查询脚本
 
@@ -91,35 +94,76 @@ python skills/backtest-query/query.py \
 | `strategy_id` | 策略 ID |
 | `version` | 策略版本 |
 
-## 创建策略组
+## ⭐ 创建策略组合（核心功能）
 
-将多个策略组合成一个策略组：
+**重要性**：将多个优选策略组合成一个策略组，用于分散风险、对冲或构建投资组合。
 
+**API**: `Strategy/group_adds_do`
+
+**命令**：
 ```bash
 python skills/backtest-query/query.py \
   --token <token> \
   --create-group \
-  --group-name "BTC对冲组" \
+  --group-name "策略组名称" \
   --strategy-tokens "token1,token2,token3"
 ```
 
-返回策略组 ID，其他技能可以使用这个 ID。
+**参数说明**：
+- `--token` 用户 token（必填）
+- `--create-group` 创建策略组标志
+- `--group-name` 策略组名称（必填）
+- `--strategy-tokens` 策略 token 列表，逗号分隔（必填）
 
-**使用流程：**
-1. 查询回测列表，获取 strategy_token
-2. 选择要组合的策略（复制 strategy_token）
-3. 用 `--create-group` 创建组合
+**返回值**：
+- 策略组 ID - 保存后可用于其他功能
 
-**示例：**
+**完整工作流程**：
+
+### 步骤 1：查询并筛选策略
+
+根据条件查询回测，获取 `strategy_token`：
+
 ```bash
-# 1. 查询 BTC 做多策略
-python query.py --token xxx --coin BTC --direction long --limit 5 --format json
-
-# 2. 选择两个策略的 strategy_token，创建对冲组
-python query.py --token xxx --create-group \
-  --group-name "BTC对冲组合" \
-  --strategy-tokens "st_abc123,st_def456"
+# 查询 BTC 做多策略，按收益率排序
+python query.py --token xxx \
+  --coin BTC \
+  --direction long \
+  --sort 2 \
+  --limit 10 \
+  --format json
 ```
+
+从返回结果中记录优选策略的 `strategy_token`。
+
+### 步骤 2：创建策略组
+
+将选中的策略组合：
+
+```bash
+python query.py --token xxx \
+  --create-group \
+  --group-name "BTC多空对冲组合" \
+  --strategy-tokens "st_abc123,st_def456,st_xyz789"
+```
+
+**成功响应**：
+```
+✅ 策略组创建成功: BTC多空对冲组合 (ID: 12345)
+```
+
+### 步骤 3：使用策略组
+
+策略组 ID 可用于：
+- 统一跟踪多个策略的表现
+- 执行组合回测
+- 实盘交易时批量操作
+
+**典型应用场景**：
+- **对冲组合**：同时持有做多和做空策略
+- **币种分散**：多个币种的策略组合
+- **策略类型组合**：网格 + 趋势 + DCA 混合
+- **风险分级**：高中低风险策略配比
 
 ## 查看回测详情
 
@@ -133,6 +177,50 @@ python skills/backtest-query/query.py --token <token> --detail <回测ID>
 - 净值曲线
 - 交易明细
 - 保证金配置（如有）
+
+## AI 回测时间列表
+
+```bash
+# 列出 AI 回测时间（使用缓存，24小时有效）
+python skills/backtest-query/query.py --token <token> --list-ai-times
+
+# 强制刷新时间缓存
+python skills/backtest-query/query.py --token <token> --list-ai-times --refresh-cache
+```
+
+**返回字段**：
+- `id` - 时间 ID（用于 --ai-time-id 参数）
+- `name` - 时间名称
+
+**使用场景**：
+- 查看可用的回测时间段
+- 获取 `ai_time_id` 用于精确查询
+
+**示例输出**：
+```
+AI 回测时间:
+  1 - 2024年第一季度
+  2 - 2024年第二季度
+  3 - 2024年第三季度
+```
+
+缓存文件：`~/.quantclaw/cache/ai_times.json`
+
+## AI 回测策略列表
+
+```bash
+# 列出 AI 回测策略类型（使用缓存，24小时有效）
+python skills/backtest-query/query.py --token <token> --list-strategies
+
+# 强制刷新策略缓存
+python skills/backtest-query/query.py --token <token> --list-strategies --refresh-cache
+```
+
+**使用场景**：
+- 查看可用的策略类型
+- 获取 `strategy_type` 用于查询
+
+缓存文件：`~/.quantclaw/cache/ai_strategies.json`
 
 ## 币种管理
 
