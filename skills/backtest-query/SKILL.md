@@ -434,6 +434,69 @@ for each 马丁策略:
 
 ---
 
+## 🎯 特定策略类型的组合场景
+
+**识别特征**：用户明确指定了策略类型，但要求"组合"
+
+**示例**：
+- "BTC做多风霆v4的组合"
+- "ETH网格策略的组合"
+- "给我几个鲲鹏策略组合起来"
+
+### 参数识别
+
+| 示例 | 确定参数 | 不确定参数 |
+|------|---------|-----------|
+| BTC做多风霆v4的组合 | 币种=BTC<br>方向=做多<br>策略类型=风霆v4 | 年份<br>排序方式<br>search_pct |
+| ETH网格策略组合 | 币种=ETH<br>策略类型=网格(ID=7) | 年份<br>排序方式 |
+
+### 处理流程
+
+```bash
+# 1. 确定策略类型 ID
+python query.py --token xxx --list-strategies
+# 找到：风霆v4 → strategy_type=11, version=4.0
+
+# 2. 多参数查询（不确定参数都尝试）
+# 2024年 × 收益率
+python query.py --token xxx \
+  --coin BTC --strategy-type 11 --version 4.0 \
+  --direction long --year 2024 --sort 2 --limit 10
+
+# 2024年 × 夏普率
+python query.py --token xxx \
+  --coin BTC --strategy-type 11 --version 4.0 \
+  --direction long --year 2024 --sort 3 --limit 10
+
+# 2023年 × 收益率（验证稳定性）
+python query.py --token xxx \
+  --coin BTC --strategy-type 11 --version 4.0 \
+  --direction long --year 2023 --sort 2 --limit 10
+
+# 3. 合并去重，选出 3-5 个优秀策略
+
+# 4. 创建组合
+python query.py --token xxx \
+  --create-group \
+  --group-name "BTC做多风霆v4组合" \
+  --strategy-tokens "st_xxx,st_yyy,st_zzz"
+```
+
+### 与智能推荐的区别
+
+| 场景 | 使用工具 | 说明 |
+|------|---------|------|
+| 用户指定了策略类型 | `query.py` 多次查询 + `create-group` | 在该策略类型内选优 |
+| 用户未指定策略类型 | `smart_recommend.py` | 跨策略类型智能推荐 |
+
+**判断标准**：用户是否明确提到策略名称（风霆/鲲鹏/星辰/网格/马丁/趋势）
+
+---
+
+**关键**：根据用户问题灵活调整查询参数，不是固定流程
+
+---
+
 ## 注意事项
 
 - Token 从用户认证获取
