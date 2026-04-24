@@ -34,6 +34,7 @@ class SmartRecommender:
         direction: Optional[str] = None,
         year: Optional[int] = None,
         ai_time_id: Optional[str] = None,
+        recommand_type: int = 1,
         limit: int = 10,
         min_sharpe: Optional[float] = None,
         max_drawdown: Optional[float] = None
@@ -49,6 +50,7 @@ class SmartRecommender:
             direction: long/short
             year: 年份
             ai_time_id: 时间ID
+            recommand_type: 推荐类型 1=推荐 2=交易中策略
             limit: 每个币种查询数量
             min_sharpe: 最小夏普率
             max_drawdown: 最大回撤
@@ -70,8 +72,9 @@ class SmartRecommender:
                 search_direction=direction,
                 search_year=year,
                 ai_time_id=ai_time_id,
-                limit=limit,
-                search_status=3  # 只要成功的
+                search_recommand_type=recommand_type,
+                limit=limit
+                # 注意：不传 search_status，API 会返回所有状态的数据
             )
             
             if "error" in result:
@@ -286,6 +289,7 @@ def main():
     parser.add_argument("--direction", choices=["long", "short"], help="方向")
     parser.add_argument("--year", type=int, help="年份")
     parser.add_argument("--ai-time-id", help="时间ID")
+    parser.add_argument("--recommand-type", type=int, default=1, choices=[1, 2], help="推荐类型: 1=推荐 2=交易中策略")
     parser.add_argument("--limit", type=int, default=10, help="每币种查询数量")
     
     # 筛选参数
@@ -332,6 +336,7 @@ def main():
         direction=args.direction,
         year=args.year,
         ai_time_id=args.ai_time_id,
+        recommand_type=args.recommand_type,
         limit=args.limit,
         min_sharpe=args.min_sharpe,
         max_drawdown=args.max_drawdown
