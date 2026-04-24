@@ -20,7 +20,7 @@
       },
       "defaultModel": {
         "type": "string",
-        "default": "anthropic/claude-sonnet-4-5",
+        "default": "deepseek/deepseek-chat",
         "description": "Default model for new agents"
       },
       "sandboxMode": {

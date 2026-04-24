@@ -445,14 +445,14 @@ def main():
     parser.add_argument("--limit", type=int, default=10, help="每页数量，-1获取全部")
     parser.add_argument("--name", dest="search_val", help="策略名称")
     
-    # 必填参数
-    parser.add_argument("--coin", dest="search_coin", required=True, help="币种（必填），多选逗号分割")
+    # 查询参数（查询回测时必填）
+    parser.add_argument("--coin", dest="search_coin", help="币种，多选逗号分割")
     parser.add_argument("--amt-type", dest="search_amt_type", type=int,
                         choices=[1, 2], help="类型: 1现货 2合约")
-    parser.add_argument("--sort", dest="sort_type", type=int, required=True,
-                        choices=[1, 2, 3, 4], help="排序（必填）: 1最新 2收益率 3夏普 4回撤")
-    parser.add_argument("--strategy-type", dest="strategy_type", type=int, required=True,
-                        help="策略类型（必填）")
+    parser.add_argument("--sort", dest="sort_type", type=int,
+                        choices=[1, 2, 3, 4], help="排序: 1最新 2收益率 3夏普 4回撤")
+    parser.add_argument("--strategy-type", dest="strategy_type", type=int,
+                        help="策略类型")
     
     # 可选参数
     parser.add_argument("--status", dest="search_status", type=int,
@@ -555,9 +555,20 @@ def main():
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     
-    # 查询回测需要 token
+    # 查询回测需要 token 和必要参数
     if not args.token:
         print("错误: 查询回测数据需要 --token")
+        return
+    
+    # 验证必填参数
+    if not args.search_coin:
+        print("错误: 查询回测数据需要 --coin")
+        return
+    if not args.sort_type:
+        print("错误: 查询回测数据需要 --sort")
+        return
+    if not args.strategy_type:
+        print("错误: 查询回测数据需要 --strategy-type")
         return
     
     # 验证时间参数（二选一必传）

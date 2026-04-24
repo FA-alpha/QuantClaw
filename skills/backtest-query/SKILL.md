@@ -1,15 +1,101 @@
-# 回测数据查询
+# 回测数据查询与组合优化
 
-查询 AI 回测数据，支持多条件筛选，并支持将多个优选策略组合成策略组。
+查询 AI 回测数据，支持多条件筛选，智能分析策略组合，自动推荐最优投资组合。
+
+## 🎯 核心能力
+
+1. **数据查询** - 多维度筛选回测策略
+2. **智能分析** - 相关性分析、回撤错位检测、风险评估
+3. **组合优化** - 自动推荐低相关性、风险互补的策略组合
+4. **策略组创建** - 一键创建策略组合
 
 ## 使用场景
 
 - 查询回测结果
 - 按条件筛选策略
+- **⭐ 智能推荐组合（一键完成）**
 - **⭐ 创建策略组合（核心功能）**
 - 获取策略列表用于组合
 - 查看 AI 回测时间列表
 - 查看 AI 回测策略类型
+
+## ⭐ 智能推荐（推荐使用）
+
+一键完成：查询 → 分析 → 推荐 → 记忆
+
+```bash
+python skills/backtest-query/smart_recommend.py \
+  --token <用户token> \
+  --coins "BTC,ETH,SOL" \
+  --year 2024 \
+  --workspace <工作区路径> \
+  --save-memory
+```
+
+### 常用参数
+
+| 参数 | 说明 | 默认值 |
+|-----|-----|-------|
+| `--token` | 用户 token（必填） | - |
+| `--coins` | 币种列表，逗号分隔（必填） | - |
+| `--workspace` | 工作区路径（保存记忆用） | - |
+| `--year` | 年份（与 --ai-time-id 二选一） | - |
+| `--ai-time-id` | 时间ID | - |
+| `--group-size` | 组合大小 | 3 |
+| `--top-n` | 返回推荐数量 | 5 |
+| `--min-sharpe` | 最小夏普率（筛选） | - |
+| `--max-drawdown` | 最大回撤（筛选） | - |
+| `--max-correlation` | 最大相关性 | 0.5 |
+| `--save-memory` | 保存到记忆 | false |
+| `--format` | 输出格式 json/text | text |
+| `--no-detail` | 快速模式（不获取详情）| false |
+
+### 使用示例
+
+#### 保守型组合
+```bash
+python smart_recommend.py \
+  --token qc_xxx \
+  --coins "BTC,ETH" \
+  --year 2024 \
+  --min-sharpe 1.8 \
+  --max-drawdown 15 \
+  --max-correlation 0.4 \
+  --workspace ~/clawd-qc-xxx \
+  --save-memory
+```
+
+#### 进取型组合
+```bash
+python smart_recommend.py \
+  --token qc_xxx \
+  --coins "BTC,SOL,BNB" \
+  --year 2024 \
+  --group-size 3 \
+  --top-n 3 \
+  --workspace ~/clawd-qc-xxx \
+  --save-memory
+```
+
+#### 快速查看（不获取详情）
+```bash
+python smart_recommend.py \
+  --token qc_xxx \
+  --coins "BTC" \
+  --year 2024 \
+  --no-detail \
+  --format json
+```
+
+### 输出说明
+
+智能推荐会显示：
+- 📋 策略列表（币种、年化、夏普、回撤）
+- 📊 组合分析（相关性、组合夏普、回撤重叠）
+- 💡 推荐理由
+- 🔧 创建命令（一键复制）
+
+并自动保存到 `workspace/memory/portfolio_history.md`
 
 ## 查询脚本
 
@@ -234,6 +320,57 @@ python skills/backtest-query/query.py --token <token> --list-coins --refresh-cac
 
 缓存文件：`~/.quantclaw/cache/coins.json`
 
+## 📊 智能分析模块（Phase 1 完成）
+
+位于 `analysis/` 目录，提供以下功能：
+
+### 1. 相关性分析 (`correlation.py`)
+```python
+from analysis import calculate_correlation, build_correlation_matrix
+
+# 计算两策略相关性
+corr = calculate_correlation(net_values_a, net_values_b)
+
+# 构建相关性矩阵
+matrix, names = build_correlation_matrix(strategies)
+```
+
+### 2. 风险分析 (`risk_analyzer.py`)
+```python
+from analysis import analyze_drawdown_overlap, calculate_portfolio_risk
+
+# 分析回撤重叠
+overlap = analyze_drawdown_overlap(strategies, [0, 1, 2])
+
+# 计算组合风险
+risk = calculate_portfolio_risk(strategies, [0, 1, 2])
+```
+
+### 3. 组合优化 (`portfolio_optimizer.py`)
+```python
+from analysis import recommend_combinations, filter_by_criteria
+
+# 智能推荐组合
+recommendations = recommend_combinations(
+    strategies,
+    group_size=3,      # 3策略组合
+    top_n=5,           # 推荐前5
+    preferences={
+        'max_correlation': 0.5,
+        'max_drawdown': 20.0,
+        'min_sharpe': 1.5
+    }
+)
+
+# 条件筛选
+filtered = filter_by_criteria(
+    strategies,
+    min_sharpe=1.8,
+    max_drawdown=15.0,
+    coins=['BTC', 'ETH']
+)
+```
+
 ## 注意事项
 
 - Token 从用户认证获取
@@ -247,3 +384,9 @@ python skills/backtest-query/query.py --token <token> --list-coins --refresh-cac
   - 当 strategy_type=3 且 recommand_type=2 时不需要传
   - BTC 可选：10, 20, 30, 40, 50, 60, 80, 100, 120
   - 其他币种可选：60, 80, 100, 120, 140
+
+## 依赖安装
+
+```bash
+pip install -r requirements.txt
+```

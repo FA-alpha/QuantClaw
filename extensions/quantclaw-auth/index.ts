@@ -219,9 +219,30 @@ class UserManager {
       fs.writeFileSync(path.join(workspace, 'SOUL.md'), soulMd);
     }
 
-    for (const d of ['strategies', 'data', 'backtests', 'analysis']) {
+    for (const d of ['strategies', 'data', 'backtests', 'analysis', 'memory']) {
       const p = path.join(workspace, d);
       if (!fs.existsSync(p)) fs.mkdirSync(p);
+    }
+    
+    // 复制 memory 目录下的模板文件
+    const templateMemoryPath = path.join(templatePath, 'memory');
+    const workspaceMemoryPath = path.join(workspace, 'memory');
+    
+    if (fs.existsSync(templateMemoryPath)) {
+      const memoryFiles = fs.readdirSync(templateMemoryPath).filter(f => f.endsWith('.md'));
+      for (const file of memoryFiles) {
+        const srcPath = path.join(templateMemoryPath, file);
+        const destPath = path.join(workspaceMemoryPath, file);
+        
+        if (!fs.existsSync(destPath)) {
+          try {
+            fs.copyFileSync(srcPath, destPath);
+            this.logger.info(`[quantclaw-auth] Copied memory template: ${file}`);
+          } catch (err) {
+            this.logger.warn(`[quantclaw-auth] Failed to copy memory/${file}: ${err}`);
+          }
+        }
+      }
     }
 
     // 创建 skills 软链接到 QuantClaw 技能目录
