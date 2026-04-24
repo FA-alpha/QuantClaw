@@ -443,44 +443,56 @@ for each 马丁策略:
 - "ETH网格策略的组合"
 - "给我几个鲲鹏策略组合起来"
 
-### 参数识别
+### 参数识别原则
 
-| 示例 | 确定参数 | 不确定参数 |
-|------|---------|-----------|
-| BTC做多风霆v4的组合 | 币种=BTC<br>方向=做多<br>策略类型=风霆v4 | 年份<br>排序方式<br>search_pct |
-| ETH网格策略组合 | 币种=ETH<br>策略类型=网格(ID=7) | 年份<br>排序方式 |
+**用户明确的**：直接来自用户描述的参数
+**API 才能确定的**：需要查询接口才知道的参数（strategy_type、version 等）
+**完全不确定的**：未指定且有多种可能的参数（年份、排序等）
+
+| 示例 | 用户明确的 | API确定的 | 完全不确定的 |
+|------|-----------|----------|-------------|
+| BTC做多风霆v4的组合 | 币种=BTC<br>方向=做多<br>策略名称=风霆v4 | strategy_type=?<br>version=? | 年份<br>排序方式<br>search_pct |
+| ETH网格策略组合 | 币种=ETH<br>策略类型=网格 | strategy_type=7<br>（已知） | 年份<br>排序方式 |
+
+**关键点**：`--list-strategies` 后可能发现该策略有多个版本，此时 version 也需要作为不确定参数尝试！
 
 ### 处理流程
 
 ```bash
-# 1. 确定策略类型 ID
+# 1. 查询策略列表
 python query.py --token xxx --list-strategies
-# 找到：风霆v4 → strategy_type=11, version=4.0
 
-# 2. 多参数查询（不确定参数都尝试）
-# 2024年 × 收益率
-python query.py --token xxx \
-  --coin BTC --strategy-type 11 --version 4.0 \
-  --direction long --year 2024 --sort 2 --limit 10
+# 假设返回：
+# [11] 风霆V4 (id: 11)
+#      - 风霆V4 v4.0 (版本: 4.0, 杠杆: 1)
+#      - 风霆V4 v4.1 (版本: 4.1, 杠杆: 3)
+#      - 风霆V4 v4.2 (版本: 4.2, 杠杆: 5)
 
-# 2024年 × 夏普率
-python query.py --token xxx \
-  --coin BTC --strategy-type 11 --version 4.0 \
-  --direction long --year 2024 --sort 3 --limit 10
+# 发现有 3 个版本！version 也是不确定参数
 
-# 2023年 × 收益率（验证稳定性）
-python query.py --token xxx \
-  --coin BTC --strategy-type 11 --version 4.0 \
-  --direction long --year 2023 --sort 2 --limit 10
+# 2. 灵活决策
+选项 A：每个版本都查（全面）
+选项 B：只查最新版本（快速）
+选项 C：查最新 + 一个旧版本（平衡）
 
-# 3. 合并去重，选出 3-5 个优秀策略
+# 3. 多维度查询（示例选择选项C）
+for version in [4.2, 4.0]:  # 最新 + 较早版本
+  for year in [2024, 2023]:
+    for sort in [2, 3]:  # 收益率、夏普率
+      python query.py --token xxx \
+        --coin BTC --strategy-type 11 --version {version} \
+        --direction long --year {year} --sort {sort} --limit 5
 
-# 4. 创建组合
+# 4. 合并去重 → 综合评分 → 选出 3-5 个
+
+# 5. 创建组合
 python query.py --token xxx \
   --create-group \
   --group-name "BTC做多风霆v4组合" \
   --strategy-tokens "st_xxx,st_yyy,st_zzz"
 ```
+
+**原则**：先查询接口了解实际情况，再决定哪些参数需要尝试
 
 ### 与智能推荐的区别
 
