@@ -66,7 +66,7 @@ class SmartRecommender:
             result = query_backtest(
                 token=self.token,
                 search_coin=coin,
-                search_amt_type=amt_type,
+                # search_amt_type=amt_type,  # 注释掉：传此参数导致返回0条数据
                 sort_type=sort_type,
                 strategy_type=strategy_type,
                 search_direction=direction,
@@ -74,7 +74,7 @@ class SmartRecommender:
                 ai_time_id=ai_time_id,
                 search_recommand_type=recommand_type,
                 limit=limit
-                # 注意：不传 search_status，API 会返回所有状态的数据
+                # 注意：不传 search_status 和 search_amt_type
             )
             
             if "error" in result:
