@@ -263,6 +263,28 @@ def get_version_info(token: str, strategy_type: int, version: str) -> dict:
     return {}
 
 
+def get_default_ai_time_id(token: str) -> str:
+    """
+    获取默认的 ai_time_id（接口返回的第1个）
+    
+    Args:
+        token: 用户 token
+    
+    Returns:
+        str: 默认的 ai_time_id，失败时返回 "5"
+    """
+    try:
+        result = get_ai_time_list(token)
+        if "error" in result:
+            return "5"
+        times_data = result.get("info", [])
+        if times_data:
+            return str(times_data[0]["id"])
+        return "5"
+    except:
+        return "5"
+
+
 def query_backtest(
     token: str,
     page: int = 1,
@@ -571,10 +593,10 @@ def main():
         print("错误: 查询回测数据需要 --strategy-type")
         return
     
-    # 验证时间参数（优先使用 ai_time_id，默认"最近1年"）
+    # 验证时间参数（优先使用 ai_time_id，默认使用接口第1个）
     if not args.search_year and not args.ai_time_id:
-        args.ai_time_id = "5"  # 默认：最近1年
-        print("ℹ️  未指定时间范围，使用默认：最近1年 (ai_time_id=5)")
+        args.ai_time_id = get_default_ai_time_id(args.token)
+        print(f"ℹ️  未指定时间范围，使用默认（接口第1个）: ai_time_id={args.ai_time_id}")
     
     # 如果同时传了，优先用 ai_time_id
     if args.search_year and args.ai_time_id:
