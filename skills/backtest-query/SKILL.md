@@ -2,6 +2,26 @@
 
 查询 AI 回测数据，支持多条件筛选，智能分析策略组合，自动推荐最优投资组合。
 
+---
+
+## ⚡ 重要提示
+
+**所有 Python 脚本已内置自动获取 token 功能！**
+
+- ❌ **不要使用** `--token` 参数
+- ✅ **直接运行**脚本，token 会自动从 `~/.quantclaw/users.json` 获取
+
+**示例**：
+```bash
+# 正确 ✅
+python3 skills/backtest-query/smart_recommend.py --coins "BTC,ETH" --year 2024
+
+# 错误 ❌ 
+python3 skills/backtest-query/smart_recommend.py --token xxx --coins "BTC,ETH"
+```
+
+---
+
 ## 🎯 核心能力
 
 1. **智能推荐** - 跨币种、跨策略类型的组合推荐（一键完成）
