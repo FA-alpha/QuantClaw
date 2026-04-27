@@ -44,7 +44,7 @@ class DefaultParams:
     STRATEGY_FALLBACK = [11, 7, 1]  # 容错默认值（风霆、网格、鲲鹏）
     
     # 时间ID默认配置
-    TIME_MODE = "top_n"  # "single"=只用第1个, "all"=全部16个, "top_n"=前N个
+    TIME_MODE = "all"  # "single"=只用第1个, "all"=全部16个, "top_n"=前N个
     TIME_COUNT = 3  # TIME_MODE="top_n"时使用，取前N个
     TIME_INDEX = 0  # TIME_MODE="single"时使用，取第N个
     TIME_FALLBACK = ["5"]  # 容错默认值（最近1年）
@@ -54,7 +54,7 @@ class DefaultParams:
     DIRECTION_FALLBACK = ["long", "short"]  # 容错默认值
     
     # 网格比例默认配置（仅对网格策略有效）
-    GRID_PCT_MODE = "common"  # "none"=不限, "all"=轮询所有比例, "common"=只用常用比例
+    GRID_PCT_MODE = "all"  # "none"=不限, "all"=轮询所有比例, "common"=只用常用比例
     GRID_PCT_BTC = ['10', '20', '30', '40', '50', '60', '80', '100', '120']  # BTC可选
     GRID_PCT_OTHER = ['60', '80', '100', '120', '140']  # 其他币种可选
     GRID_PCT_COMMON = ['80', '100', '120']  # 常用比例
