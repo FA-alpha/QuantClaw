@@ -143,39 +143,47 @@
 
 ## 🚀 快速开始
 
-### 第一步：获取用户 Token
+### 方式一：自动包装脚本（推荐）
 
-使用提供的 Python 脚本自动获取 token：
+使用自动获取 token 的包装脚本，**无需手动获取 token**：
 
 ```bash
-# 获取 token（从 ~/.quantclaw/users.json 读取）
-USER_TOKEN=$(python3 skills/backtest-query/get_token.py)
+# 智能推荐（自动获取 token）
+bash skills/backtest-query/smart_recommend_auto.sh \
+  --coins "BTC,ETH" \
+  --year 2024 \
+  --save-memory
 
-# 检查是否成功
-if [ $? -ne 0 ] || [ -z "$USER_TOKEN" ]; then
-  echo "❌ 获取 token 失败"
-  exit 1
-fi
+# 其他参数照常传递
+bash skills/backtest-query/smart_recommend_auto.sh \
+  --coins "BTC,SOL" \
+  --strategy-type 11 \
+  --direction long \
+  --year 2024
 ```
 
-**脚本说明**：
-- 自动从 workspace 路径提取 agentId (例如: `clawd-qc-xxx` → `qc-xxx`)
-- 读取 `~/.quantclaw/users.json` 查找匹配的用户
-- 返回当前用户的 token
+**优势**：
+- ✅ 自动获取 token，无需手动操作
+- ✅ 自动设置 workspace 路径
+- ✅ 简化命令行参数
 
 ---
 
-### 第二步：调用技能脚本
+### 方式二：手动获取 token
+
+如果需要更多控制，可以手动获取：
 
 ```bash
-# 1. 智能推荐（推荐）
-python skills/backtest-query/smart_recommend.py \
-  --token "$USER_TOKEN" --coins "BTC,ETH" --year 2024 \
-  --workspace $(pwd) --save-memory
+# 1. 获取 token
+USER_TOKEN=$(python3 skills/backtest-query/get_token.py)
 
-# 2. 查询列表
-python skills/backtest-query/query.py \
-  --token "$USER_TOKEN" --list-strategies
+# 2. 调用脚本
+python3 skills/backtest-query/smart_recommend.py \
+  --token "$USER_TOKEN" \
+  --coins "BTC,ETH" \
+  --year 2024 \
+  --workspace $(pwd) \
+  --save-memory
 ```
 
 ---
