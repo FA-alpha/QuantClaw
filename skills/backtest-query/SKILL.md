@@ -110,14 +110,24 @@
 
 ## ⚠️ 核心注意事项
 
-1. **Token 认证**：所有操作需要用户 token
+1. **Token 认证**：
+   - 所有操作需要用户 token
+   - **获取方式**：通过 Gateway RPC 从内存中查询（推荐）
+   - **步骤**：
+     1. 从当前 session 获取 agentId
+     2. 调用 `quantclaw.getMyToken` RPC 方法
+     3. 使用返回的 token 调用技能脚本
+   
 2. **参数必填**：`--coin`、`--sort`、`--strategy-type` 查询时必填
+
 3. **参数默认值**（动态获取）：
    - **币种**：未指定时使用接口返回的前3个币种
    - **策略类型**：未指定时使用接口返回的前3个策略类型
    - **时间**：未指定时使用接口返回的第1个时间ID
    - 优先级：`--ai-time-id` > `--year`
+   
 4. **方向参数**：只有 strategy_type=1,7,11 支持 `--direction`
+
 5. **不确定参数**：用户需求模糊时，尝试多个参数组合
 
 ---
@@ -133,17 +143,37 @@
 
 ## 🚀 快速开始
 
-**最常用的两个命令**：
+### 第一步：获取用户 Token
+
+Agent 需要通过 Gateway RPC 获取自己的 token。示例流程：
+
+```bash
+# 1. 从 session_status 或环境变量获取 agentId
+# 例如：session key 是 agent:qc-abc123:main，则 agentId 是 qc-abc123
+
+# 2. 调用 RPC 获取 token（Gateway 会从内存返回）
+# RPC 方法：quantclaw.getMyToken
+# 参数：{ "agentId": "qc-abc123" }
+# 返回：{ "token": "xxx", "userId": "u_abc123", "agentId": "qc-abc123" }
+
+# 3. 使用返回的 token 调用技能脚本
+```
+
+**注意**：Agent 应该在内部处理 RPC 调用，不需要用户手动执行。
+
+---
+
+### 第二步：调用技能脚本
 
 ```bash
 # 1. 智能推荐（推荐）
 python skills/backtest-query/smart_recommend.py \
-  --token <token> --coins "BTC,ETH" --year 2024 \
-  --workspace <workspace> --save-memory
+  --token "$USER_TOKEN" --coins "BTC,ETH" --year 2024 \
+  --workspace $(pwd) --save-memory
 
 # 2. 查询列表
 python skills/backtest-query/query.py \
-  --token <token> --list-strategies
+  --token "$USER_TOKEN" --list-strategies
 ```
 
 ---

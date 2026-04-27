@@ -447,6 +447,32 @@ export default function register(api: any) {
     });
   });
 
+  // Agent 获取自己的 token
+  api.registerGatewayMethod('quantclaw.getMyToken', ({ params, respond }: any) => {
+    const agentId = params?.agentId;
+    if (!agentId) {
+      return respond(false, { error: 'agentId required' });
+    }
+    
+    // 从内存中查找用户
+    const users = userManager.listUsers();
+    const user = users.find(u => u.agentId === agentId);
+    
+    if (!user) {
+      return respond(false, { error: 'Agent not found' });
+    }
+    
+    if (!user.enabled) {
+      return respond(false, { error: 'User disabled' });
+    }
+    
+    respond(true, { 
+      token: user.token,
+      userId: user.userId,
+      agentId: user.agentId,
+    });
+  });
+
   // ======== CLI ========
   api.registerCli(({ program }: any) => {
     const qc = program.command('quantclaw').description('QuantClaw 用户管理');
