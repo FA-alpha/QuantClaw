@@ -29,6 +29,54 @@ class SmartRecommender:
         if self.verbose:
             print(msg)
     
+    def _estimate_query_count(
+        self, 
+        coins: List[str], 
+        strategy_type: Optional[int],
+        ai_time_ids: List[str],
+        directions: List[Optional[str]]
+    ) -> int:
+        """
+        估算查询次数
+        
+        Args:
+            coins: 币种列表
+            strategy_type: 策略类型（None表示多个）
+            ai_time_ids: 时间ID列表
+            directions: 方向列表
+        
+        Returns:
+            int: 预估查询次数
+        """
+        # 获取策略类型列表
+        if strategy_type is None:
+            strategy_types = self.defaults.get_strategy_types()
+        else:
+            strategy_types = [strategy_type]
+        
+        # 计算总版本数
+        total_versions = 0
+        for st_type in strategy_types:
+            versions = self.get_strategy_versions(st_type)
+            if not versions:
+                total_versions += 1  # 没有版本信息，算1次
+            else:
+                total_versions += len(versions)
+        
+        # 估算网格比例（取平均值）
+        avg_grid_pct = 7  # BTC: 9个, 其他: 5个, 平均约7个
+        
+        # 计算查询次数
+        query_count = (
+            len(ai_time_ids) *
+            len(directions) *
+            len(coins) *
+            total_versions *
+            avg_grid_pct
+        )
+        
+        return query_count
+    
     def get_strategy_versions(self, strategy_type: int) -> List[Dict]:
         """
         获取指定策略类型的所有版本配置
@@ -126,6 +174,40 @@ class SmartRecommender:
             directions = self.defaults.get_directions()
             if len(directions) > 1:
                 self.log(f"ℹ️  方向轮询: {directions}")
+        
+        # 预估查询量
+        estimated_queries = self._estimate_query_count(
+            coins, strategy_type, ai_time_ids, directions
+        )
+        
+        self.log(f"\n📊 预估查询量: {estimated_queries} 次")
+        
+        # 如果查询量过大，给出警告和建议
+        if estimated_queries > 10000:
+            self.log(f"⚠️  查询量非常大（{estimated_queries}次），预计耗时较长")
+            self.log("💡 建议缩小范围：")
+            self.log("   - 指定币种: --coins \"BTC,ETH\"")
+            self.log("   - 指定策略类型: --strategy-type 11")
+            self.log("   - 指定时间: --ai-time-id 5")
+            self.log("   - 指定方向: --direction long")
+            
+            # 询问用户是否继续
+            if not self.verbose:  # 静默模式直接继续
+                pass
+            else:
+                import sys
+                try:
+                    response = input("\n是否继续？(y/n): ").strip().lower()
+                    if response not in ['y', 'yes']:
+                        self.log("❌ 用户取消查询")
+                        return []
+                except:
+                    # 非交互环境，直接继续
+                    pass
+        elif estimated_queries > 1000:
+            self.log(f"⚠️  查询量较大（{estimated_queries}次），预计耗时 5-10 分钟")
+        
+        self.log("")  # 空行
         
         # 4. 多维度查询
         for time_id in ai_time_ids:
