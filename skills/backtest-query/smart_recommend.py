@@ -9,7 +9,7 @@ import json
 import argparse
 from datetime import datetime
 from typing import List, Dict, Optional
-from query import query_backtest, get_backtest_detail
+from query import query_backtest, get_backtest_detail, get_ai_strategy_list
 from defaults import DefaultParams
 from analysis import recommend_combinations
 
@@ -22,11 +22,43 @@ class SmartRecommender:
         self.verbose = verbose
         # 使用统一的默认参数管理器
         self.defaults = DefaultParams(token, verbose)
+        self._strategy_versions_cache = {}  # 缓存策略版本信息
         
     def log(self, msg: str):
         """输出日志"""
         if self.verbose:
             print(msg)
+    
+    def get_strategy_versions(self, strategy_type: int) -> List[Dict]:
+        """
+        获取指定策略类型的所有版本配置
+        
+        Args:
+            strategy_type: 策略类型ID
+        
+        Returns:
+            List[Dict]: 版本配置列表，每个包含 version, leverage, search_extend 等
+        """
+        # 使用缓存
+        if strategy_type in self._strategy_versions_cache:
+            return self._strategy_versions_cache[strategy_type]
+        
+        try:
+            result = get_ai_strategy_list(self.token)
+            if "error" in result:
+                return []
+            
+            strategies = result.get("info", [])
+            for s in strategies:
+                if s.get("id") == strategy_type:
+                    versions = s.get("versions", [])
+                    self._strategy_versions_cache[strategy_type] = versions
+                    return versions
+            
+            return []
+        except Exception as e:
+            self.log(f"⚠️  获取策略 {strategy_type} 的版本信息失败: {e}")
+            return []
     
     def fetch_strategies(
         self,
@@ -82,30 +114,61 @@ class SmartRecommender:
         # 3. 多维度查询
         for coin in coins:
             for st_type in strategy_types:
-                self.log(f"🔍 查询 {coin} / 策略类型 {st_type}...")
+                # 获取该策略类型的所有版本配置
+                versions = self.get_strategy_versions(st_type)
                 
-                result = query_backtest(
-                    token=self.token,
-                    search_coin=coin,
-                    # search_amt_type=amt_type,  # 注释掉：传此参数导致返回0条数据
-                    sort_type=sort_type,
-                    strategy_type=st_type,
-                    search_direction=direction,
-                    search_year=year,
-                    ai_time_id=ai_time_id,
-                    search_recommand_type=recommand_type,
-                    limit=limit
-                    # 注意：不传 search_status 和 search_amt_type
-                )
-                
-                if "error" in result:
-                    self.log(f"⚠️  {coin} / 策略类型 {st_type} 查询失败: {result['error']}")
-                    continue
-                
-                strategies = result.get("info", [])
-                self.log(f"✅ {coin} / 策略类型 {st_type} 找到 {len(strategies)} 个策略")
-                
-                all_strategies.extend(strategies)
+                if not versions:
+                    # 如果没有版本信息，直接查询（不指定版本）
+                    self.log(f"🔍 查询 {coin} / 策略类型 {st_type}...")
+                    
+                    result = query_backtest(
+                        token=self.token,
+                        search_coin=coin,
+                        sort_type=sort_type,
+                        strategy_type=st_type,
+                        search_direction=direction,
+                        search_year=year,
+                        ai_time_id=ai_time_id,
+                        search_recommand_type=recommand_type,
+                        limit=limit
+                    )
+                    
+                    if "error" not in result:
+                        strategies = result.get("info", [])
+                        self.log(f"✅ {coin} / 策略类型 {st_type} 找到 {len(strategies)} 个策略")
+                        all_strategies.extend(strategies)
+                    else:
+                        self.log(f"⚠️  {coin} / 策略类型 {st_type} 查询失败: {result['error']}")
+                else:
+                    # 轮询该策略的所有版本配置
+                    for ver_config in versions:
+                        version = ver_config.get("version")
+                        leverage = ver_config.get("leverage")
+                        search_extend = ver_config.get("search_extend")
+                        
+                        self.log(f"🔍 查询 {coin} / 策略类型 {st_type} / 版本 {version} (杠杆{leverage})...")
+                        
+                        result = query_backtest(
+                            token=self.token,
+                            search_coin=coin,
+                            sort_type=sort_type,
+                            strategy_type=st_type,
+                            search_direction=direction,
+                            search_year=year,
+                            ai_time_id=ai_time_id,
+                            search_recommand_type=recommand_type,
+                            version=str(version) if version else None,
+                            leverage=leverage,
+                            search_extend=search_extend,
+                            limit=limit
+                        )
+                        
+                        if "error" not in result:
+                            strategies = result.get("info", [])
+                            self.log(f"✅ {coin} / 策略 {st_type} / 版本 {version} 找到 {len(strategies)} 个策略")
+                            all_strategies.extend(strategies)
+                        else:
+                            self.log(f"⚠️  {coin} / 策略 {st_type} / 版本 {version} 查询失败: {result['error']}")
         
         # 筛选
         if min_sharpe or max_drawdown:
