@@ -53,9 +53,14 @@ python skills/backtest-query/smart_recommend.py \
 | `--coins` | 币种列表，逗号分隔 | BTC,ETH,SOL | ❌ 可选 |
 | `--strategy-type` | 策略类型 | 11,7,1（多种） | ❌ 可选 |
 | `--workspace` | 工作区路径（保存记忆用） | - | 推荐 |
-| `--year` | 年份（与 --ai-time-id 二选一） | - | - |
-| `--ai-time-id` | 时间ID | 5（最近1年） | - |
+| `--ai-time-id` | 时间ID（**推荐**） | 5（最近1年） | ❌ 可选 |
+| `--year` | 年份（优先级低于 ai-time-id） | - | ❌ 可选 |
 | `--direction` | 方向 long/short | - | - |
+
+**时间参数说明**：
+- **推荐使用 `--ai-time-id`**（默认值：5=最近1年）
+- 同时传入时，`--ai-time-id` 优先级更高
+- 都不传时，自动使用 `--ai-time-id 5`
 | `--group-size` | 组合大小 | 3 | - |
 | `--top-n` | 返回推荐数量 | 5 | - |
 | `--min-sharpe` | 最小夏普率（筛选） | - | - |

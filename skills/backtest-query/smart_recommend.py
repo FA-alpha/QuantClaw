@@ -303,8 +303,8 @@ def main():
     parser.add_argument("--sort", type=int, default=2, choices=[1, 2, 3, 4], help="1最新 2收益率 3夏普 4回撤")
     parser.add_argument("--strategy-type", type=int, help="策略类型（可选，不传则查询多种类型）")
     parser.add_argument("--direction", choices=["long", "short"], help="方向")
-    parser.add_argument("--year", type=int, help="年份")
-    parser.add_argument("--ai-time-id", help="时间ID")
+    parser.add_argument("--year", type=int, help="年份（注意：优先使用 --ai-time-id）")
+    parser.add_argument("--ai-time-id", help="时间ID（推荐，默认5=最近1年，优先级高于 --year）")
     parser.add_argument("--recommand-type", type=int, default=1, choices=[1, 2], help="推荐类型: 1=推荐 2=交易中策略")
     parser.add_argument("--limit", type=int, default=10, help="每币种查询数量")
     

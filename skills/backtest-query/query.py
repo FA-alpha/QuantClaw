@@ -462,9 +462,9 @@ def main():
     current_year = datetime.now().year
     parser.add_argument("--year", dest="search_year", type=int,
                         choices=range(2011, current_year + 1), metavar="YEAR",
-                        help=f"按年份查询（2011-{current_year}），与 --ai-time-id 二选一")
+                        help=f"按年份查询（2011-{current_year}）。注意：优先使用 --ai-time-id")
     parser.add_argument("--ai-time-id", dest="ai_time_id",
-                        help="按时间ID查询，与 --year 二选一")
+                        help="按时间ID查询（推荐使用，默认5=最近1年）。优先级高于 --year")
     parser.add_argument("--recommand-type", dest="search_recommand_type", type=int,
                         choices=[1, 2], help="推荐类型: 1推荐 2交易中策略")
     parser.add_argument("--pct", dest="search_pct", 
@@ -571,13 +571,15 @@ def main():
         print("错误: 查询回测数据需要 --strategy-type")
         return
     
-    # 验证时间参数（二选一必传）
-    if args.search_year and args.ai_time_id:
-        print("错误: --year 和 --ai-time-id 参数不能同时使用，请选择其一")
-        return
+    # 验证时间参数（优先使用 ai_time_id，默认"最近1年"）
     if not args.search_year and not args.ai_time_id:
-        print("错误: --year 或 --ai-time-id 必须传一个")
-        return
+        args.ai_time_id = "5"  # 默认：最近1年
+        print("ℹ️  未指定时间范围，使用默认：最近1年 (ai_time_id=5)")
+    
+    # 如果同时传了，优先用 ai_time_id
+    if args.search_year and args.ai_time_id:
+        print("⚠️  同时传入 --year 和 --ai-time-id，优先使用 --ai-time-id")
+        args.search_year = None
     
     # 验证方向参数
     if args.search_direction and args.strategy_type not in (1, 7, 11):
