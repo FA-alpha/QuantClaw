@@ -50,10 +50,12 @@ python skills/backtest-query/smart_recommend.py \
 | 参数 | 说明 | 默认值 | 必填 |
 |-----|-----|-------|-----|
 | `--token` | 用户 token | - | ✅ |
-| `--coins` | 币种列表，逗号分隔 | - | ✅ |
+| `--coins` | 币种列表，逗号分隔 | BTC,ETH,SOL | ❌ 可选 |
+| `--strategy-type` | 策略类型 | 11,7,1（多种） | ❌ 可选 |
 | `--workspace` | 工作区路径（保存记忆用） | - | 推荐 |
-| `--year` | 年份（与 --ai-time-id 二选一） | - | ✅ |
-| `--ai-time-id` | 时间ID | - | - |
+| `--year` | 年份（与 --ai-time-id 二选一） | - | - |
+| `--ai-time-id` | 时间ID | 5（最近1年） | - |
+| `--direction` | 方向 long/short | - | - |
 | `--group-size` | 组合大小 | 3 | - |
 | `--top-n` | 返回推荐数量 | 5 | - |
 | `--min-sharpe` | 最小夏普率（筛选） | - | - |
@@ -67,7 +69,7 @@ python skills/backtest-query/smart_recommend.py \
 
 ## 📝 使用示例
 
-### 保守型组合
+### 1. 指定币种的保守型组合
 ```bash
 python smart_recommend.py \
   --token qc_xxx \
@@ -80,23 +82,46 @@ python smart_recommend.py \
   --save-memory
 ```
 
-### 进取型组合
+### 2. 完全开放式推荐（探索模式）
 ```bash
+# 不指定币种和策略类型，自动使用默认配置
 python smart_recommend.py \
   --token qc_xxx \
-  --coins "BTC,SOL,BNB" \
   --year 2024 \
-  --group-size 3 \
-  --top-n 3 \
+  --workspace ~/clawd-qc-xxx \
+  --save-memory
+
+# 等同于：
+# --coins "BTC,ETH,SOL"
+# --strategy-type 11,7,1（风霆、网格、鲲鹏）
+```
+
+### 3. 指定策略类型的组合
+```bash
+# 只推荐风霆策略的组合
+python smart_recommend.py \
+  --token qc_xxx \
+  --strategy-type 11 \
+  --year 2024 \
   --workspace ~/clawd-qc-xxx \
   --save-memory
 ```
 
-### 快速查看（不获取详情）
+### 4. 单币种多策略类型
 ```bash
+# BTC的多策略组合
 python smart_recommend.py \
   --token qc_xxx \
   --coins "BTC" \
+  --year 2024 \
+  --workspace ~/clawd-qc-xxx \
+  --save-memory
+```
+
+### 5. 快速查看（不获取详情）
+```bash
+python smart_recommend.py \
+  --token qc_xxx \
   --year 2024 \
   --no-detail \
   --format json

@@ -27,10 +27,10 @@ class SmartRecommender:
     
     def fetch_strategies(
         self,
-        coins: List[str],
+        coins: Optional[List[str]] = None,
         amt_type: int = 2,
         sort_type: int = 2,
-        strategy_type: int = 11,
+        strategy_type: Optional[int] = None,
         direction: Optional[str] = None,
         year: Optional[int] = None,
         ai_time_id: Optional[str] = None,
@@ -43,10 +43,10 @@ class SmartRecommender:
         查询并筛选策略
         
         Args:
-            coins: 币种列表
+            coins: 币种列表（可选，不传则使用默认主流币种）
             amt_type: 1现货 2合约
             sort_type: 1最新 2收益率 3夏普 4回撤
-            strategy_type: 策略类型
+            strategy_type: 策略类型（可选，不传则查询多种类型）
             direction: long/short
             year: 年份
             ai_time_id: 时间ID
@@ -58,33 +58,48 @@ class SmartRecommender:
         Returns:
             策略列表
         """
+        # 1. 处理币种参数
+        if not coins:
+            coins = ["BTC", "ETH", "SOL"]
+            self.log("ℹ️  未指定币种，使用默认主流币种: BTC, ETH, SOL")
+        
+        # 2. 处理策略类型参数
+        if strategy_type is None:
+            # 查询多种策略类型（马丁、网格、趋势）
+            strategy_types = [11, 7, 1]  # 风霆(马丁)、网格、鲲鹏(趋势)
+            self.log("ℹ️  未指定策略类型，查询多种类型: 风霆/网格/鲲鹏")
+        else:
+            strategy_types = [strategy_type]
+        
         all_strategies = []
         
+        # 3. 多维度查询
         for coin in coins:
-            self.log(f"🔍 查询 {coin} 策略...")
-            
-            result = query_backtest(
-                token=self.token,
-                search_coin=coin,
-                # search_amt_type=amt_type,  # 注释掉：传此参数导致返回0条数据
-                sort_type=sort_type,
-                strategy_type=strategy_type,
-                search_direction=direction,
-                search_year=year,
-                ai_time_id=ai_time_id,
-                search_recommand_type=recommand_type,
-                limit=limit
-                # 注意：不传 search_status 和 search_amt_type
-            )
-            
-            if "error" in result:
-                self.log(f"❌ {coin} 查询失败: {result['error']}")
-                continue
-            
-            strategies = result.get("info", [])
-            self.log(f"✅ {coin} 找到 {len(strategies)} 个策略")
-            
-            all_strategies.extend(strategies)
+            for st_type in strategy_types:
+                self.log(f"🔍 查询 {coin} / 策略类型 {st_type}...")
+                
+                result = query_backtest(
+                    token=self.token,
+                    search_coin=coin,
+                    # search_amt_type=amt_type,  # 注释掉：传此参数导致返回0条数据
+                    sort_type=sort_type,
+                    strategy_type=st_type,
+                    search_direction=direction,
+                    search_year=year,
+                    ai_time_id=ai_time_id,
+                    search_recommand_type=recommand_type,
+                    limit=limit
+                    # 注意：不传 search_status 和 search_amt_type
+                )
+                
+                if "error" in result:
+                    self.log(f"⚠️  {coin} / 策略类型 {st_type} 查询失败: {result['error']}")
+                    continue
+                
+                strategies = result.get("info", [])
+                self.log(f"✅ {coin} / 策略类型 {st_type} 找到 {len(strategies)} 个策略")
+                
+                all_strategies.extend(strategies)
         
         # 筛选
         if min_sharpe or max_drawdown:
@@ -238,15 +253,16 @@ class SmartRecommender:
         lines.append('='*60)
         return '\n'.join(lines)
     
-    def save_to_memory(self, recommendations: List[Dict], coins: List[str], workspace: str):
+    def save_to_memory(self, recommendations: List[Dict], coins: Optional[List[str]], workspace: str):
         """保存到记忆文件"""
         memory_file = f"{workspace}/memory/portfolio_history.md"
         
         try:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
             
-            content = f"\n## {timestamp} - {'/'.join(coins)} 组合分析\n\n"
-            content += f"**查询币种**: {', '.join(coins)}\n"
+            coins_str = '/'.join(coins) if coins else "多币种"
+            content = f"\n## {timestamp} - {coins_str} 组合分析\n\n"
+            content += f"**查询币种**: {', '.join(coins) if coins else '自动选择'}\n"
             content += f"**推荐数量**: {len(recommendations)}\n\n"
             
             for i, rec in enumerate(recommendations[:3], 1):  # 只记录前3个
@@ -279,13 +295,13 @@ def main():
     
     # 基础参数
     parser.add_argument("--token", required=True, help="用户 token")
-    parser.add_argument("--coins", required=True, help="币种列表（逗号分隔）")
+    parser.add_argument("--coins", help="币种列表（逗号分隔，可选，不传则使用默认主流币种）")
     parser.add_argument("--workspace", help="工作区路径（用于保存记忆）")
     
     # 查询参数
     parser.add_argument("--amt-type", type=int, default=2, choices=[1, 2], help="1现货 2合约")
     parser.add_argument("--sort", type=int, default=2, choices=[1, 2, 3, 4], help="1最新 2收益率 3夏普 4回撤")
-    parser.add_argument("--strategy-type", type=int, default=11, help="策略类型")
+    parser.add_argument("--strategy-type", type=int, help="策略类型（可选，不传则查询多种类型）")
     parser.add_argument("--direction", choices=["long", "short"], help="方向")
     parser.add_argument("--year", type=int, help="年份")
     parser.add_argument("--ai-time-id", help="时间ID")
@@ -323,13 +339,14 @@ def main():
             print("⚠️  同时传入 --year 和 --ai-time-id，优先使用 --ai-time-id")
         args.year = None
     
-    coins = [c.strip() for c in args.coins.split(',')]
+    # 处理币种参数
+    coins = [c.strip() for c in args.coins.split(',')] if args.coins else None
     
     recommender = SmartRecommender(args.token, verbose=not args.quiet)
     
     # 1. 查询策略
     strategies = recommender.fetch_strategies(
-        coins=coins,
+        coins=coins,  # 可以为 None
         amt_type=args.amt_type,
         sort_type=args.sort,
         strategy_type=args.strategy_type,
