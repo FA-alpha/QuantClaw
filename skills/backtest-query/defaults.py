@@ -3,10 +3,23 @@
 默认参数管理模块
 
 集中管理所有从接口获取的默认参数，便于统一配置和修改。
+
+注意：币种、策略类型、时间ID等数据是全局公共的，不是用户特定的。
+因此使用全局缓存，所有用户共享同一份数据。
 """
 
 from typing import List, Optional
+import threading
 from query import get_coin_list, get_ai_time_list, get_ai_strategy_list
+
+
+# ============ 全局缓存（所有用户共享） ============
+_global_cache = {
+    'coins': None,
+    'ai_time_id': None,
+    'strategy_types': None,
+}
+_cache_lock = threading.Lock()
 
 
 class DefaultParams:
@@ -43,16 +56,11 @@ class DefaultParams:
         初始化默认参数管理器
         
         Args:
-            token: 用户 token
+            token: 用户 token（仅用于首次获取数据，数据是全局共享的）
             verbose: 是否输出日志
         """
         self.token = token
         self.verbose = verbose
-        
-        # 缓存
-        self._coins = None
-        self._ai_time_id = None
-        self._strategy_types = None
     
     def log(self, msg: str):
         """输出日志"""
@@ -61,108 +69,151 @@ class DefaultParams:
     
     def get_coins(self) -> List[str]:
         """
-        获取默认币种列表
+        获取默认币种列表（全局共享）
         
         Returns:
             List[str]: 币种列表
         """
-        # 使用缓存
-        if self.ENABLE_CACHE and self._coins is not None:
-            return self._coins
+        global _global_cache
         
-        try:
-            result = get_coin_list(self.token)
+        # 使用全局缓存
+        if self.ENABLE_CACHE and _global_cache['coins'] is not None:
+            return _global_cache['coins']
+        
+        with _cache_lock:
+            # 双重检查
+            if self.ENABLE_CACHE and _global_cache['coins'] is not None:
+                return _global_cache['coins']
             
-            if "error" in result:
-                self.log(f"⚠️  获取币种列表失败: {result['error']}")
-                self._coins = self.COIN_FALLBACK
-            else:
-                coins_data = result.get("info", [])
+            try:
+                result = get_coin_list(self.token)
                 
-                # 取前N个币种
-                self._coins = [item["coin"] for item in coins_data[:self.COIN_COUNT]]
-                
-                if not self._coins:
-                    self.log("⚠️  接口返回空数据")
-                    self._coins = self.COIN_FALLBACK
+                if "error" in result:
+                    self.log(f"⚠️  获取币种列表失败: {result['error']}")
+                    _global_cache['coins'] = self.COIN_FALLBACK
+                else:
+                    coins_data = result.get("info", [])
+                    
+                    # 取前N个币种
+                    _global_cache['coins'] = [item["coin"] for item in coins_data[:self.COIN_COUNT]]
+                    
+                    if not _global_cache['coins']:
+                        self.log("⚠️  接口返回空数据")
+                        _global_cache['coins'] = self.COIN_FALLBACK
+            
+            except Exception as e:
+                self.log(f"⚠️  获取币种列表异常: {e}")
+                _global_cache['coins'] = self.COIN_FALLBACK
         
-        except Exception as e:
-            self.log(f"⚠️  获取币种列表异常: {e}")
-            self._coins = self.COIN_FALLBACK
-        
-        return self._coins
+        return _global_cache['coins']
     
     def get_ai_time_id(self) -> str:
         """
-        获取默认时间ID
+        获取默认时间ID（全局共享）
         
         Returns:
             str: 时间ID
         """
-        # 使用缓存
-        if self.ENABLE_CACHE and self._ai_time_id is not None:
-            return self._ai_time_id
+        global _global_cache
         
-        try:
-            result = get_ai_time_list(self.token)
+        # 使用全局缓存
+        if self.ENABLE_CACHE and _global_cache['ai_time_id'] is not None:
+            return _global_cache['ai_time_id']
+        
+        with _cache_lock:
+            # 双重检查
+            if self.ENABLE_CACHE and _global_cache['ai_time_id'] is not None:
+                return _global_cache['ai_time_id']
             
-            if "error" in result:
-                self.log(f"⚠️  获取时间列表失败: {result['error']}")
-                self._ai_time_id = self.TIME_FALLBACK
-            else:
-                times_data = result.get("info", [])
+            try:
+                result = get_ai_time_list(self.token)
                 
-                # 取第N个时间ID
-                if len(times_data) > self.TIME_INDEX:
-                    self._ai_time_id = str(times_data[self.TIME_INDEX]["id"])
+                if "error" in result:
+                    self.log(f"⚠️  获取时间列表失败: {result['error']}")
+                    _global_cache['ai_time_id'] = self.TIME_FALLBACK
                 else:
-                    self.log("⚠️  接口返回数据不足")
-                    self._ai_time_id = self.TIME_FALLBACK
+                    times_data = result.get("info", [])
+                    
+                    # 取第N个时间ID
+                    if len(times_data) > self.TIME_INDEX:
+                        _global_cache['ai_time_id'] = str(times_data[self.TIME_INDEX]["id"])
+                    else:
+                        self.log("⚠️  接口返回数据不足")
+                        _global_cache['ai_time_id'] = self.TIME_FALLBACK
+            
+            except Exception as e:
+                self.log(f"⚠️  获取时间列表异常: {e}")
+                _global_cache['ai_time_id'] = self.TIME_FALLBACK
         
-        except Exception as e:
-            self.log(f"⚠️  获取时间列表异常: {e}")
-            self._ai_time_id = self.TIME_FALLBACK
-        
-        return self._ai_time_id
+        return _global_cache['ai_time_id']
     
     def get_strategy_types(self) -> List[int]:
         """
-        获取默认策略类型列表
+        获取默认策略类型列表（全局共享）
         
         Returns:
             List[int]: 策略类型ID列表
         """
-        # 使用缓存
-        if self.ENABLE_CACHE and self._strategy_types is not None:
-            return self._strategy_types
+        global _global_cache
         
-        try:
-            result = get_ai_strategy_list(self.token)
+        # 使用全局缓存
+        if self.ENABLE_CACHE and _global_cache['strategy_types'] is not None:
+            return _global_cache['strategy_types']
+        
+        with _cache_lock:
+            # 双重检查
+            if self.ENABLE_CACHE and _global_cache['strategy_types'] is not None:
+                return _global_cache['strategy_types']
             
-            if "error" in result:
-                self.log(f"⚠️  获取策略列表失败: {result['error']}")
-                self._strategy_types = self.STRATEGY_FALLBACK
-            else:
-                strategies_data = result.get("info", [])
+            try:
+                result = get_ai_strategy_list(self.token)
                 
-                # 取前N个策略类型
-                self._strategy_types = [item["id"] for item in strategies_data[:self.STRATEGY_COUNT]]
-                
-                if not self._strategy_types:
-                    self.log("⚠️  接口返回空数据")
-                    self._strategy_types = self.STRATEGY_FALLBACK
+                if "error" in result:
+                    self.log(f"⚠️  获取策略列表失败: {result['error']}")
+                    _global_cache['strategy_types'] = self.STRATEGY_FALLBACK
+                else:
+                    strategies_data = result.get("info", [])
+                    
+                    # 取前N个策略类型
+                    _global_cache['strategy_types'] = [item["id"] for item in strategies_data[:self.STRATEGY_COUNT]]
+                    
+                    if not _global_cache['strategy_types']:
+                        self.log("⚠️  接口返回空数据")
+                        _global_cache['strategy_types'] = self.STRATEGY_FALLBACK
+            
+            except Exception as e:
+                self.log(f"⚠️  获取策略列表异常: {e}")
+                _global_cache['strategy_types'] = self.STRATEGY_FALLBACK
         
-        except Exception as e:
-            self.log(f"⚠️  获取策略列表异常: {e}")
-            self._strategy_types = self.STRATEGY_FALLBACK
-        
-        return self._strategy_types
+        return _global_cache['strategy_types']
     
-    def clear_cache(self):
-        """清除所有缓存"""
-        self._coins = None
-        self._ai_time_id = None
-        self._strategy_types = None
+    @staticmethod
+    def clear_cache():
+        """清除所有全局缓存"""
+        global _global_cache
+        with _cache_lock:
+            _global_cache['coins'] = None
+            _global_cache['ai_time_id'] = None
+            _global_cache['strategy_types'] = None
+    
+    @staticmethod
+    def get_cache_status() -> dict:
+        """
+        获取缓存状态
+        
+        Returns:
+            dict: {
+                'coins': bool,  # 是否已缓存
+                'ai_time_id': bool,
+                'strategy_types': bool
+            }
+        """
+        global _global_cache
+        return {
+            'coins': _global_cache['coins'] is not None,
+            'ai_time_id': _global_cache['ai_time_id'] is not None,
+            'strategy_types': _global_cache['strategy_types'] is not None,
+        }
     
     def get_all(self) -> dict:
         """
@@ -228,6 +279,33 @@ def get_default_strategy_types(token: str, verbose: bool = False) -> List[int]:
     manager = DefaultParams(token, verbose)
     return manager.get_strategy_types()
 
+
+# ============ 全局缓存说明 ============
+
+"""
+## 重要：全局缓存机制
+
+币种列表、策略类型列表、时间ID列表是**全局公共数据**，不是用户特定的。
+因此使用全局缓存，所有用户共享同一份数据。
+
+### 优势：
+1. 节省 API 调用 - 只在第一次调用时获取数据
+2. 提高性能 - 后续用户直接使用缓存
+3. 数据一致性 - 所有用户看到相同的默认参数
+
+### 缓存管理：
+```python
+# 查看缓存状态
+status = DefaultParams.get_cache_status()
+print(status)  # {'coins': True, 'ai_time_id': True, 'strategy_types': True}
+
+# 清除缓存（强制重新获取）
+DefaultParams.clear_cache()
+```
+
+### 线程安全：
+使用 threading.Lock 保证多线程环境下的数据安全。
+"""
 
 # ============ 配置说明 ============
 
