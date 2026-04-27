@@ -7,6 +7,7 @@
 - **BACKTEST_QUERY.md** - 技能概述和使用说明
 - **BACKTEST_QUERY_DEMO.md** - 使用示例和演示
 - **BACKTEST_QUERY_WORKFLOW.md** - Agent 工作流详细指南
+- **SMART_RECOMMEND_ALGORITHM.md** - 智能推荐算法详解（评分公式、数学原理）
 
 ## 说明
 

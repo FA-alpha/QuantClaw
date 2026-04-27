@@ -123,6 +123,7 @@
 - **完整参数说明**：`docs/skills/BACKTEST_QUERY.md`
 - **使用示例**：`docs/skills/BACKTEST_QUERY_DEMO.md`
 - **工作流指南**：`docs/skills/BACKTEST_QUERY_WORKFLOW.md`
+- **智能推荐算法详解**：`docs/skills/SMART_RECOMMEND_ALGORITHM.md`
 
 ---
 
