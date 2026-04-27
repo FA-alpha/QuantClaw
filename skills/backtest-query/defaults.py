@@ -44,7 +44,7 @@ class DefaultParams:
     STRATEGY_FALLBACK = [11, 7, 1]  # 容错默认值（风霆、网格、鲲鹏）
     
     # 时间ID默认配置
-    TIME_INDEX = 1  # 取第N个时间ID（0=第1个, 1=第2个=最近1年）
+    TIME_INDEX = 0  # 取第N个时间ID（0=第1个, 1=第2个, ...）
     TIME_FALLBACK = "5"  # 容错默认值（最近1年）
     
     # 缓存配置
