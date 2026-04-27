@@ -506,11 +506,21 @@ def main():
     parser.add_argument("--quiet", action="store_true", help="静默模式")
     parser.add_argument("--no-detail", action="store_true", help="不获取详情（快速模式）")
     parser.add_argument("--save-memory", action="store_true", help="保存到记忆")
+    parser.add_argument("--force-refresh", action="store_true", help="强制刷新全局缓存（清除币种、策略、时间等缓存数据）")
     
     args = parser.parse_args()
     
     # 处理币种参数
     coins = [c.strip() for c in args.coins.split(',')] if args.coins else None
+    
+    # 强制刷新缓存（如果指定）
+    if args.force_refresh:
+        if not args.quiet:
+            print("🔄 强制刷新全局缓存...")
+        DefaultParams.clear_cache()
+        if not args.quiet:
+            print("✅ 缓存已清除，将重新获取最新数据")
+            print()
     
     recommender = SmartRecommender(args.token, verbose=not args.quiet)
     
