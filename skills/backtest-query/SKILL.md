@@ -149,15 +149,6 @@ python3 skills/backtest-query/smart_recommend.py --token xxx --coins "BTC,ETH"
 
 ---
 
-## 📖 详细文档
-
-- **完整参数说明**：`docs/skills/BACKTEST_QUERY.md`
-- **使用示例**：`docs/skills/BACKTEST_QUERY_DEMO.md`
-- **工作流指南**：`docs/skills/BACKTEST_QUERY_WORKFLOW.md`
-- **智能推荐算法详解**：`docs/skills/SMART_RECOMMEND_ALGORITHM.md`
-
----
-
 ## 🚀 快速开始
 
 **所有脚本已支持自动获取 token，无需任何额外操作！**
