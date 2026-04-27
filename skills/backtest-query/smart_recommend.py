@@ -517,9 +517,8 @@ def main():
     if args.force_refresh:
         if not args.quiet:
             print("🔄 强制刷新全局缓存...")
-        DefaultParams.clear_cache()
+        DefaultParams.refresh_cache(args.token, verbose=not args.quiet)
         if not args.quiet:
-            print("✅ 缓存已清除，将重新获取最新数据")
             print()
     
     recommender = SmartRecommender(args.token, verbose=not args.quiet)

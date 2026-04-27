@@ -479,14 +479,16 @@ def main():
     
     args = parser.parse_args()
     
-    # 强制刷新缓存（清除 defaults 模块的全局缓存）
-    if args.refresh_cache:
+    # 强制刷新缓存（清除并重新获取 defaults 模块的全局缓存）
+    if args.refresh_cache and args.token:
         try:
             from defaults import DefaultParams
-            DefaultParams.clear_cache()
-            print("🔄 已清除全局缓存（币种、策略、时间数据）")
-        except:
-            pass
+            print("🔄 正在刷新全局缓存...")
+            DefaultParams.refresh_cache(args.token, verbose=True)
+            print()
+        except Exception as e:
+            print(f"⚠️  刷新缓存失败: {e}")
+            print()
     
     # 列出币种
     if args.list_coins:

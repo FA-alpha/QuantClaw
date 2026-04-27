@@ -365,13 +365,39 @@ class DefaultParams:
     
     @staticmethod
     def clear_cache():
-        """清除所有全局缓存"""
+        """
+        清除所有全局缓存
+        
+        注意：只清除，不重新获取。下次查询时才会重新获取。
+        如果需要立即刷新，请使用 refresh_cache()
+        """
         global _global_cache
         with _cache_lock:
             _global_cache['coins'] = None
             _global_cache['ai_time_id'] = None
             _global_cache['ai_time_list'] = None
             _global_cache['strategy_types'] = None
+    
+    @staticmethod
+    def refresh_cache(token: str, verbose: bool = False):
+        """
+        刷新全局缓存（清除后立即重新获取）
+        
+        Args:
+            token: 用户 token（用于重新获取数据）
+            verbose: 是否输出日志
+        """
+        # 清除缓存
+        DefaultParams.clear_cache()
+        
+        # 立即重新获取
+        manager = DefaultParams(token, verbose)
+        manager.get_coins()
+        manager.get_ai_time_ids()
+        manager.get_strategy_types()
+        
+        if verbose:
+            print("✅ 全局缓存已刷新（重新获取了最新数据）")
     
     @staticmethod
     def get_cache_status() -> dict:
