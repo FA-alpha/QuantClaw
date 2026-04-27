@@ -145,21 +145,23 @@
 
 ### 第一步：获取用户 Token
 
-Agent 需要通过 Gateway RPC 获取自己的 token。示例流程：
+使用提供的 Python 脚本自动获取 token：
 
 ```bash
-# 1. 从 session_status 或环境变量获取 agentId
-# 例如：session key 是 agent:qc-abc123:main，则 agentId 是 qc-abc123
+# 获取 token（从 ~/.quantclaw/users.json 读取）
+USER_TOKEN=$(python3 skills/backtest-query/get_token.py)
 
-# 2. 调用 RPC 获取 token（Gateway 会从内存返回）
-# RPC 方法：quantclaw.getMyToken
-# 参数：{ "agentId": "qc-abc123" }
-# 返回：{ "token": "xxx", "userId": "u_abc123", "agentId": "qc-abc123" }
-
-# 3. 使用返回的 token 调用技能脚本
+# 检查是否成功
+if [ $? -ne 0 ] || [ -z "$USER_TOKEN" ]; then
+  echo "❌ 获取 token 失败"
+  exit 1
+fi
 ```
 
-**注意**：Agent 应该在内部处理 RPC 调用，不需要用户手动执行。
+**脚本说明**：
+- 自动从 workspace 路径提取 agentId (例如: `clawd-qc-xxx` → `qc-xxx`)
+- 读取 `~/.quantclaw/users.json` 查找匹配的用户
+- 返回当前用户的 token
 
 ---
 
