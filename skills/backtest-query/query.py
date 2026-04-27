@@ -430,9 +430,31 @@ def format_result(data: dict, output_format: str = "table") -> str:
     return "\n".join(lines)
 
 
+def auto_get_token():
+    """自动获取当前 Agent 的 token"""
+    workspace = os.getcwd()
+    agent_id = os.path.basename(workspace).replace('clawd-', '')
+    
+    users_file = os.path.expanduser('~/.quantclaw/users.json')
+    if not os.path.exists(users_file):
+        return None
+    
+    try:
+        with open(users_file, 'r') as f:
+            data = json.load(f)
+        users = data.get('users', [])
+        for user in users:
+            if user.get('agentId') == agent_id:
+                return user.get('token')
+    except:
+        pass
+    
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="查询回测数据")
-    parser.add_argument("--token", help="用户 token")
+    parser.add_argument("--token", help="用户 token（可选，未提供时自动获取）")
     parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
     parser.add_argument("--create-group", action="store_true", help="创建策略组")
     parser.add_argument("--group-name", help="策略组名称")
@@ -478,6 +500,13 @@ def main():
                         choices=["json", "table", "summary"], help="输出格式")
     
     args = parser.parse_args()
+    
+    # 自动获取 token（如果未提供）
+    if not args.token:
+        args.token = auto_get_token()
+        if not args.token:
+            print("错误: 无法自动获取 token，请手动提供 --token 参数")
+            sys.exit(1)
     
     # 强制刷新缓存（清除并重新获取 defaults 模块的全局缓存）
     if args.refresh_cache and args.token:

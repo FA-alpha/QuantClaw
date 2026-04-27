@@ -112,11 +112,8 @@
 
 1. **Token 认证**：
    - 所有操作需要用户 token
-   - **获取方式**：通过 Gateway RPC 从内存中查询（推荐）
-   - **步骤**：
-     1. 从当前 session 获取 agentId
-     2. 调用 `quantclaw.getMyToken` RPC 方法
-     3. 使用返回的 token 调用技能脚本
+   - **自动获取**：脚本会自动从 `~/.quantclaw/users.json` 获取当前 Agent 的 token
+   - **手动指定**：如需指定 token，使用 `--token` 参数
    
 2. **参数必填**：`--coin`、`--sort`、`--strategy-type` 查询时必填
 
@@ -143,47 +140,51 @@
 
 ## 🚀 快速开始
 
-### 方式一：自动包装脚本（推荐）
+**所有脚本已支持自动获取 token，无需任何额外操作！**
 
-使用自动获取 token 的包装脚本，**无需手动获取 token**：
+### 智能推荐（推荐）
 
 ```bash
-# 智能推荐（自动获取 token）
-bash skills/backtest-query/smart_recommend_auto.sh \
+# Token 自动获取，直接使用
+python3 skills/backtest-query/smart_recommend.py \
   --coins "BTC,ETH" \
   --year 2024 \
+  --workspace $(pwd) \
   --save-memory
 
-# 其他参数照常传递
-bash skills/backtest-query/smart_recommend_auto.sh \
-  --coins "BTC,SOL" \
+# 单币种
+python3 skills/backtest-query/smart_recommend.py \
+  --coins "BTC" \
   --strategy-type 11 \
   --direction long \
   --year 2024
 ```
 
-**优势**：
-- ✅ 自动获取 token，无需手动操作
-- ✅ 自动设置 workspace 路径
-- ✅ 简化命令行参数
-
----
-
-### 方式二：手动获取 token
-
-如果需要更多控制，可以手动获取：
+### 基础查询
 
 ```bash
-# 1. 获取 token
-USER_TOKEN=$(python3 skills/backtest-query/get_token.py)
+# 列出可用币种
+python3 skills/backtest-query/query.py --list-coins
 
-# 2. 调用脚本
+# 列出策略类型
+python3 skills/backtest-query/query.py --list-strategies
+
+# 查询回测数据
+python3 skills/backtest-query/query.py \
+  --coin BTC \
+  --strategy-type 11 \
+  --sort 2
+```
+
+### 手动指定 Token（可选）
+
+如果需要，可以手动指定：
+
+```bash
 python3 skills/backtest-query/smart_recommend.py \
-  --token "$USER_TOKEN" \
+  --token "your_token_here" \
   --coins "BTC,ETH" \
-  --year 2024 \
-  --workspace $(pwd) \
-  --save-memory
+  --year 2024
 ```
 
 ---

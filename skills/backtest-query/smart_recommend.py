@@ -472,11 +472,33 @@ class SmartRecommender:
             self.log(f"⚠️  保存记忆失败: {e}")
 
 
+def auto_get_token():
+    """自动获取当前 Agent 的 token"""
+    workspace = os.getcwd()
+    agent_id = os.path.basename(workspace).replace('clawd-', '')
+    
+    users_file = os.path.expanduser('~/.quantclaw/users.json')
+    if not os.path.exists(users_file):
+        return None
+    
+    try:
+        with open(users_file, 'r') as f:
+            data = json.load(f)
+        users = data.get('users', [])
+        for user in users:
+            if user.get('agentId') == agent_id:
+                return user.get('token')
+    except:
+        pass
+    
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="智能策略组合推荐")
     
     # 基础参数
-    parser.add_argument("--token", required=True, help="用户 token")
+    parser.add_argument("--token", help="用户 token（可选，未提供时自动获取）")
     parser.add_argument("--coins", help="币种列表（逗号分隔，可选，不传则使用默认主流币种）")
     parser.add_argument("--workspace", help="工作区路径（用于保存记忆）")
     
@@ -509,6 +531,13 @@ def main():
     parser.add_argument("--force-refresh", action="store_true", help="强制刷新全局缓存（清除币种、策略、时间等缓存数据）")
     
     args = parser.parse_args()
+    
+    # 自动获取 token（如果未提供）
+    if not args.token:
+        args.token = auto_get_token()
+        if not args.token:
+            print("❌ 错误: 无法自动获取 token，请手动提供 --token 参数")
+            sys.exit(1)
     
     # 处理币种参数
     coins = [c.strip() for c in args.coins.split(',')] if args.coins else None
