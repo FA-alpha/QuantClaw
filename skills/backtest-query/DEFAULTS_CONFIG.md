@@ -13,19 +13,39 @@
 ### 1. 币种默认配置
 
 ```python
-# defaults.py 第 17-18 行
+# defaults.py 第 17-19 行
 
-COIN_COUNT = 3  # 取前N个币种
+COIN_COUNT = None  # None=获取全部, 数字=取前N个
+COIN_TYPE_FILTER = "CRYPTO"  # None=全部, "CRYPTO"=虚拟币, "US"=美股
 COIN_FALLBACK = ["BTC", "ETH", "SOL"]  # 容错默认值
 ```
 
-**修改示例**：
-```python
-# 取前5个币种
-COIN_COUNT = 5
+**币种类型说明**：
+- `CRYPTO`: 虚拟币（BTC, ETH, SOL等）
+- `US`: 美股（AAPL, TSLA, NVDA等ETF和股票）
 
-# 修改容错币种
-COIN_FALLBACK = ["BTC", "ETH", "BNB", "SOL", "XRP"]
+**修改示例**：
+
+```python
+# 示例1：获取全部币种（虚拟币+美股）
+COIN_COUNT = None
+COIN_TYPE_FILTER = None
+
+# 示例2：只要虚拟币（推荐，默认配置）
+COIN_COUNT = None
+COIN_TYPE_FILTER = "CRYPTO"
+
+# 示例3：只要前5个虚拟币
+COIN_COUNT = 5
+COIN_TYPE_FILTER = "CRYPTO"
+
+# 示例4：只要美股
+COIN_COUNT = None
+COIN_TYPE_FILTER = "US"
+
+# 示例5：只要前3个美股
+COIN_COUNT = 3
+COIN_TYPE_FILTER = "US"
 ```
 
 ---
@@ -128,6 +148,53 @@ TIME_INDEX = 1  # 第2个
 输出：
 ```
 ℹ️  未指定时间范围，使用默认（接口第2个）: ai_time_id=5
+```
+
+---
+
+## 🔧 按币种类型过滤
+
+### 使用方式
+
+#### 方法1：通过配置文件
+
+```python
+# defaults.py
+COIN_TYPE_FILTER = "CRYPTO"  # 只要虚拟币
+# 或
+COIN_TYPE_FILTER = "US"      # 只要美股
+# 或
+COIN_TYPE_FILTER = None      # 全部
+```
+
+#### 方法2：在代码中动态指定
+
+```python
+from defaults import DefaultParams
+
+manager = DefaultParams(token)
+
+# 获取虚拟币
+crypto_coins = manager.get_coins(coin_type="CRYPTO")
+
+# 获取美股
+us_coins = manager.get_coins(coin_type="US")
+
+# 获取全部
+all_coins = manager.get_coins(coin_type=None)
+```
+
+#### 方法3：获取分组数据
+
+```python
+from defaults import DefaultParams
+
+manager = DefaultParams(token)
+by_type = manager.get_coins_by_type()
+
+print(by_type['CRYPTO'])  # 13个虚拟币
+print(by_type['US'])      # 19个美股
+print(by_type['all'])     # 32个全部
 ```
 
 ---

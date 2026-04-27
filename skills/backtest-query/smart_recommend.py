@@ -62,8 +62,12 @@ class SmartRecommender:
         """
         # 1. 处理币种参数（从统一模块获取默认）
         if not coins:
-            coins = self.defaults.get_coins()
-            self.log(f"ℹ️  未指定币种，使用默认币种（接口前{self.defaults.COIN_COUNT}个）: {', '.join(coins)}")
+            # 默认只使用虚拟币（CRYPTO），可通过配置修改
+            coins = self.defaults.get_coins(coin_type=self.defaults.COIN_TYPE_FILTER)
+            if self.defaults.COIN_TYPE_FILTER:
+                self.log(f"ℹ️  未指定币种，使用默认币种（类型={self.defaults.COIN_TYPE_FILTER}）: {', '.join(coins)}")
+            else:
+                self.log(f"ℹ️  未指定币种，使用默认币种（全部{len(coins)}个）: {', '.join(coins[:5])}...")
         
         # 2. 处理策略类型参数（从统一模块获取默认）
         if strategy_type is None:

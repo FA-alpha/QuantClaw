@@ -35,7 +35,8 @@ class DefaultParams:
     # ============ 配置区域（可修改） ============
     
     # 币种默认配置
-    COIN_COUNT = 3  # 取前N个币种
+    COIN_COUNT = None  # None表示获取全部，数字表示取前N个
+    COIN_TYPE_FILTER = "CRYPTO"  # None=全部, "CRYPTO"=只要虚拟币, "US"=只要美股
     COIN_FALLBACK = ["BTC", "ETH", "SOL"]  # 容错默认值
     
     # 策略类型默认配置
@@ -67,9 +68,12 @@ class DefaultParams:
         if self.verbose:
             print(msg)
     
-    def get_coins(self) -> List[str]:
+    def get_coins(self, coin_type: Optional[str] = None) -> List[str]:
         """
         获取默认币种列表（全局共享）
+        
+        Args:
+            coin_type: 币种类型过滤，None=全部, "CRYPTO"=虚拟币, "US"=美股
         
         Returns:
             List[str]: 币种列表
@@ -78,34 +82,55 @@ class DefaultParams:
         
         # 使用全局缓存
         if self.ENABLE_CACHE and _global_cache['coins'] is not None:
-            return _global_cache['coins']
-        
-        with _cache_lock:
-            # 双重检查
-            if self.ENABLE_CACHE and _global_cache['coins'] is not None:
-                return _global_cache['coins']
-            
-            try:
-                result = get_coin_list(self.token)
-                
-                if "error" in result:
-                    self.log(f"⚠️  获取币种列表失败: {result['error']}")
-                    _global_cache['coins'] = self.COIN_FALLBACK
+            coins_data = _global_cache['coins']
+        else:
+            with _cache_lock:
+                # 双重检查
+                if self.ENABLE_CACHE and _global_cache['coins'] is not None:
+                    coins_data = _global_cache['coins']
                 else:
-                    coins_data = result.get("info", [])
+                    try:
+                        result = get_coin_list(self.token)
+                        
+                        if "error" in result:
+                            self.log(f"⚠️  获取币种列表失败: {result['error']}")
+                            _global_cache['coins'] = self.COIN_FALLBACK
+                            return self.COIN_FALLBACK
+                        
+                        coins_data = result.get("info", [])
+                        
+                        if not coins_data:
+                            self.log("⚠️  接口返回空数据")
+                            _global_cache['coins'] = self.COIN_FALLBACK
+                            return self.COIN_FALLBACK
+                        
+                        # 缓存完整的币种数据（包含type字段）
+                        _global_cache['coins'] = coins_data
                     
-                    # 取前N个币种
-                    _global_cache['coins'] = [item["coin"] for item in coins_data[:self.COIN_COUNT]]
-                    
-                    if not _global_cache['coins']:
-                        self.log("⚠️  接口返回空数据")
+                    except Exception as e:
+                        self.log(f"⚠️  获取币种列表异常: {e}")
                         _global_cache['coins'] = self.COIN_FALLBACK
-            
-            except Exception as e:
-                self.log(f"⚠️  获取币种列表异常: {e}")
-                _global_cache['coins'] = self.COIN_FALLBACK
+                        return self.COIN_FALLBACK
         
-        return _global_cache['coins']
+        # 根据配置和参数过滤
+        filter_type = coin_type or self.COIN_TYPE_FILTER
+        
+        if filter_type:
+            # 按类型过滤
+            filtered = [c["coin"] for c in coins_data if isinstance(c, dict) and c.get("type") == filter_type]
+            if not filtered:
+                self.log(f"⚠️  没有找到类型为 {filter_type} 的币种")
+                return self.COIN_FALLBACK
+            coins = filtered
+        else:
+            # 不过滤，获取全部
+            coins = [c["coin"] if isinstance(c, dict) else c for c in coins_data]
+        
+        # 如果配置了数量限制
+        if self.COIN_COUNT is not None:
+            coins = coins[:self.COIN_COUNT]
+        
+        return coins
     
     def get_ai_time_id(self) -> str:
         """
@@ -187,6 +212,40 @@ class DefaultParams:
         
         return _global_cache['strategy_types']
     
+    def get_coins_by_type(self) -> dict:
+        """
+        获取按类型分组的币种
+        
+        Returns:
+            dict: {
+                'CRYPTO': ['BTC', 'ETH', ...],
+                'US': ['AAPL', 'TSLA', ...],
+                'all': ['BTC', 'ETH', 'AAPL', ...]
+            }
+        """
+        # 先获取全部币种数据（会触发缓存）
+        self.get_coins()
+        
+        global _global_cache
+        coins_data = _global_cache['coins']
+        
+        if not isinstance(coins_data, list) or not coins_data:
+            return {
+                'CRYPTO': self.COIN_FALLBACK,
+                'US': [],
+                'all': self.COIN_FALLBACK
+            }
+        
+        crypto = [c["coin"] for c in coins_data if isinstance(c, dict) and c.get("type") == "CRYPTO"]
+        us = [c["coin"] for c in coins_data if isinstance(c, dict) and c.get("type") == "US"]
+        all_coins = [c["coin"] if isinstance(c, dict) else c for c in coins_data]
+        
+        return {
+            'CRYPTO': crypto,
+            'US': us,
+            'all': all_coins
+        }
+    
     @staticmethod
     def clear_cache():
         """清除所有全局缓存"""
@@ -235,19 +294,20 @@ class DefaultParams:
 
 # ============ 便捷函数（向后兼容） ============
 
-def get_default_coins(token: str, verbose: bool = False) -> List[str]:
+def get_default_coins(token: str, verbose: bool = False, coin_type: Optional[str] = None) -> List[str]:
     """
     获取默认币种列表（便捷函数）
     
     Args:
         token: 用户 token
         verbose: 是否输出日志
+        coin_type: 币种类型过滤，None=全部, "CRYPTO"=虚拟币, "US"=美股
     
     Returns:
         List[str]: 币种列表
     """
     manager = DefaultParams(token, verbose)
-    return manager.get_coins()
+    return manager.get_coins(coin_type=coin_type)
 
 
 def get_default_ai_time_id(token: str, verbose: bool = False) -> str:
@@ -312,17 +372,37 @@ DefaultParams.clear_cache()
 """
 ## 如何修改默认参数？
 
-### 1. 修改选取数量
+### 1. 修改币种选取
 
 在 DefaultParams 类的配置区域修改：
 
 ```python
-COIN_COUNT = 5          # 取前5个币种（原来是3个）
+# 币种配置
+COIN_COUNT = None       # None=获取全部, 数字=取前N个
+COIN_TYPE_FILTER = None # None=全部, "CRYPTO"=只要虚拟币, "US"=只要美股
+
+# 示例：只要前5个币种
+COIN_COUNT = 5
+
+# 示例：只要虚拟币
+COIN_TYPE_FILTER = "CRYPTO"
+
+# 示例：只要美股
+COIN_TYPE_FILTER = "US"
+
+# 示例：只要前3个虚拟币
+COIN_COUNT = 3
+COIN_TYPE_FILTER = "CRYPTO"
+```
+
+### 2. 修改策略和时间选取
+
+```python
 STRATEGY_COUNT = 5      # 取前5个策略类型（原来是3个）
 TIME_INDEX = 1          # 取第2个时间ID（原来是第1个）
 ```
 
-### 2. 修改容错默认值
+### 3. 修改容错默认值
 
 ```python
 COIN_FALLBACK = ["BTC", "ETH", "BNB", "SOL"]  # 修改容错币种
@@ -330,26 +410,29 @@ STRATEGY_FALLBACK = [11, 8, 7]                # 修改容错策略
 TIME_FALLBACK = "16"                          # 修改容错时间ID
 ```
 
-### 3. 修改缓存策略
+### 4. 修改缓存策略
 
 ```python
 ENABLE_CACHE = False  # 禁用缓存，每次都重新获取
 ```
 
-### 4. 修改选取逻辑（高级）
-
-如果需要按特定条件筛选，可以修改 get_coins() 等方法：
+### 5. 按类型获取币种（新功能）
 
 ```python
-def get_coins(self) -> List[str]:
-    result = get_coin_list(self.token)
-    coins_data = result.get("info", [])
-    
-    # 示例：只选择主流币种
-    main_coins = ["BTC", "ETH", "SOL", "BNB"]
-    self._coins = [c["coin"] for c in coins_data if c["coin"] in main_coins][:self.COIN_COUNT]
-    
-    return self._coins
+from defaults import DefaultParams
+
+manager = DefaultParams(token)
+
+# 方法1：获取特定类型
+crypto_coins = manager.get_coins(coin_type="CRYPTO")  # 只要虚拟币
+us_coins = manager.get_coins(coin_type="US")          # 只要美股
+all_coins = manager.get_coins()                       # 全部
+
+# 方法2：获取分组结果
+by_type = manager.get_coins_by_type()
+print(by_type['CRYPTO'])  # ['BTC', 'ETH', 'SOL', ...]
+print(by_type['US'])      # ['AAPL', 'TSLA', 'NVDA', ...]
+print(by_type['all'])     # 全部币种
 ```
 
 ## 使用示例
