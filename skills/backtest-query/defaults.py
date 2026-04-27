@@ -44,8 +44,20 @@ class DefaultParams:
     STRATEGY_FALLBACK = [11, 7, 1]  # 容错默认值（风霆、网格、鲲鹏）
     
     # 时间ID默认配置
-    TIME_INDEX = 0  # 取第N个时间ID（0=第1个, 1=第2个, ...）
-    TIME_FALLBACK = "5"  # 容错默认值（最近1年）
+    TIME_MODE = "all"  # "single"=只用第1个, "all"=全部, "top_n"=前N个
+    TIME_COUNT = 3  # TIME_MODE="top_n"时使用，取前N个
+    TIME_INDEX = 0  # TIME_MODE="single"时使用，取第N个
+    TIME_FALLBACK = ["5"]  # 容错默认值（最近1年）
+    
+    # 方向默认配置
+    DIRECTION_MODE = "all"  # "none"=不限, "all"=轮询long和short, "long_only"=只做多, "short_only"=只做空
+    DIRECTION_FALLBACK = ["long", "short"]  # 容错默认值
+    
+    # 网格比例默认配置（仅对网格策略有效）
+    GRID_PCT_MODE = "all"  # "none"=不限, "all"=轮询所有比例, "common"=只用常用比例
+    GRID_PCT_BTC = ['10', '20', '30', '40', '50', '60', '80', '100', '120']  # BTC可选
+    GRID_PCT_OTHER = ['60', '80', '100', '120', '140']  # 其他币种可选
+    GRID_PCT_COMMON = ['80', '100', '120']  # 常用比例
     
     # 缓存配置
     ENABLE_CACHE = True  # 是否启用缓存
@@ -132,6 +144,54 @@ class DefaultParams:
         
         return coins
     
+    def get_ai_time_ids(self) -> List[str]:
+        """
+        获取时间ID列表（全局共享）
+        
+        根据 TIME_MODE 配置返回：
+        - "single": 返回第1个
+        - "all": 返回全部
+        - "top_n": 返回前N个
+        
+        Returns:
+            List[str]: 时间ID列表
+        """
+        global _global_cache
+        
+        # 先获取完整数据（会缓存）
+        if self.ENABLE_CACHE and _global_cache.get('ai_time_list') is not None:
+            times_data = _global_cache['ai_time_list']
+        else:
+            with _cache_lock:
+                if self.ENABLE_CACHE and _global_cache.get('ai_time_list') is not None:
+                    times_data = _global_cache['ai_time_list']
+                else:
+                    try:
+                        result = get_ai_time_list(self.token)
+                        if "error" in result:
+                            _global_cache['ai_time_list'] = []
+                            return [self.TIME_FALLBACK[0]]
+                        times_data = result.get("info", [])
+                        _global_cache['ai_time_list'] = times_data
+                    except:
+                        _global_cache['ai_time_list'] = []
+                        return [self.TIME_FALLBACK[0]]
+        
+        if not times_data:
+            return [self.TIME_FALLBACK[0]]
+        
+        # 根据模式返回
+        if self.TIME_MODE == "single":
+            if len(times_data) > self.TIME_INDEX:
+                return [str(times_data[self.TIME_INDEX]["id"])]
+            return [self.TIME_FALLBACK[0]]
+        elif self.TIME_MODE == "all":
+            return [str(t["id"]) for t in times_data]
+        elif self.TIME_MODE == "top_n":
+            return [str(t["id"]) for t in times_data[:self.TIME_COUNT]]
+        else:
+            return [str(times_data[0]["id"])]
+    
     def get_ai_time_id(self) -> str:
         """
         获取默认时间ID（全局共享）
@@ -217,6 +277,58 @@ class DefaultParams:
         
         return _global_cache['strategy_types']
     
+    def get_directions(self) -> List[Optional[str]]:
+        """
+        获取方向列表
+        
+        根据 DIRECTION_MODE 配置返回：
+        - "none": 返回 [None]（不限方向）
+        - "all": 返回 ["long", "short"]
+        - "long_only": 返回 ["long"]
+        - "short_only": 返回 ["short"]
+        
+        Returns:
+            List[Optional[str]]: 方向列表
+        """
+        if self.DIRECTION_MODE == "none":
+            return [None]
+        elif self.DIRECTION_MODE == "all":
+            return ["long", "short"]
+        elif self.DIRECTION_MODE == "long_only":
+            return ["long"]
+        elif self.DIRECTION_MODE == "short_only":
+            return ["short"]
+        else:
+            return [None]
+    
+    def get_grid_pcts(self, coin: str = None) -> List[Optional[str]]:
+        """
+        获取网格比例列表
+        
+        Args:
+            coin: 币种（BTC有特殊比例）
+        
+        根据 GRID_PCT_MODE 配置返回：
+        - "none": 返回 [None]（不限比例）
+        - "all": 返回所有可选比例
+        - "common": 返回常用比例
+        
+        Returns:
+            List[Optional[str]]: 比例列表
+        """
+        if self.GRID_PCT_MODE == "none":
+            return [None]
+        
+        # 判断是否BTC
+        is_btc = coin and 'BTC' in coin.upper()
+        
+        if self.GRID_PCT_MODE == "all":
+            return self.GRID_PCT_BTC if is_btc else self.GRID_PCT_OTHER
+        elif self.GRID_PCT_MODE == "common":
+            return self.GRID_PCT_COMMON
+        else:
+            return [None]
+    
     def get_coins_by_type(self) -> dict:
         """
         获取按类型分组的币种
@@ -258,6 +370,7 @@ class DefaultParams:
         with _cache_lock:
             _global_cache['coins'] = None
             _global_cache['ai_time_id'] = None
+            _global_cache['ai_time_list'] = None
             _global_cache['strategy_types'] = None
     
     @staticmethod

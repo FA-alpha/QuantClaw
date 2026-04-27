@@ -111,64 +111,95 @@ class SmartRecommender:
         
         all_strategies = []
         
-        # 3. 多维度查询
-        for coin in coins:
-            for st_type in strategy_types:
-                # 获取该策略类型的所有版本配置
-                versions = self.get_strategy_versions(st_type)
-                
-                if not versions:
-                    # 如果没有版本信息，直接查询（不指定版本）
-                    self.log(f"🔍 查询 {coin} / 策略类型 {st_type}...")
+        # 3. 准备轮询参数
+        # 时间ID列表（如果未指定则使用配置）
+        if ai_time_id:
+            ai_time_ids = [ai_time_id]
+        else:
+            ai_time_ids = self.defaults.get_ai_time_ids()
+            self.log(f"ℹ️  时间ID轮询: {len(ai_time_ids)} 个")
+        
+        # 方向列表（如果未指定则使用配置）
+        if direction:
+            directions = [direction]
+        else:
+            directions = self.defaults.get_directions()
+            if len(directions) > 1:
+                self.log(f"ℹ️  方向轮询: {directions}")
+        
+        # 4. 多维度查询
+        for time_id in ai_time_ids:
+            for dir_ in directions:
+                for coin in coins:
+                    # 获取网格比例列表（针对该币种）
+                    grid_pcts = self.defaults.get_grid_pcts(coin)
                     
-                    result = query_backtest(
-                        token=self.token,
-                        search_coin=coin,
-                        sort_type=sort_type,
-                        strategy_type=st_type,
-                        search_direction=direction,
-                        search_year=year,
-                        ai_time_id=ai_time_id,
-                        search_recommand_type=recommand_type,
-                        limit=limit
-                    )
-                    
-                    if "error" not in result:
-                        strategies = result.get("info", [])
-                        self.log(f"✅ {coin} / 策略类型 {st_type} 找到 {len(strategies)} 个策略")
-                        all_strategies.extend(strategies)
-                    else:
-                        self.log(f"⚠️  {coin} / 策略类型 {st_type} 查询失败: {result['error']}")
-                else:
-                    # 轮询该策略的所有版本配置
-                    for ver_config in versions:
-                        version = ver_config.get("version")
-                        leverage = ver_config.get("leverage")
-                        search_extend = ver_config.get("search_extend")
+                    for st_type in strategy_types:
+                        # 获取该策略类型的所有版本配置
+                        versions = self.get_strategy_versions(st_type)
                         
-                        self.log(f"🔍 查询 {coin} / 策略类型 {st_type} / 版本 {version} (杠杆{leverage})...")
-                        
-                        result = query_backtest(
-                            token=self.token,
-                            search_coin=coin,
-                            sort_type=sort_type,
-                            strategy_type=st_type,
-                            search_direction=direction,
-                            search_year=year,
-                            ai_time_id=ai_time_id,
-                            search_recommand_type=recommand_type,
-                            version=str(version) if version else None,
-                            leverage=leverage,
-                            search_extend=search_extend,
-                            limit=limit
-                        )
-                        
-                        if "error" not in result:
-                            strategies = result.get("info", [])
-                            self.log(f"✅ {coin} / 策略 {st_type} / 版本 {version} 找到 {len(strategies)} 个策略")
-                            all_strategies.extend(strategies)
+                        if not versions:
+                            # 如果没有版本信息，直接查询（不指定版本）
+                            for pct in grid_pcts:
+                                query_params = {
+                                    'token': self.token,
+                                    'search_coin': coin,
+                                    'sort_type': sort_type,
+                                    'strategy_type': st_type,
+                                    'search_direction': dir_,
+                                    'search_year': year,
+                                    'ai_time_id': time_id,
+                                    'search_recommand_type': recommand_type,
+                                    'search_pct': pct,
+                                    'limit': limit
+                                }
+                                
+                                label = f"{coin} / 策略 {st_type} / 时间 {time_id} / 方向 {dir_} / 比例 {pct}"
+                                self.log(f"🔍 查询 {label}...")
+                                
+                                result = query_backtest(**query_params)
+                                
+                                if "error" not in result:
+                                    strategies = result.get("info", [])
+                                    self.log(f"✅ {label} 找到 {len(strategies)} 个策略")
+                                    all_strategies.extend(strategies)
+                                else:
+                                    self.log(f"⚠️  {label} 查询失败: {result['error']}")
                         else:
-                            self.log(f"⚠️  {coin} / 策略 {st_type} / 版本 {version} 查询失败: {result['error']}")
+                            # 轮询该策略的所有版本配置
+                            for ver_config in versions:
+                                version = ver_config.get("version")
+                                leverage = ver_config.get("leverage")
+                                search_extend = ver_config.get("search_extend")
+                                
+                                for pct in grid_pcts:
+                                    query_params = {
+                                        'token': self.token,
+                                        'search_coin': coin,
+                                        'sort_type': sort_type,
+                                        'strategy_type': st_type,
+                                        'search_direction': dir_,
+                                        'search_year': year,
+                                        'ai_time_id': time_id,
+                                        'search_recommand_type': recommand_type,
+                                        'version': str(version) if version else None,
+                                        'leverage': leverage,
+                                        'search_extend': search_extend,
+                                        'search_pct': pct,
+                                        'limit': limit
+                                    }
+                                    
+                                    label = f"{coin} / 策略 {st_type} / 版本 {version} / 时间 {time_id} / 方向 {dir_} / 比例 {pct}"
+                                    self.log(f"🔍 查询 {label}...")
+                                    
+                                    result = query_backtest(**query_params)
+                                    
+                                    if "error" not in result:
+                                        strategies = result.get("info", [])
+                                        self.log(f"✅ {label} 找到 {len(strategies)} 个策略")
+                                        all_strategies.extend(strategies)
+                                    else:
+                                        self.log(f"⚠️  {label} 查询失败: {result['error']}")
         
         # 筛选
         if min_sharpe or max_drawdown:
