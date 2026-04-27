@@ -40,11 +40,11 @@ class DefaultParams:
     COIN_FALLBACK = ["BTC", "ETH", "SOL"]  # 容错默认值
     
     # 策略类型默认配置
-    STRATEGY_COUNT = 3  # 取前N个策略类型
+    STRATEGY_COUNT = None  # None=获取全部, 数字=取前N个
     STRATEGY_FALLBACK = [11, 7, 1]  # 容错默认值（风霆、网格、鲲鹏）
     
     # 时间ID默认配置
-    TIME_INDEX = 0  # 取第N个时间ID（0表示第1个）
+    TIME_INDEX = 1  # 取第N个时间ID（0=第1个, 1=第2个=最近1年）
     TIME_FALLBACK = "5"  # 容错默认值（最近1年）
     
     # 缓存配置
@@ -199,8 +199,13 @@ class DefaultParams:
                 else:
                     strategies_data = result.get("info", [])
                     
-                    # 取前N个策略类型
-                    _global_cache['strategy_types'] = [item["id"] for item in strategies_data[:self.STRATEGY_COUNT]]
+                    # 取前N个或全部策略类型
+                    if self.STRATEGY_COUNT is None:
+                        # 获取全部
+                        _global_cache['strategy_types'] = [item["id"] for item in strategies_data]
+                    else:
+                        # 取前N个
+                        _global_cache['strategy_types'] = [item["id"] for item in strategies_data[:self.STRATEGY_COUNT]]
                     
                     if not _global_cache['strategy_types']:
                         self.log("⚠️  接口返回空数据")

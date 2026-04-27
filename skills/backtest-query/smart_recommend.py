@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from query import query_backtest, get_backtest_detail
 from defaults import DefaultParams
+from analysis import recommend_combinations
 
 
 class SmartRecommender:
