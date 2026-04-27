@@ -27,6 +27,8 @@ DATA_DIR = Path(__file__).parent / 'data'
 
 # 确保数据目录存在
 DATA_DIR.mkdir(exist_ok=True)
+CHAT_DIR = DATA_DIR / 'chats'
+CHAT_DIR.mkdir(exist_ok=True, parents=True)
 
 
 # ============ 聊天记录存储 ============
@@ -36,7 +38,7 @@ class ChatStore:
     
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
-        self.data_dir.mkdir(exist_ok=True)
+        self.data_dir.mkdir(exist_ok=True, parents=True)
     
     def _get_file(self, user_id: str) -> Path:
         return self.data_dir / f'{user_id}.json'
@@ -77,7 +79,7 @@ class ChatStore:
             file.unlink()
 
 
-chat_store = ChatStore(DATA_DIR / 'chats')
+chat_store = ChatStore(CHAT_DIR)
 
 
 # ============ 认证辅助函数 ============
