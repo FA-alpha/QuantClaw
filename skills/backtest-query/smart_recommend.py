@@ -9,13 +9,8 @@ import json
 import argparse
 from datetime import datetime
 from typing import List, Dict, Optional
-from query import (
-    query_backtest, 
-    get_backtest_detail,
-    get_coin_list,
-    get_ai_time_list,
-    get_ai_strategy_list
-)
+from query import query_backtest, get_backtest_detail
+from defaults import DefaultParams
 
 
 class SmartRecommender:
@@ -24,81 +19,13 @@ class SmartRecommender:
     def __init__(self, token: str, verbose: bool = True):
         self.token = token
         self.verbose = verbose
-        self._default_coins = None
-        self._default_ai_time_id = None
-        self._default_strategy_types = None
+        # 使用统一的默认参数管理器
+        self.defaults = DefaultParams(token, verbose)
         
     def log(self, msg: str):
         """输出日志"""
         if self.verbose:
             print(msg)
-    
-    def get_default_coins(self) -> List[str]:
-        """获取默认币种（从接口获取前3个）"""
-        if self._default_coins:
-            return self._default_coins
-        
-        try:
-            result = get_coin_list(self.token)
-            if "error" in result:
-                self.log(f"⚠️  获取币种列表失败，使用内置默认: {result['error']}")
-                self._default_coins = ["BTC", "ETH", "SOL"]
-            else:
-                coins_data = result.get("info", [])
-                # 取前3个币种
-                self._default_coins = [item["coin"] for item in coins_data[:3]]
-                if not self._default_coins:
-                    self._default_coins = ["BTC", "ETH", "SOL"]
-        except Exception as e:
-            self.log(f"⚠️  获取币种列表异常，使用内置默认: {e}")
-            self._default_coins = ["BTC", "ETH", "SOL"]
-        
-        return self._default_coins
-    
-    def get_default_ai_time_id(self) -> str:
-        """获取默认时间ID（从接口获取第1个）"""
-        if self._default_ai_time_id:
-            return self._default_ai_time_id
-        
-        try:
-            result = get_ai_time_list(self.token)
-            if "error" in result:
-                self.log(f"⚠️  获取时间列表失败，使用内置默认: {result['error']}")
-                self._default_ai_time_id = "5"
-            else:
-                times_data = result.get("info", [])
-                # 取第1个时间ID
-                if times_data:
-                    self._default_ai_time_id = str(times_data[0]["id"])
-                else:
-                    self._default_ai_time_id = "5"
-        except Exception as e:
-            self.log(f"⚠️  获取时间列表异常，使用内置默认: {e}")
-            self._default_ai_time_id = "5"
-        
-        return self._default_ai_time_id
-    
-    def get_default_strategy_types(self) -> List[int]:
-        """获取默认策略类型（从接口获取前3个）"""
-        if self._default_strategy_types:
-            return self._default_strategy_types
-        
-        try:
-            result = get_ai_strategy_list(self.token)
-            if "error" in result:
-                self.log(f"⚠️  获取策略列表失败，使用内置默认: {result['error']}")
-                self._default_strategy_types = [11, 7, 1]
-            else:
-                strategies_data = result.get("info", [])
-                # 取前3个策略类型
-                self._default_strategy_types = [item["id"] for item in strategies_data[:3]]
-                if not self._default_strategy_types:
-                    self._default_strategy_types = [11, 7, 1]
-        except Exception as e:
-            self.log(f"⚠️  获取策略列表异常，使用内置默认: {e}")
-            self._default_strategy_types = [11, 7, 1]
-        
-        return self._default_strategy_types
     
     def fetch_strategies(
         self,
@@ -133,15 +60,15 @@ class SmartRecommender:
         Returns:
             策略列表
         """
-        # 1. 处理币种参数（从接口获取默认）
+        # 1. 处理币种参数（从统一模块获取默认）
         if not coins:
-            coins = self.get_default_coins()
-            self.log(f"ℹ️  未指定币种，使用默认币种（接口前3个）: {', '.join(coins)}")
+            coins = self.defaults.get_coins()
+            self.log(f"ℹ️  未指定币种，使用默认币种（接口前{self.defaults.COIN_COUNT}个）: {', '.join(coins)}")
         
-        # 2. 处理策略类型参数（从接口获取默认）
+        # 2. 处理策略类型参数（从统一模块获取默认）
         if strategy_type is None:
-            strategy_types = self.get_default_strategy_types()
-            self.log(f"ℹ️  未指定策略类型，查询多种类型（接口前3个）: {strategy_types}")
+            strategy_types = self.defaults.get_strategy_types()
+            self.log(f"ℹ️  未指定策略类型，查询多种类型（接口前{self.defaults.STRATEGY_COUNT}个）: {strategy_types}")
         else:
             strategy_types = [strategy_type]
         
@@ -406,11 +333,12 @@ def main():
     
     recommender = SmartRecommender(args.token, verbose=not args.quiet)
     
-    # 验证参数 - 优先使用 ai_time_id，如果都没传则使用接口默认（第1个）
+    # 验证参数 - 优先使用 ai_time_id，如果都没传则使用统一模块的默认值
     if not args.year and not args.ai_time_id:
-        args.ai_time_id = recommender.get_default_ai_time_id()
+        args.ai_time_id = recommender.defaults.get_ai_time_id()
         if not args.quiet:
-            print(f"ℹ️  未指定时间范围，使用默认（接口第1个）: ai_time_id={args.ai_time_id}")
+            index_display = recommender.defaults.TIME_INDEX + 1
+            print(f"ℹ️  未指定时间范围，使用默认（接口第{index_display}个）: ai_time_id={args.ai_time_id}")
     
     # 如果同时传了，优先用 ai_time_id
     if args.year and args.ai_time_id:

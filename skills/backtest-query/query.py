@@ -267,22 +267,16 @@ def get_default_ai_time_id(token: str) -> str:
     """
     获取默认的 ai_time_id（接口返回的第1个）
     
+    注意：此函数已重构为使用统一的 defaults.py 模块
+    
     Args:
         token: 用户 token
     
     Returns:
         str: 默认的 ai_time_id，失败时返回 "5"
     """
-    try:
-        result = get_ai_time_list(token)
-        if "error" in result:
-            return "5"
-        times_data = result.get("info", [])
-        if times_data:
-            return str(times_data[0]["id"])
-        return "5"
-    except:
-        return "5"
+    from defaults import get_default_ai_time_id as _get_default
+    return _get_default(token, verbose=False)
 
 
 def query_backtest(
