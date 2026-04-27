@@ -432,18 +432,13 @@ def main():
     
     recommender = SmartRecommender(args.token, verbose=not args.quiet)
     
-    # 验证参数 - 优先使用 ai_time_id，如果都没传则使用统一模块的默认值
-    if not args.year and not args.ai_time_id:
-        args.ai_time_id = recommender.defaults.get_ai_time_id()
-        if not args.quiet:
-            index_display = recommender.defaults.TIME_INDEX + 1
-            print(f"ℹ️  未指定时间范围，使用默认（接口第{index_display}个）: ai_time_id={args.ai_time_id}")
-    
-    # 如果同时传了，优先用 ai_time_id
+    # 时间参数处理：如果同时传了，优先用 ai_time_id
     if args.year and args.ai_time_id:
         if not args.quiet:
             print("⚠️  同时传入 --year 和 --ai-time-id，优先使用 --ai-time-id")
         args.year = None
+    
+    # 注意：如果都没传，fetch_strategies 内部会自动轮询时间ID
     
     # 1. 查询策略
     strategies = recommender.fetch_strategies(
