@@ -1,0 +1,25 @@
+{
+  "plugins": {
+    "entries": {
+      "quantclaw-auth": {
+        "config": {
+          "dataPath": "~/.quantclaw/users.json",
+          "workspaceBase": "~/quantclaw-users",
+          "defaultModel": "openrouter/anthropic/claude-sonnet-4-5",
+          "webhookPath": "/webhook/quantclaw",
+          "autoRegister": true,
+          "skillsPath": "~/work/QuantClaw/skills",
+          "templatePath": "~/work/QuantClaw/templates/agent-workspace",
+          "tokenValidation": {
+            "enabled": true,
+            "apiUrl": "https://YOUR_BACKEND_URL/Account/usage_info",
+            "apiMethod": "POST",
+            "showType": 2,
+            "timeoutMs": 5000,
+            "apiHeaders": {}
+          }
+        }
+      }
+    }
+  }
+}
