@@ -516,12 +516,57 @@ class SmartGroupRecommender:
                     f"总胜率{metrics.get('total_win_rate', 0):.1f}%, "
                     f"近期收益{metrics.get('recent_profit_rate', 0):.1f}%)"
                 )
+            
+            # 生成创建命令
+            cmd = self.get_create_group_command(i, combo['strategies'])
+            if cmd:
+                print(f"\n🔧 创建命令:")
+                print(cmd)
+            else:
+                print(f"\n⚠️  无法生成创建命令（缺少 strategy_token）")
     
     def save_result(self, result: Dict, output_file: str):
         """保存结果到文件"""
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
         self.log(f"\n💾 结果已保存: {output_file}")
+    
+    def get_create_group_command(self, combo_index: int, strategies: List[Dict]) -> Optional[str]:
+        """
+        生成创建策略组的命令
+        
+        Args:
+            combo_index: 组合编号
+            strategies: 策略列表
+        
+        Returns:
+            命令字符串，如果无法生成则返回 None
+        """
+        # 提取 strategy_token
+        tokens = []
+        for s in strategies:
+            token = s.get('strategy_token')
+            if token:
+                tokens.append(token)
+            else:
+                self.log(f"⚠️  策略 {s.get('name')} 缺少 strategy_token")
+        
+        if not tokens:
+            return None
+        
+        # 生成组合名称
+        combo_name = f"智能组合_{combo_index}_{datetime.now().strftime('%Y%m%d')}"
+        tokens_str = ','.join(tokens)
+        
+        # 生成命令
+        cmd = (
+            f"python3 skills/backtest-query/query.py \\\n"
+            f"  --create-group \\\n"
+            f"  --group-name \"{combo_name}\" \\\n"
+            f"  --strategy-tokens \"{tokens_str}\""
+        )
+        
+        return cmd
 
 
 def main():
