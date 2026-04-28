@@ -51,6 +51,13 @@ Top 5: 都是低回撤策略
 | `drawdown` | 最小回撤 | 保守型/风险控制 | ❌ |
 | `win_rate` | 总胜率 | 稳定盈利 | ✅ |
 | `stability` | 稳定性（近期/总体） | 趋势判断 | ✅ |
+| `score` | 综合评分 | 平台推荐/全面评估 | ❌ |
+| `custom:字段名` | 自定义字段 | 灵活扩展 | ⚠️ 视字段而定 |
+
+**综合评分说明**：
+- 自动检测多种字段名：`score`, `total_score`, `recommend_score`, `rating`
+- 如果数据中存在这些字段，可以用 `score` 排序
+- 通常由平台计算的综合指标（收益+风险+稳定性）
 
 ---
 
@@ -111,21 +118,41 @@ python3 smart_group_recommend.py \
 
 ---
 
-### 示例 3：全方位筛选（需详情数据）
+### 示例 3：平台推荐+综合评分
+
+```bash
+python3 smart_group_recommend.py \
+  --query "平台推荐的优质策略" \
+  --coins "BTC,ETH" \
+  --top-per-group 5 \
+  --sort-methods "score,sharpe,return" \
+  --min-total-win-rate 60
+```
+
+**说明**：
+- 优先按综合评分排序（平台算法）
+- 兼顾夏普率和收益率
+- 去重后约 10-15 个策略
+
+**适用场景**：信任平台算法，快速筛选
+
+---
+
+### 示例 4：全方位筛选（需详情数据）
 
 ```bash
 python3 smart_group_recommend.py \
   --query "全方位评估" \
   --coins "BTC" \
   --top-per-group 4 \
-  --sort-methods "sharpe,return,drawdown,win_rate,stability" \
+  --sort-methods "score,sharpe,return,drawdown,win_rate,stability" \
   --min-total-win-rate 60 \
   --min-stability 0.8
 ```
 
 **说明**：
-- 5 种排序方式各取 Top 4
-- 去重后约 10-20 个策略
+- 6 种排序方式各取 Top 4
+- 去重后约 15-24 个策略
 - ⚠️ `win_rate` 和 `stability` 需要详情数据
 - 会先获取详情再排序（稍慢）
 
@@ -133,35 +160,35 @@ python3 smart_group_recommend.py \
 
 ---
 
-### 示例 4：保守型组合
+### 示例 5：保守型组合
 
 ```bash
 python3 smart_group_recommend.py \
   --query "稳健策略" \
   --coins "BTC,ETH,SOL" \
   --top-per-group 3 \
-  --sort-methods "drawdown,sharpe,win_rate" \
+  --sort-methods "drawdown,sharpe,score" \
   --max-recent-drawdown 10 \
   --min-total-win-rate 70
 ```
 
 **策略**：
 - 优先低回撤
-- 兼顾夏普率和胜率
+- 兼顾夏普率和综合评分
 - 严格详情筛选
 
 **适用场景**：保守投资者、熊市
 
 ---
 
-### 示例 5：激进型组合
+### 示例 6：激进型组合
 
 ```bash
 python3 smart_group_recommend.py \
   --query "高收益策略" \
   --coins "BTC,ETH" \
   --top-per-group 5 \
-  --sort-methods "return,stability" \
+  --sort-methods "return,stability,score" \
   --min-recent-profit-rate 20 \
   --min-stability 0.9
 ```
@@ -169,9 +196,27 @@ python3 smart_group_recommend.py \
 **策略**：
 - 优先高收益
 - 必须稳定（近期表现好）
+- 参考综合评分
 - 近期收益 ≥20%
 
 **适用场景**：激进投资者、牛市
+
+---
+
+### 示例 7：自定义字段排序
+
+```bash
+python3 smart_group_recommend.py \
+  --query "自定义排序" \
+  --coins "BTC" \
+  --top-per-group 5 \
+  --sort-methods "custom:my_score,sharpe,return"
+```
+
+**说明**：
+- 按自定义字段 `my_score` 排序
+- 如果数据中有该字段，会自动提取
+- 适用于有特殊评分字段的场景
 
 ---
 
@@ -244,20 +289,29 @@ Top 7 (去重后):
 - 3 种排序，去重后 5-9 个
 - 速度快，覆盖面广
 
-### 精细筛选
+### 平台推荐优先
 ```bash
---sort-methods "sharpe,return,drawdown,win_rate"
+--sort-methods "score,sharpe,return"
 --top-per-group 5
 ```
-- 4 种排序，去重后 10-20 个
+- 综合评分 + 夏普率 + 收益率
+- 去重后约 10-15 个
+- 信任平台算法
+
+### 精细筛选
+```bash
+--sort-methods "score,sharpe,return,drawdown,win_rate"
+--top-per-group 5
+```
+- 5 种排序，去重后 15-25 个
 - 需要详情数据，稍慢
 
 ### 极致筛选
 ```bash
---sort-methods "sharpe,return,drawdown,win_rate,stability"
+--sort-methods "score,sharpe,return,drawdown,win_rate,stability"
 --top-per-group 5
 ```
-- 5 种排序，去重后 15-25 个
+- 6 种排序，去重后 20-30 个
 - 全方位评估，推荐用于重点分析
 
 ---
@@ -265,22 +319,29 @@ Top 7 (去重后):
 ## 🎓 最佳实践
 
 ### 1. 根据市场环境选择
-- **牛市**：`return, stability`（追收益）
-- **熊市**：`drawdown, sharpe`（控风险）
-- **震荡**：`sharpe, win_rate`（稳定盈利）
+- **牛市**：`score, return, stability`（追收益+评分）
+- **熊市**：`drawdown, sharpe, score`（控风险+评分）
+- **震荡**：`score, sharpe, win_rate`（稳定盈利+评分）
 
 ### 2. 根据投资风格
-- **保守型**：`drawdown, sharpe, win_rate`
-- **平衡型**：默认（`sharpe, return, drawdown`）
-- **激进型**：`return, stability`
+- **保守型**：`drawdown, score, sharpe, win_rate`
+- **平衡型**：`score, sharpe, return, drawdown`（推荐）
+- **激进型**：`return, score, stability`
 
 ### 3. 配合详情筛选
 ```bash
---sort-methods "sharpe,return,drawdown" \
+--sort-methods "score,sharpe,return,drawdown" \
 --min-total-win-rate 60 \
 --max-recent-drawdown 15
 ```
 多排序扩大候选池，详情筛选确保质量
+
+### 4. 信任平台算法
+```bash
+--sort-methods "score" \
+--top-per-group 10
+```
+只用综合评分，取更多候选
 
 ---
 
@@ -324,8 +385,49 @@ return Top 3: [A, B, C]  ← 完全重复
 
 **推荐配置**：
 ```bash
+# 有综合评分时
+--sort-methods "score,sharpe,return,drawdown"
+--top-per-group 5
+
+# 无综合评分时
 --sort-methods "sharpe,return,drawdown"
 --top-per-group 5
 ```
 
 平衡速度和质量，适合大多数场景！
+
+---
+
+## 💡 综合评分说明
+
+### 什么是综合评分？
+
+综合评分通常是平台根据多个指标计算出的单一分数，综合考虑：
+- 收益率（年化收益）
+- 风险控制（回撤、波动）
+- 稳定性（胜率、交易频率）
+- 夏普率（收益/风险比）
+
+### 优势
+- ✅ 一个数字总结多个维度
+- ✅ 平台算法优化（可能考虑了更多因素）
+- ✅ 方便快速排序
+
+### 何时使用
+- 信任平台算法
+- 快速筛选
+- 作为多排序的一种维度
+
+### 字段名兼容
+系统自动检测以下字段：
+```python
+score
+total_score
+recommend_score
+rating
+```
+
+如果数据中使用其他字段名，可以用：
+```bash
+--sort-methods "custom:your_field_name"
+```

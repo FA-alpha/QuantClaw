@@ -119,6 +119,8 @@ def get_top_by_multiple_sorts(
     - drawdown: 最小回撤
     - win_rate: 胜率（需详情）
     - stability: 稳定性（需详情）
+    - score: 综合评分（平台算法）
+    - custom:字段名: 自定义字段
     
     每种方式取 Top N，去重后返回
     """

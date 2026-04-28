@@ -262,9 +262,11 @@ class SmartGroupRecommender:
             sort_methods: 排序方式列表，支持：
                 - 'sharpe': 夏普率（默认）
                 - 'return': 年化收益率
-                - 'win_rate': 胜率（需详情）
                 - 'drawdown': 最小回撤
+                - 'win_rate': 胜率（需详情）
                 - 'stability': 稳定性（需详情）
+                - 'score': 综合评分（如果数据中有）
+                - 'custom:字段名': 自定义字段排序
         
         Returns:
             去重后的策略列表
@@ -309,6 +311,27 @@ class SmartGroupRecommender:
                     key=lambda s: s.get('_metrics', {}).get('recent_stability', 0),
                     reverse=True
                 )
+            elif method == 'score':
+                # 综合评分（支持多种字段名）
+                sorted_list = sorted(
+                    strategies,
+                    key=lambda s: (
+                        s.get('score', 0) or 
+                        s.get('total_score', 0) or
+                        s.get('recommend_score', 0) or
+                        s.get('rating', 0)
+                    ),
+                    reverse=True
+                )
+            elif method.startswith('custom:'):
+                # 自定义字段排序
+                field_name = method.split(':', 1)[1]
+                sorted_list = sorted(
+                    strategies,
+                    key=lambda s: s.get(field_name, 0),
+                    reverse=True
+                )
+                self.log(f"      📌 自定义字段: {field_name}")
             else:
                 self.log(f"      ⚠️  未知排序方式: {method}")
                 continue
@@ -502,7 +525,7 @@ def main():
     # 分组和筛选参数
     parser.add_argument("--top-per-group", type=int, default=5, help="每种排序方式取几个策略")
     parser.add_argument("--max-combinations", type=int, default=10, help="最多推荐几个组合")
-    parser.add_argument("--sort-methods", type=str, help="排序方式（逗号分隔），支持: sharpe,return,drawdown,win_rate,stability")
+    parser.add_argument("--sort-methods", type=str, help="排序方式（逗号分隔），支持: sharpe,return,drawdown,win_rate,stability,score,custom:字段名")
     
     # 详情筛选条件
     parser.add_argument("--min-total-win-rate", type=float, help="最小总胜率")
