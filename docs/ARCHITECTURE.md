@@ -215,7 +215,7 @@ A: 检查以下内容：
 A: 检查 plugin 配置中的 `templatePath`，应为 `~/work/QuantClaw/templates/agent-workspace`。
 
 ### Q: 如何删除所有用户？
-A: 清空三个位置的数据：
+A: 清空三个位置的数据，然后重启 Gateway：
 ```bash
 # 1. 用户注册信息
 echo '{"users":[]}' > ~/.quantclaw/users.json
@@ -223,4 +223,6 @@ echo '{"users":[]}' > ~/.quantclaw/users.json
 rm -rf ~/quantclaw-users
 # 3. 聊天记录
 rm -f ~/work/QuantClaw/server/data/chats/*.json
+# 4. 重启 Gateway（清理 agent 实例缓存）
+clawdbot gateway restart
 ```
