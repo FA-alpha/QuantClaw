@@ -351,15 +351,17 @@ def query_backtest(
     if version:
         data["version"] = version
     
-    # 合并版本额外信息
-    if version_extra:
-        data.update(version_extra)
-    
     # 额外参数
     if leverage is not None:
         data["leverage"] = leverage
     if search_extend:
         data["search_extend"] = search_extend
+    
+    # 合并版本额外信息
+    if version_extra:
+        # 过滤掉 id 和 name 字段
+        filtered_extra = {k: v for k, v in version_extra.items() if k not in ('id', 'name')}
+        data.update(filtered_extra)
     if app_v:
         data["app_v"] = app_v
     
