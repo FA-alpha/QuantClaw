@@ -360,7 +360,13 @@ export default function register(api: any) {
     autoRegister: cfg.autoRegister ?? true,
     skillsPath: cfg.skillsPath || '~/work/QuantClaw/skills',
     templatePath: cfg.templatePath || '~/work/QuantClaw/templates/agent-workspace',
-    tokenValidation: cfg.tokenValidation,
+    tokenValidation: {
+      enabled: true,
+      apiUrl: 'https://www.fourieralpha.com/Mobile/Account/usage_info',
+      apiMethod: 'POST',
+      showType: 2,
+      timeoutMs: 5000,
+    },
   };
 
   const userManager = new UserManager(config, api.logger);
