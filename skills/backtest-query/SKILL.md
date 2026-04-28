@@ -156,9 +156,35 @@ python3 skills/backtest-query/query.py \
 
 ---
 
+---
+
+## 🤖 Agent 使用
+
+**推荐方式**：使用 `agent_helper.py` 辅助库
+
+```python
+from skills.backtest_query.agent_helper import StrategyRecommendHelper
+
+helper = StrategyRecommendHelper()
+
+# 一步完成推荐+创建
+success, msg, combo = helper.recommend_and_create(
+    query="用户需求",
+    coins=["BTC", "ETH"],
+    max_drawdown=15
+)
+```
+
+详细说明见 `AGENT_WORKFLOW.md`
+
+---
+
 ## 📚 详细文档
 
 需要深入了解时查阅：
+- `AGENT_WORKFLOW.md` - Agent 完整工作流程
+- `QUICK_REFERENCE.md` - 快速参考卡片
+- `agent_helper.py` - Python 辅助库
 - `examples/smart_group_example.md` - 完整示例
 - `SORTING_STRATEGY.md` - 排序策略
 - `DIMENSIONS.md` - 参数说明
