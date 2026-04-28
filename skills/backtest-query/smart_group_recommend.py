@@ -593,6 +593,7 @@ def main():
     parser.add_argument("--directions", type=str, help="方向列表（逗号分隔）")
     parser.add_argument("--search-pcts", type=str, help="比例选择列表（逗号分隔）")
     parser.add_argument("--ai-time-ids", type=str, help="AI时间ID列表（逗号分隔）")
+    parser.add_argument("--versions", type=str, help="策略版本列表（逗号分隔）")
     parser.add_argument("--search-recommand-type", type=int, default=1, help="推荐类型（1=推荐 2=交易中策略，默认=1）")
     
     # 分组和筛选参数
@@ -675,6 +676,10 @@ def main():
     if args.ai_time_ids:
         ai_time_ids = [t.strip() for t in args.ai_time_ids.split(',')]
     
+    versions = []
+    if args.versions:
+        versions = [v.strip() for v in args.versions.split(',')]
+    
     # 生成所有参数组合
     import itertools
     
@@ -689,8 +694,10 @@ def main():
         search_pcts = [None]
     if not ai_time_ids:
         ai_time_ids = [None]
+    if not versions:
+        versions = [None]
     
-    param_combinations = list(itertools.product(coins, strategy_types, directions, search_pcts, ai_time_ids))
+    param_combinations = list(itertools.product(coins, strategy_types, directions, search_pcts, ai_time_ids, versions))
     
     print(f"📋 共需查询 {len(param_combinations)} 个参数组合")
     
@@ -698,7 +705,7 @@ def main():
     all_strategies = []
     seen_back_ids = set()
     
-    for i, (coin, strategy_type, direction, search_pct, ai_time_id) in enumerate(param_combinations, 1):
+    for i, (coin, strategy_type, direction, search_pct, ai_time_id, version) in enumerate(param_combinations, 1):
         fetch_params = base_params.copy()
         
         params_desc = []
@@ -717,6 +724,9 @@ def main():
         if ai_time_id:
             fetch_params['ai_time_id'] = ai_time_id
             params_desc.append(f"时间ID={ai_time_id}")
+        if version:
+            fetch_params['version'] = version
+            params_desc.append(f"版本={version}")
         
         params_str = ', '.join(params_desc) if params_desc else '无筛选'
         print(f"\n🔍 [{i}/{len(param_combinations)}] 查询: {params_str}")
