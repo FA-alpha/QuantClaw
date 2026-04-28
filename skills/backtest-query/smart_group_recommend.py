@@ -122,6 +122,7 @@ class SmartGroupRecommender:
         for i, strategy in enumerate(strategies[:max_fetch], 1):
             back_id = strategy.get('back_id')
             if not back_id:
+                self.log(f"   [{i}/{min(len(strategies), max_fetch)}] ⚠️  缺少 back_id，跳过")
                 continue
             
             coin = strategy.get('coin', 'N/A')
@@ -129,20 +130,24 @@ class SmartGroupRecommender:
             
             self.log(f"   [{i}/{min(len(strategies), max_fetch)}] {coin} / {name}")
             
-            detail = get_backtest_detail(self.token, back_id)
-            
-            if "error" not in detail:
-                # 提取关键详情指标
-                info = detail.get('info', {})
-                strategy['_detail'] = {
-                    'total_stat': info.get('total_stat', {}),
-                    'recent_stat': info.get('recent_stat', {}),
-                    'coin_fee_list': info.get('coin_fee_list', []),
-                    'time_line_list': info.get('time_line_list', [])
-                }
-                enriched.append(strategy)
-            else:
-                self.log(f"      ⚠️  获取失败: {detail['error']}")
+            try:
+                detail = get_backtest_detail(self.token, back_id)
+                
+                if "error" not in detail:
+                    # 提取关键详情指标
+                    info = detail.get('info', {})
+                    strategy['_detail'] = {
+                        'total_stat': info.get('total_stat', {}),
+                        'recent_stat': info.get('recent_stat', {}),
+                        'coin_fee_list': info.get('coin_fee_list', []),
+                        'time_line_list': info.get('time_line_list', [])
+                    }
+                    enriched.append(strategy)
+                else:
+                    self.log(f"      ⚠️  API返回错误: {detail['error']}，跳过该策略")
+            except Exception as e:
+                self.log(f"      ⚠️  获取异常: {str(e)}，跳过该策略")
+                continue
         
         self.log(f"✅ 成功获取 {len(enriched)} 个策略详情")
         return enriched
