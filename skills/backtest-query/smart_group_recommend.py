@@ -352,7 +352,8 @@ class SmartGroupRecommender:
         top_per_group: int = 5,
         detail_criteria: Optional[Dict] = None,
         max_combinations: int = 10,
-        sort_methods: Optional[List[str]] = None
+        sort_methods: Optional[List[str]] = None,
+        api_sort_type: Optional[int] = None
     ) -> Dict:
         """
         智能推荐主流程
@@ -364,6 +365,7 @@ class SmartGroupRecommender:
             detail_criteria: 详情筛选条件
             max_combinations: 最多推荐几个组合
             sort_methods: 排序方式列表 ['sharpe', 'return', 'drawdown', ...]
+            api_sort_type: API排序类型（None=不排序, 1=最新, 2=收益, 3=夏普, 4=回撤）
         
         Returns:
             推荐结果
@@ -379,6 +381,18 @@ class SmartGroupRecommender:
         
         # 2. 查询数据
         self.log(f"\n🔍 查询策略数据...")
+        
+        # 应用 API 排序类型
+        if api_sort_type is not None:
+            fetch_params['sort_type'] = api_sort_type
+            sort_map = {1: '最新', 2: '收益率', 3: '夏普率', 4: '回撤率'}
+            self.log(f"   📌 API排序: {sort_map.get(api_sort_type, '未知')}")
+        else:
+            # 不指定排序，让接口返回更多样化的数据
+            if 'sort_type' in fetch_params:
+                del fetch_params['sort_type']
+            self.log(f"   📌 API排序: 不指定（获取多样化数据）")
+        
         result = query_backtest(**fetch_params)
         
         if "error" in result:
@@ -526,6 +540,7 @@ def main():
     parser.add_argument("--top-per-group", type=int, default=5, help="每种排序方式取几个策略")
     parser.add_argument("--max-combinations", type=int, default=10, help="最多推荐几个组合")
     parser.add_argument("--sort-methods", type=str, help="排序方式（逗号分隔），支持: sharpe,return,drawdown,win_rate,stability,score,custom:字段名")
+    parser.add_argument("--api-sort", type=int, choices=[1, 2, 3, 4], help="API排序类型（1=最新 2=收益 3=夏普 4=回撤）默认不排序")
     
     # 详情筛选条件
     parser.add_argument("--min-total-win-rate", type=float, help="最小总胜率")
@@ -559,8 +574,8 @@ def main():
         'token': token,
         'page': 1,
         'limit': -1,
-        'sort_type': 2,
         'search_recommand_type': 1
+        # 不设置 sort_type，让接口返回更多样化的数据
     }
     
     if args.coins:
@@ -609,7 +624,8 @@ def main():
             top_per_group=args.top_per_group,
             detail_criteria=detail_criteria if detail_criteria else None,
             max_combinations=args.max_combinations,
-            sort_methods=sort_methods
+            sort_methods=sort_methods,
+            api_sort_type=args.api_sort
         )
         
         # 打印结果
