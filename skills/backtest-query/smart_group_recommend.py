@@ -353,7 +353,8 @@ class SmartGroupRecommender:
     def smart_recommend(
         self,
         query_text: str,
-        fetch_params: Dict,
+        fetch_params: Dict = None,
+        strategies: List[Dict] = None,
         top_per_group: int = 5,
         detail_criteria: Optional[Dict] = None,
         max_combinations: int = 10,
@@ -365,7 +366,8 @@ class SmartGroupRecommender:
         
         Args:
             query_text: 用户查询需求
-            fetch_params: 数据查询参数
+            fetch_params: 数据查询参数（与 strategies 二选一）
+            strategies: 预先查询的策略列表（与 fetch_params 二选一）
             top_per_group: 每组取几个策略
             detail_criteria: 详情筛选条件
             max_combinations: 最多推荐几个组合
@@ -384,26 +386,31 @@ class SmartGroupRecommender:
         group_by = self.infer_grouping_strategy(query_text)
         self.log(f"🎯 分组策略: {' → '.join(group_by)}")
         
-        # 2. 查询数据
-        self.log(f"\n🔍 查询策略数据...")
-        
-        # 应用 API 排序类型（默认按收益率）
-        sort_map = {1: '最新', 2: '收益率', 3: '夏普率', 4: '回撤率'}
-        if api_sort_type is not None:
-            fetch_params['sort_type'] = api_sort_type
-            self.log(f"   📌 API排序: {sort_map.get(api_sort_type, '未知')}")
+        # 2. 获取策略数据
+        if strategies is not None:
+            # 使用预先查询的数据
+            self.log(f"\n📊 使用预先查询的 {len(strategies)} 条策略")
         else:
-            # 默认按收益率排序
-            fetch_params['sort_type'] = 2
-            self.log(f"   📌 API排序: 收益率（默认）")
-        
-        result = query_backtest(**fetch_params)
-        
-        if "error" in result:
-            return {"error": result["error"]}
-        
-        strategies = result.get("info", [])
-        self.log(f"✅ 获取 {len(strategies)} 条策略")
+            # 通过 API 查询
+            self.log(f"\n🔍 查询策略数据...")
+            
+            # 应用 API 排序类型（默认按收益率）
+            sort_map = {1: '最新', 2: '收益率', 3: '夏普率', 4: '回撤率'}
+            if api_sort_type is not None:
+                fetch_params['sort_type'] = api_sort_type
+                self.log(f"   📌 API排序: {sort_map.get(api_sort_type, '未知')}")
+            else:
+                # 默认按收益率排序
+                fetch_params['sort_type'] = 2
+                self.log(f"   📌 API排序: 收益率（默认）")
+            
+            result = query_backtest(**fetch_params)
+            
+            if "error" in result:
+                return {"error": result["error"]}
+            
+            strategies = result.get("info", [])
+            self.log(f"✅ 获取 {len(strategies)} 条策略")
         
         if not strategies:
             return {"error": "未找到策略"}
@@ -635,8 +642,8 @@ def main():
         print(f"❌ 获取 token 失败: {e}")
         sys.exit(1)
     
-    # 构建查询参数
-    fetch_params = {
+    # 构建基础查询参数
+    base_params = {
         'token': token,
         'page': 1,
         'limit': -1,
@@ -644,22 +651,94 @@ def main():
         # sort_type 在 smart_recommend() 中设置（默认为2-按收益率）
     }
     
+    # 解析多值参数
+    coins = []
     if args.coins:
-        # 如果指定了多个币种，需要分别查询
-        # 这里简化处理，只传第一个
         coins = [c.strip() for c in args.coins.split(',')]
-        if len(coins) == 1:
-            fetch_params['search_coin'] = coins[0]
     
+    strategy_types = []
     if args.strategy_types:
-        types = [int(t.strip()) for t in args.strategy_types.split(',')]
-        if len(types) == 1:
-            fetch_params['strategy_type'] = types[0]
+        strategy_types = [int(t.strip()) for t in args.strategy_types.split(',')]
     
+    directions = []
     if args.directions:
-        dirs = [d.strip() for d in args.directions.split(',')]
-        if len(dirs) == 1:
-            fetch_params['search_direction'] = dirs[0]
+        directions = [d.strip() for d in args.directions.split(',')]
+    
+    # 生成所有参数组合
+    import itertools
+    
+    # 至少有一个空列表，确保至少执行一次查询
+    if not coins:
+        coins = [None]
+    if not strategy_types:
+        strategy_types = [None]
+    if not directions:
+        directions = [None]
+    
+    param_combinations = list(itertools.product(coins, strategy_types, directions))
+    
+    print(f"📋 共需查询 {len(param_combinations)} 个参数组合")
+    
+    # 轮询查询所有组合
+    all_strategies = []
+    seen_back_ids = set()
+    
+    for i, (coin, strategy_type, direction) in enumerate(param_combinations, 1):
+        fetch_params = base_params.copy()
+        
+        params_desc = []
+        if coin:
+            fetch_params['search_coin'] = coin
+            params_desc.append(f"币种={coin}")
+        if strategy_type:
+            fetch_params['strategy_type'] = strategy_type
+            params_desc.append(f"类型={strategy_type}")
+        if direction:
+            fetch_params['search_direction'] = direction
+            params_desc.append(f"方向={direction}")
+        
+        params_str = ', '.join(params_desc) if params_desc else '无筛选'
+        print(f"\n🔍 [{i}/{len(param_combinations)}] 查询: {params_str}")
+        
+        try:
+            result = query_backtest(**fetch_params)
+            
+            if "error" in result:
+                print(f"   ⚠️  查询失败: {result['error']}")
+                continue
+            
+            strategies = result.get("info", [])
+            
+            # 去重并添加
+            new_count = 0
+            for strategy in strategies:
+                back_id = strategy.get('back_id')
+                if back_id and back_id not in seen_back_ids:
+                    seen_back_ids.add(back_id)
+                    all_strategies.append(strategy)
+                    new_count += 1
+            
+            print(f"   ✅ 获取 {len(strategies)} 条，新增 {new_count} 条（去重后）")
+            
+        except Exception as e:
+            print(f"   ⚠️  查询异常: {str(e)}")
+            continue
+    
+    print(f"\n📊 合并后共 {len(all_strategies)} 条策略")
+    
+    if not all_strategies:
+        print("❌ 未查询到任何策略")
+        sys.exit(1)
+    
+    # 将合并后的策略包装成标准结果格式
+    merged_result = {
+        "info": all_strategies,
+        "page": 1,
+        "total": len(all_strategies)
+    }
+    
+    # 修改 fetch_params，用于传递给 smart_recommend（仅用于日志）
+    fetch_params = base_params
     
     # 构建详情筛选条件
     detail_criteria = {}
@@ -683,10 +762,10 @@ def main():
     recommender = SmartGroupRecommender(token, verbose=not args.quiet)
     
     try:
-        # 执行智能推荐
+        # 执行智能推荐（传入预先合并的策略列表）
         result = recommender.smart_recommend(
             query_text=args.query,
-            fetch_params=fetch_params,
+            strategies=all_strategies,  # 使用合并后的策略列表
             top_per_group=args.top_per_group,
             detail_criteria=detail_criteria if detail_criteria else None,
             max_combinations=args.max_combinations,
