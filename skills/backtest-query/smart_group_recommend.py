@@ -594,6 +594,7 @@ def main():
     parser.add_argument("--search-pcts", type=str, help="比例选择列表（逗号分隔）")
     parser.add_argument("--ai-time-ids", type=str, help="AI时间ID列表（逗号分隔）")
     parser.add_argument("--versions", type=str, help="策略版本列表（逗号分隔）")
+    parser.add_argument("--version-configs", type=str, help="版本配置对象数组（JSON格式），例：'[{\"version\":4.3,\"leverage\":3,\"search_extend\":\"3w\"}]'")
     parser.add_argument("--search-recommand-type", type=int, default=1, help="推荐类型（1=推荐 2=交易中策略，默认=1）")
     
     # 分组和筛选参数
@@ -655,6 +656,19 @@ def main():
         # sort_type 在查询时动态设置（默认为2-按收益率）
     }
     
+    # 解析 version_configs（优先）
+    version_configs = []
+    if args.version_configs:
+        try:
+            version_configs = json.loads(args.version_configs)
+            if not isinstance(version_configs, list):
+                print("❌ --version-configs 必须是 JSON 数组格式")
+                sys.exit(1)
+            print(f"📦 使用版本配置对象: {len(version_configs)} 个配置")
+        except json.JSONDecodeError as e:
+            print(f"❌ --version-configs JSON 解析失败: {e}")
+            sys.exit(1)
+    
     # 解析多值参数
     coins = []
     if args.coins:
@@ -683,21 +697,40 @@ def main():
     # 生成所有参数组合
     import itertools
     
-    # 至少有一个空列表，确保至少执行一次查询
-    if not coins:
-        coins = [None]
-    if not strategy_types:
-        strategy_types = [None]
-    if not directions:
-        directions = [None]
-    if not search_pcts:
-        search_pcts = [None]
-    if not ai_time_ids:
-        ai_time_ids = [None]
-    if not versions:
-        versions = [None]
-    
-    param_combinations = list(itertools.product(coins, strategy_types, directions, search_pcts, ai_time_ids, versions))
+    # 如果指定了 version_configs，使用它；否则使用传统轮询
+    if version_configs:
+        # 使用版本配置对象轮询
+        # 其他参数仍然需要组合
+        if not coins:
+            coins = [None]
+        if not strategy_types:
+            strategy_types = [None]
+        if not directions:
+            directions = [None]
+        
+        # 生成组合：币种 × 策略类型 × 方向 × 版本配置
+        param_combinations = []
+        for coin in coins:
+            for strategy_type in strategy_types:
+                for direction in directions:
+                    for version_config in version_configs:
+                        param_combinations.append((coin, strategy_type, direction, version_config))
+    else:
+        # 传统轮询方式
+        if not coins:
+            coins = [None]
+        if not strategy_types:
+            strategy_types = [None]
+        if not directions:
+            directions = [None]
+        if not search_pcts:
+            search_pcts = [None]
+        if not ai_time_ids:
+            ai_time_ids = [None]
+        if not versions:
+            versions = [None]
+        
+        param_combinations = list(itertools.product(coins, strategy_types, directions, search_pcts, ai_time_ids, versions))
     
     print(f"📋 共需查询 {len(param_combinations)} 个参数组合")
     
@@ -705,55 +738,110 @@ def main():
     all_strategies = []
     seen_back_ids = set()
     
-    for i, (coin, strategy_type, direction, search_pct, ai_time_id, version) in enumerate(param_combinations, 1):
-        fetch_params = base_params.copy()
-        
-        params_desc = []
-        if coin:
-            fetch_params['search_coin'] = coin
-            params_desc.append(f"币种={coin}")
-        if strategy_type:
-            fetch_params['strategy_type'] = strategy_type
-            params_desc.append(f"类型={strategy_type}")
-        if direction:
-            fetch_params['search_direction'] = direction
-            params_desc.append(f"方向={direction}")
-        if search_pct:
-            fetch_params['search_pct'] = search_pct
-            params_desc.append(f"比例={search_pct}")
-        if ai_time_id:
-            fetch_params['ai_time_id'] = ai_time_id
-            params_desc.append(f"时间ID={ai_time_id}")
-        if version:
-            fetch_params['version'] = version
-            params_desc.append(f"版本={version}")
-        
-        params_str = ', '.join(params_desc) if params_desc else '无筛选'
-        print(f"\n🔍 [{i}/{len(param_combinations)}] 查询: {params_str}")
-        
-        try:
-            result = query_backtest(**fetch_params)
+    if version_configs:
+        # 使用版本配置对象轮询
+        for i, (coin, strategy_type, direction, version_config) in enumerate(param_combinations, 1):
+            fetch_params = base_params.copy()
             
-            if "error" in result:
-                print(f"   ⚠️  查询失败: {result['error']}")
+            params_desc = []
+            if coin:
+                fetch_params['search_coin'] = coin
+                params_desc.append(f"币种={coin}")
+            if strategy_type:
+                fetch_params['strategy_type'] = strategy_type
+                params_desc.append(f"类型={strategy_type}")
+            if direction:
+                fetch_params['search_direction'] = direction
+                params_desc.append(f"方向={direction}")
+            
+            # 从版本配置对象中提取参数
+            if 'version' in version_config:
+                fetch_params['version'] = version_config['version']
+                params_desc.append(f"版本={version_config['version']}")
+            if 'leverage' in version_config:
+                fetch_params['leverage'] = version_config['leverage']
+                params_desc.append(f"杠杆={version_config['leverage']}倍")
+            if 'search_extend' in version_config:
+                fetch_params['search_extend'] = version_config['search_extend']
+                params_desc.append(f"扩展={version_config['search_extend']}")
+            
+            params_str = ', '.join(params_desc) if params_desc else '无筛选'
+            print(f"\n🔍 [{i}/{len(param_combinations)}] 查询: {params_str}")
+            
+            try:
+                result = query_backtest(**fetch_params)
+                
+                if "error" in result:
+                    print(f"   ⚠️  查询失败: {result['error']}")
+                    continue
+                
+                strategies = result.get("info", [])
+                
+                # 去重并添加
+                new_count = 0
+                for strategy in strategies:
+                    back_id = strategy.get('back_id')
+                    if back_id and back_id not in seen_back_ids:
+                        seen_back_ids.add(back_id)
+                        all_strategies.append(strategy)
+                        new_count += 1
+                
+                print(f"   ✅ 获取 {len(strategies)} 条，新增 {new_count} 条（去重后）")
+                
+            except Exception as e:
+                print(f"   ⚠️  查询异常: {str(e)}")
                 continue
+    else:
+        # 传统轮询方式
+        for i, (coin, strategy_type, direction, search_pct, ai_time_id, version) in enumerate(param_combinations, 1):
+            fetch_params = base_params.copy()
             
-            strategies = result.get("info", [])
+            params_desc = []
+            if coin:
+                fetch_params['search_coin'] = coin
+                params_desc.append(f"币种={coin}")
+            if strategy_type:
+                fetch_params['strategy_type'] = strategy_type
+                params_desc.append(f"类型={strategy_type}")
+            if direction:
+                fetch_params['search_direction'] = direction
+                params_desc.append(f"方向={direction}")
+            if search_pct:
+                fetch_params['search_pct'] = search_pct
+                params_desc.append(f"比例={search_pct}")
+            if ai_time_id:
+                fetch_params['ai_time_id'] = ai_time_id
+                params_desc.append(f"时间ID={ai_time_id}")
+            if version:
+                fetch_params['version'] = version
+                params_desc.append(f"版本={version}")
             
-            # 去重并添加
-            new_count = 0
-            for strategy in strategies:
-                back_id = strategy.get('back_id')
-                if back_id and back_id not in seen_back_ids:
-                    seen_back_ids.add(back_id)
-                    all_strategies.append(strategy)
-                    new_count += 1
+            params_str = ', '.join(params_desc) if params_desc else '无筛选'
+            print(f"\n🔍 [{i}/{len(param_combinations)}] 查询: {params_str}")
             
-            print(f"   ✅ 获取 {len(strategies)} 条，新增 {new_count} 条（去重后）")
-            
-        except Exception as e:
-            print(f"   ⚠️  查询异常: {str(e)}")
-            continue
+            try:
+                result = query_backtest(**fetch_params)
+                
+                if "error" in result:
+                    print(f"   ⚠️  查询失败: {result['error']}")
+                    continue
+                
+                strategies = result.get("info", [])
+                
+                # 去重并添加
+                new_count = 0
+                for strategy in strategies:
+                    back_id = strategy.get('back_id')
+                    if back_id and back_id not in seen_back_ids:
+                        seen_back_ids.add(back_id)
+                        all_strategies.append(strategy)
+                        new_count += 1
+                
+                print(f"   ✅ 获取 {len(strategies)} 条，新增 {new_count} 条（去重后）")
+                
+            except Exception as e:
+                print(f"   ⚠️  查询异常: {str(e)}")
+                continue
     
     print(f"\n📊 合并后共 {len(all_strategies)} 条策略")
     
