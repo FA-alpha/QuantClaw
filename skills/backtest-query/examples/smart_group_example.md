@@ -20,22 +20,23 @@
 
 ### 🎯 工作流程
 1. **智能分组**：根据需求自动分组
-2. **Top-N 筛选**：每组取 Top N 个策略
-3. **详情获取**：批量获取策略详情
-4. **深度筛选**：基于详情指标二次筛选
-5. **组合优化**：形成最优策略组合
+2. **多维度筛选**：每组按多种排序方式取 Top N（夏普率/收益率/回撤等）
+3. **去重合并**：合并不同排序方式的结果
+4. **详情获取**：批量获取策略详情
+5. **深度筛选**：基于详情指标二次筛选
+6. **组合优化**：形成最优策略组合
 
 ---
 
 ## 使用示例
 
-### 示例 1：按币种分组推荐
+### 示例 1：按币种分组推荐（默认多排序）
 
 ```bash
 python3 smart_group_recommend.py \
   --query "帮我找BTC、ETH、SOL的最优策略" \
   --coins "BTC,ETH,SOL" \
-  --top-per-group 5 \
+  --top-per-group 3 \
   --min-total-win-rate 60 \
   --min-recent-profit-rate 10
 ```
@@ -43,21 +44,44 @@ python3 smart_group_recommend.py \
 **执行流程**：
 1. 识别分组维度：`coin`
 2. 分成 3 组：BTC / ETH / SOL
-3. 每组取 Top 5（按夏普率）
-4. 获取 15 个策略详情
-5. 筛选：总胜率 ≥60%，近期收益 ≥10%
+3. 每组按 3 种方式排序（夏普率、收益率、回撤），各取 Top 3
+4. 去重后每组约 5-9 个策略
+5. 获取详情并筛选：总胜率 ≥60%，近期收益 ≥10%
 6. 生成最优组合
 
 ---
 
-### 示例 2：按币种+方向分组
+### 示例 1.1：指定排序方式
+
+```bash
+python3 smart_group_recommend.py \
+  --query "帮我找BTC的最优策略" \
+  --coins "BTC" \
+  --top-per-group 5 \
+  --sort-methods "sharpe,return,drawdown,win_rate" \
+  --min-total-win-rate 60
+```
+
+**排序方式说明**：
+- `sharpe`: 夏普率（收益/风险比）
+- `return`: 年化收益率
+- `drawdown`: 最小回撤
+- `win_rate`: 胜率（需详情数据）
+- `stability`: 稳定性（需详情数据）
+
+**结果**：每组按 4 种方式各取 Top 5，去重后约 10-20 个策略
+
+---
+
+### 示例 2：按币种+方向分组（多排序）
 
 ```bash
 python3 smart_group_recommend.py \
   --query "不同币种的多空策略组合" \
   --coins "BTC,ETH" \
   --directions "long,short" \
-  --top-per-group 3 \
+  --top-per-group 2 \
+  --sort-methods "sharpe,return" \
   --min-stability 0.8 \
   --max-recent-drawdown 15
 ```
@@ -65,10 +89,9 @@ python3 smart_group_recommend.py \
 **执行流程**：
 1. 识别分组维度：`coin` + `direction`
 2. 分成 4 组：BTC多 / BTC空 / ETH多 / ETH空
-3. 每组取 Top 3
-4. 获取 12 个策略详情
-5. 筛选：稳定性 ≥0.8，近期回撤 ≤15%
-6. 生成平衡组合
+3. 每组按 2 种方式各取 Top 2（去重后 2-4 个）
+4. 获取详情并筛选：稳定性 ≥0.8，近期回撤 ≤15%
+5. 生成平衡组合
 
 ---
 

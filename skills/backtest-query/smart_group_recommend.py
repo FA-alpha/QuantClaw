@@ -247,13 +247,89 @@ class SmartGroupRecommender:
     
     # ==================== 智能推荐流程 ====================
     
+    def get_top_by_multiple_sorts(
+        self,
+        strategies: List[Dict],
+        top_n: int = 5,
+        sort_methods: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """
+        按多种排序方式取 Top-N，去重后返回
+        
+        Args:
+            strategies: 策略列表
+            top_n: 每种排序方式取几个
+            sort_methods: 排序方式列表，支持：
+                - 'sharpe': 夏普率（默认）
+                - 'return': 年化收益率
+                - 'win_rate': 胜率（需详情）
+                - 'drawdown': 最小回撤
+                - 'stability': 稳定性（需详情）
+        
+        Returns:
+            去重后的策略列表
+        """
+        if not sort_methods:
+            sort_methods = ['sharpe', 'return', 'drawdown']
+        
+        selected = {}  # 用 back_id 去重
+        
+        for method in sort_methods:
+            self.log(f"   🔹 按 {method} 排序取 Top {top_n}")
+            
+            if method == 'sharpe':
+                sorted_list = sorted(
+                    strategies,
+                    key=lambda s: s.get('sharp_rate', 0),
+                    reverse=True
+                )
+            elif method == 'return':
+                sorted_list = sorted(
+                    strategies,
+                    key=lambda s: s.get('year_rate', 0),
+                    reverse=True
+                )
+            elif method == 'drawdown':
+                sorted_list = sorted(
+                    strategies,
+                    key=lambda s: s.get('max_loss', 100),
+                    reverse=False  # 回撤越小越好
+                )
+            elif method == 'win_rate':
+                # 需要详情数据
+                sorted_list = sorted(
+                    strategies,
+                    key=lambda s: s.get('_metrics', {}).get('total_win_rate', 0),
+                    reverse=True
+                )
+            elif method == 'stability':
+                # 需要详情数据
+                sorted_list = sorted(
+                    strategies,
+                    key=lambda s: s.get('_metrics', {}).get('recent_stability', 0),
+                    reverse=True
+                )
+            else:
+                self.log(f"      ⚠️  未知排序方式: {method}")
+                continue
+            
+            # 取前 N 个
+            for strategy in sorted_list[:top_n]:
+                back_id = strategy.get('back_id')
+                if back_id and back_id not in selected:
+                    selected[back_id] = strategy
+                    self.log(f"      ✅ {strategy.get('coin')} / {strategy.get('name')} ({method})")
+        
+        return list(selected.values())
+    
     def smart_recommend(
         self,
         query_text: str,
         fetch_params: Dict,
         top_per_group: int = 5,
         detail_criteria: Optional[Dict] = None,
-        max_combinations: int = 10
+        max_combinations: int = 10,
+        sort_methods: Optional[List[str]] = None
     ) -> Dict:
         """
         智能推荐主流程
@@ -264,6 +340,7 @@ class SmartGroupRecommender:
             top_per_group: 每组取几个策略
             detail_criteria: 详情筛选条件
             max_combinations: 最多推荐几个组合
+            sort_methods: 排序方式列表 ['sharpe', 'return', 'drawdown', ...]
         
         Returns:
             推荐结果
@@ -299,28 +376,32 @@ class SmartGroupRecommender:
             label = " / ".join([f"{dim}={val}" for dim, val in zip(group_by, key)])
             self.log(f"   - {label}: {len(group_strategies)} 个策略")
         
-        # 4. 每组筛选 top 策略并获取详情
+        # 4. 每组按多种排序方式筛选 top 策略
         all_selected = []
         
-        self.log(f"\n🎯 每组筛选 Top {top_per_group} 策略并获取详情...")
+        if sort_methods:
+            self.log(f"\n🎯 每组按多种排序方式筛选策略...")
+            self.log(f"   排序方式: {', '.join(sort_methods)}")
+            self.log(f"   每种方式取 Top {top_per_group}")
+        else:
+            self.log(f"\n🎯 每组按默认方式筛选 Top {top_per_group} 策略...")
         
         for key, group_strategies in groups.items():
             label = " / ".join([f"{val}" for val in key])
-            self.log(f"\n--- {label} ---")
+            self.log(f"\n--- {label} ({len(group_strategies)} 个策略) ---")
             
-            # 按夏普率排序
-            sorted_group = sorted(
+            # 使用多种排序方式取 Top-N
+            top_strategies = self.get_top_by_multiple_sorts(
                 group_strategies,
-                key=lambda s: s.get('sharp_rate', 0),
-                reverse=True
+                top_n=top_per_group,
+                sort_methods=sort_methods
             )
             
-            # 取前 N 个
-            top_strategies = sorted_group[:top_per_group]
-            self.log(f"📊 选择前 {len(top_strategies)} 个策略")
+            self.log(f"📊 去重后选择 {len(top_strategies)} 个策略")
             
             # 获取详情
-            enriched = self.fetch_detail_data(top_strategies, max_fetch=top_per_group)
+            self.log(f"\n📊 获取详情数据...")
+            enriched = self.fetch_detail_data(top_strategies, max_fetch=len(top_strategies))
             
             # 基于详情进一步筛选
             if detail_criteria:
@@ -361,7 +442,8 @@ class SmartGroupRecommender:
             "total_selected": len(all_selected),
             "selected_strategies": all_selected,
             "combinations": combinations,
-            "criteria": detail_criteria
+            "criteria": detail_criteria,
+            "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown']
         }
     
     def print_result(self, result: Dict):
@@ -376,6 +458,7 @@ class SmartGroupRecommender:
         
         print(f"\n🎯 分组维度: {' → '.join(result['group_by'])}")
         print(f"📦 分组数量: {len(result['groups'])} 组")
+        print(f"🔄 排序方式: {', '.join(result.get('sort_methods', ['sharpe']))}")
         print(f"📊 总共获取: {result['total_fetched']} 条策略")
         print(f"✅ 筛选出: {result['total_selected']} 条优质策略")
         
@@ -417,8 +500,9 @@ def main():
     parser.add_argument("--directions", type=str, help="方向列表（逗号分隔）")
     
     # 分组和筛选参数
-    parser.add_argument("--top-per-group", type=int, default=5, help="每组取几个策略")
+    parser.add_argument("--top-per-group", type=int, default=5, help="每种排序方式取几个策略")
     parser.add_argument("--max-combinations", type=int, default=10, help="最多推荐几个组合")
+    parser.add_argument("--sort-methods", type=str, help="排序方式（逗号分隔），支持: sharpe,return,drawdown,win_rate,stability")
     
     # 详情筛选条件
     parser.add_argument("--min-total-win-rate", type=float, help="最小总胜率")
@@ -486,6 +570,11 @@ def main():
     if args.min_stability:
         detail_criteria['min_stability'] = args.min_stability
     
+    # 处理排序方式
+    sort_methods = None
+    if args.sort_methods:
+        sort_methods = [m.strip() for m in args.sort_methods.split(',')]
+    
     # 创建推荐器
     recommender = SmartGroupRecommender(token, verbose=not args.quiet)
     
@@ -496,7 +585,8 @@ def main():
             fetch_params=fetch_params,
             top_per_group=args.top_per_group,
             detail_criteria=detail_criteria if detail_criteria else None,
-            max_combinations=args.max_combinations
+            max_combinations=args.max_combinations,
+            sort_methods=sort_methods
         )
         
         # 打印结果

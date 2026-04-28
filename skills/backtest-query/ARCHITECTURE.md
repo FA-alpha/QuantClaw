@@ -73,7 +73,11 @@ skills/backtest-query/
    ↓
 按维度分组 (classify_strategies)
    ↓
-每组 Top-N 筛选 (sorted by sharpe_rate)
+每组多维度排序 Top-N (get_top_by_multiple_sorts)
+   ├─ 按夏普率排序 → Top N
+   ├─ 按收益率排序 → Top N
+   ├─ 按回撤排序 → Top N
+   └─ 去重合并
    ↓
 批量获取详情 (fetch_detail_data)
    ↓
@@ -100,7 +104,27 @@ def infer_grouping_strategy(self, query_text: str) -> List[str]:
     """
 ```
 
-#### 2. 详情指标提取
+#### 2. 多维度排序 Top-N（NEW）
+```python
+def get_top_by_multiple_sorts(
+    self,
+    strategies: List[Dict],
+    top_n: int = 5,
+    sort_methods: Optional[List[str]] = None
+) -> List[Dict]:
+    """
+    支持排序方式：
+    - sharpe: 夏普率（默认）
+    - return: 年化收益率
+    - drawdown: 最小回撤
+    - win_rate: 胜率（需详情）
+    - stability: 稳定性（需详情）
+    
+    每种方式取 Top N，去重后返回
+    """
+```
+
+#### 3. 详情指标提取
 ```python
 def analyze_detail_metrics(self, strategy: Dict) -> Dict[str, float]:
     """
@@ -111,7 +135,7 @@ def analyze_detail_metrics(self, strategy: Dict) -> Dict[str, float]:
     """
 ```
 
-#### 3. 详情二次筛选
+#### 4. 详情二次筛选
 ```python
 def filter_by_detail_criteria(self, strategies: List[Dict], criteria: Dict):
     """
