@@ -1,0 +1,25 @@
+{
+  "plugins": {
+    "entries": {
+      "quantclaw-auth": {
+        "enabled": true,
+        "config": {
+          "dataPath": "/home/ubuntu/.quantclaw/users.json",
+          "workspaceBase": "~/quantclaw-users",
+          "defaultModel": "openrouter/anthropic/claude-sonnet-4-5",
+          "webhookPath": "/webhook/quantclaw",
+          "autoRegister": true,
+          "skillsPath": "/home/ubuntu/work/QuantClaw/skills",
+          "templatePath": "/home/ubuntu/work/QuantClaw/templates/agent-workspace",
+          "tokenValidation": {
+            "enabled": true,
+            "apiUrl": "https://www.fourieralpha.com/Mobile/Account/usage_info",
+            "apiMethod": "POST",
+            "showType": 2,
+            "timeoutMs": 5000
+          }
+        }
+      }
+    }
+  }
+}
