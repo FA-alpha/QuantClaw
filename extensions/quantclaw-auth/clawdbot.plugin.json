@@ -49,6 +49,21 @@
         "default": "anthropic/claude-haiku",
         "description": "Model for LLM-based message classification (use lightweight model)"
       },
+      "autoRegister": {
+        "type": "boolean",
+        "default": true,
+        "description": "Allow automatic user registration on first access"
+      },
+      "skillsPath": {
+        "type": "string",
+        "default": "~/work/QuantClaw/skills",
+        "description": "Path to QuantClaw skills directory"
+      },
+      "templatePath": {
+        "type": "string",
+        "default": "~/work/QuantClaw/templates/agent-workspace",
+        "description": "Path to agent workspace template"
+      },
       "tokenValidation": {
         "type": "object",
         "description": "External token validation configuration",
