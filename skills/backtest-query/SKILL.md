@@ -30,9 +30,28 @@ python3 skills/backtest-query/smart_group_recommend.py \
 ```
 
 **常用参数**：
-- `--coins "BTC,ETH"` - 币种
-- `--min-total-win-rate 60` - 最小胜率
-- `--max-recent-drawdown 15` - 最大回撤
+
+**查询范围参数**：
+- `--coins "BTC,ETH,SOL"` - 币种列表（逗号分隔）
+- `--strategy-types "1,7,11"` - 策略类型（1=风霆 7=网格 11=鲲鹏）
+- `--directions "long,short"` - 方向（long=做多 short=做空）
+- `--search-pcts "80,100,120"` - 网格比例（仅网格策略）
+- `--ai-time-ids "5,6"` - AI回测时间ID
+- `--versions "v1,v2"` - 策略版本
+- `--search-recommand-type 1` - 推荐类型（1=推荐 2=交易中）
+
+**筛选条件参数**：
+- `--min-total-win-rate 60` - 最小总胜率（%）
+- `--min-recent-profit-rate 10` - 最小近期收益率（%）
+- `--max-recent-drawdown 15` - 最大近期回撤（%）
+- `--min-trade-count 50` - 最小交易次数
+- `--min-stability 0.8` - 最小稳定性（近期/总体）
+
+**排序和组合参数**：
+- `--top-per-group 5` - 每种排序方式取几个策略（默认5）
+- `--sort-methods "sharpe,return,drawdown"` - 排序方式（可选：sharpe,return,drawdown,win_rate,stability,score）
+- `--api-sort 2` - API排序（1=最新 2=收益 3=夏普 4=回撤，默认2）
+- `--max-combinations 10` - 最多推荐几个组合（默认10）
 
 ### 步骤 3：读取推荐结果
 
@@ -57,15 +76,18 @@ python3 skills/backtest-query/query.py \
 
 ## 💡 完整示例
 
-**用户**："帮我找 BTC 优质策略并创建组合"
+**用户**："帮我找 BTC 和 ETH 的多空策略并创建组合"
 
 **执行**：
 ```bash
-# 1. 推荐
+# 1. 推荐（轮询查询多个组合）
 cd /home/ubuntu/work/QuantClaw
 python3 skills/backtest-query/smart_group_recommend.py \
-  --query "BTC优质策略" \
-  --coins "BTC" \
+  --query "BTC和ETH的多空策略" \
+  --coins "BTC,ETH" \
+  --directions "long,short" \
+  --min-total-win-rate 60 \
+  --max-recent-drawdown 15 \
   --output /tmp/rec.json
 
 # 2. 读取 JSON 提取 tokens
@@ -104,6 +126,41 @@ python3 skills/backtest-query/query.py \
 - **策略混合** - 网格 + 趋势
 
 ### 策略类型
-- 马丁策略：名称含"风霆"
-- 网格策略：strategy_type=7
-- 趋势策略：如"鲲鹏"
+- `1`: 风霆（马丁策略）
+- `7`: 网格策略
+- `11`: 鲲鹏（趋势策略）
+- 更多类型可通过 `DefaultParams.get_strategy_types()` 获取
+
+### 参数取值范围获取
+
+在 Python 脚本中可以获取可用参数：
+
+```python
+from defaults import DefaultParams
+
+manager = DefaultParams(token)
+
+# 获取可用币种
+coins = manager.get_coins()  # 所有币种
+crypto_coins = manager.get_coins(coin_type="CRYPTO")  # 仅虚拟币
+
+# 获取策略类型
+strategy_types = manager.get_strategy_types()  # [1, 7, 11, ...]
+
+# 获取时间ID
+time_ids = manager.get_ai_time_ids()  # ["5", "6", ...]
+
+# 获取网格比例
+btc_pcts = manager.get_grid_pcts("BTC")  # ['10', '20', ..., '120']
+eth_pcts = manager.get_grid_pcts("ETH")  # ['60', '80', ..., '140']
+```
+
+### 轮询查询机制
+
+当传入多个参数值时，系统会轮询查询所有组合并去重合并：
+
+**示例**：
+```bash
+--coins "BTC,ETH" --directions "long,short" --search-pcts "80,100"
+# 将执行 2×2×2 = 8 次查询并去重
+```
