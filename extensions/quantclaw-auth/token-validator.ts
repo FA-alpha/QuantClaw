@@ -47,16 +47,6 @@ export class TokenValidator {
       
       // 根据返回的 status 判断
       if (result.status === 1) {
-        // 进一步检查 user_type 是否有效（FourierAlpha 特殊逻辑）
-        const userType = result.info?.user_type || '';
-        if (!userType || userType.trim() === '') {
-          return {
-            valid: false,
-            status: result.status,
-            message: 'Token validation failed: empty user_type',
-          };
-        }
-        
         return {
           valid: true,
           status: result.status,
