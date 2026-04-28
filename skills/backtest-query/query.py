@@ -433,7 +433,21 @@ def format_result(data: dict, output_format: str = "table") -> str:
 def auto_get_token():
     """自动获取当前 Agent 的 token"""
     workspace = os.getcwd()
-    agent_id = os.path.basename(workspace).replace('clawd-', '')
+    
+    # 从 workspace 路径提取 agent_id
+    # 支持两种格式:
+    # - 旧格式: /home/ubuntu/clawd-qc-{hash}
+    # - 新格式: /home/ubuntu/quantclaw-users/qc-{hash}
+    agent_id = None
+    if '/quantclaw-users/' in workspace:
+        # 新格式: qc-{hash}
+        agent_id = os.path.basename(workspace)
+    elif workspace.startswith(os.path.expanduser('~/clawd-')):
+        # 旧格式: clawd-qc-{hash} → qc-{hash}
+        agent_id = os.path.basename(workspace).replace('clawd-', '')
+    
+    if not agent_id:
+        return None
     
     users_file = os.path.expanduser('~/.quantclaw/users.json')
     if not os.path.exists(users_file):
