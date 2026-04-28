@@ -34,6 +34,10 @@ class SmartRecommenderV2:
         strategy_types: Optional[List[int]],
         directions: Optional[List[str]],
         ai_time_ids: Optional[List[str]],
+        versions: Optional[List[str]],
+        leverages: Optional[List[int]],
+        grid_pcts: Optional[List[str]],
+        search_extends: Optional[List[str]],
         year: Optional[int]
     ) -> Dict[str, any]:
         """
@@ -106,6 +110,50 @@ class SmartRecommenderV2:
         else:
             self.log(f"🌐 时间未指定，查询全部")
         
+        # 5. 版本维度
+        if versions:
+            if len(versions) > 1:
+                loop_dims['versions'] = versions
+                self.log(f"🔄 版本循环: {versions}")
+            else:
+                fixed_params['version'] = versions[0]
+                self.log(f"📌 版本固定: {versions[0]}")
+        else:
+            self.log(f"🌐 版本未指定，查询全部")
+        
+        # 6. 杠杆维度
+        if leverages:
+            if len(leverages) > 1:
+                loop_dims['leverages'] = leverages
+                self.log(f"🔄 杠杆循环: {leverages}")
+            else:
+                fixed_params['leverage'] = leverages[0]
+                self.log(f"📌 杠杆固定: {leverages[0]}")
+        else:
+            self.log(f"🌐 杠杆未指定，查询全部")
+        
+        # 7. 网格比例维度
+        if grid_pcts:
+            if len(grid_pcts) > 1:
+                loop_dims['grid_pcts'] = grid_pcts
+                self.log(f"🔄 网格比例循环: {grid_pcts}")
+            else:
+                fixed_params['search_pct'] = grid_pcts[0]
+                self.log(f"📌 网格比例固定: {grid_pcts[0]}")
+        else:
+            self.log(f"🌐 网格比例未指定，查询全部")
+        
+        # 8. 扩展参数维度
+        if search_extends:
+            if len(search_extends) > 1:
+                loop_dims['search_extends'] = search_extends
+                self.log(f"🔄 扩展参数循环: {search_extends}")
+            else:
+                fixed_params['search_extend'] = search_extends[0]
+                self.log(f"📌 扩展参数固定: {search_extends[0]}")
+        else:
+            self.log(f"🌐 扩展参数未指定，查询全部")
+        
         return {
             'loop_dims': loop_dims,
             'fixed_params': fixed_params
@@ -137,6 +185,14 @@ class SmartRecommenderV2:
             params['search_direction'] = loop_values['direction']
         if 'ai_time_id' in loop_values:
             params['ai_time_id'] = loop_values['ai_time_id']
+        if 'version' in loop_values:
+            params['version'] = loop_values['version']
+        if 'leverage' in loop_values:
+            params['leverage'] = loop_values['leverage']
+        if 'grid_pct' in loop_values:
+            params['search_pct'] = loop_values['grid_pct']
+        if 'search_extend' in loop_values:
+            params['search_extend'] = loop_values['search_extend']
         
         return params
     
@@ -187,6 +243,10 @@ class SmartRecommenderV2:
         directions: Optional[List[str]] = None,
         year: Optional[int] = None,
         ai_time_ids: Optional[List[str]] = None,
+        versions: Optional[List[str]] = None,
+        leverages: Optional[List[int]] = None,
+        grid_pcts: Optional[List[str]] = None,
+        search_extends: Optional[List[str]] = None,
         recommand_type: int = 1,
         limit: int = 10,
         min_sharpe: Optional[float] = None,
@@ -206,6 +266,10 @@ class SmartRecommenderV2:
             strategy_types: 策略类型列表（多个需要循环）
             directions: 方向列表（多个需要循环）
             ai_time_ids: 时间ID列表（多个需要循环）
+            versions: 版本列表（多个需要循环）
+            leverages: 杠杆列表（多个需要循环）
+            grid_pcts: 网格比例列表（多个需要循环）
+            search_extends: 扩展参数列表（多个需要循环）
         """
         self.log("\n" + "="*60)
         self.log("🚀 智能推荐 v2 - 接口优化版")
@@ -213,7 +277,8 @@ class SmartRecommenderV2:
         
         # 1. 识别循环维度
         loop_config = self._identify_loop_dimensions(
-            coins, strategy_types, directions, ai_time_ids, year
+            coins, strategy_types, directions, ai_time_ids,
+            versions, leverages, grid_pcts, search_extends, year
         )
         
         # 2. 准备查询
@@ -270,6 +335,18 @@ class SmartRecommenderV2:
                 elif key == 'ai_time_ids':
                     loop_values['ai_time_id'] = value
                     label_parts.append(f"时间={value}")
+                elif key == 'versions':
+                    loop_values['version'] = value
+                    label_parts.append(f"版本={value}")
+                elif key == 'leverages':
+                    loop_values['leverage'] = value
+                    label_parts.append(f"杠杆={value}")
+                elif key == 'grid_pcts':
+                    loop_values['grid_pct'] = value
+                    label_parts.append(f"比例={value}")
+                elif key == 'search_extends':
+                    loop_values['search_extend'] = value
+                    label_parts.append(f"扩展={value}")
             
             # 添加固定参数到标签
             fixed = loop_config['fixed_params']
@@ -381,6 +458,10 @@ def main():
     parser.add_argument("--strategy-types", type=str, help="策略类型列表（逗号分隔），如 '11,7'")
     parser.add_argument("--directions", type=str, help="方向列表（逗号分隔），如 'long,short'")
     parser.add_argument("--ai-time-ids", type=str, help="时间ID列表（逗号分隔），如 '5,6'")
+    parser.add_argument("--versions", type=str, help="版本列表（逗号分隔），如 '1,2'")
+    parser.add_argument("--leverages", type=str, help="杠杆列表（逗号分隔），如'3,5'")
+    parser.add_argument("--grid-pcts", type=str, help="网格比例列表（逗号分隔），如 '80,100,120'")
+    parser.add_argument("--search-extends", type=str, help="扩展参数列表（逗号分隔）")
     parser.add_argument("--year", type=int, help="年份")
     
     # 筛选参数
@@ -426,6 +507,22 @@ def main():
     if args.ai_time_ids:
         ai_time_ids = [t.strip() for t in args.ai_time_ids.split(',')]
     
+    versions = None
+    if args.versions:
+        versions = [v.strip() for v in args.versions.split(',')]
+    
+    leverages = None
+    if args.leverages:
+        leverages = [int(l.strip()) for l in args.leverages.split(',')]
+    
+    grid_pcts = None
+    if args.grid_pcts:
+        grid_pcts = [p.strip() for p in args.grid_pcts.split(',')]
+    
+    search_extends = None
+    if args.search_extends:
+        search_extends = [e.strip() for e in args.search_extends.split(',')]
+    
     # 创建推荐器
     recommender = SmartRecommenderV2(token, verbose=not args.quiet)
     
@@ -437,6 +534,10 @@ def main():
             directions=directions,
             year=args.year,
             ai_time_ids=ai_time_ids,
+            versions=versions,
+            leverages=leverages,
+            grid_pcts=grid_pcts,
+            search_extends=search_extends,
             min_sharpe=args.min_sharpe,
             max_drawdown=args.max_drawdown
         )
@@ -468,7 +569,11 @@ def main():
                     "strategy_types": strategy_types,
                     "directions": directions,
                     "year": args.year,
-                    "ai_time_ids": ai_time_ids
+                    "ai_time_ids": ai_time_ids,
+                    "versions": versions,
+                    "leverages": leverages,
+                    "grid_pcts": grid_pcts,
+                    "search_extends": search_extends
                 },
                 "strategies": strategies,
                 "combinations": combinations

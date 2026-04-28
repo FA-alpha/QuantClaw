@@ -22,6 +22,10 @@ python3 smart_recommend_v2.py [参数]
 | `--strategy-types` | 策略类型列表 | `"11,7,1"` |
 | `--directions` | 方向列表 | `"long,short"` |
 | `--ai-time-ids` | 时间ID列表 | `"5,6,7"` |
+| `--versions` | 版本列表 | `"1,2,3"` |
+| `--leverages` | 杠杆列表 | `"3,5,10"` |
+| `--grid-pcts` | 网格比例列表 | `"80,100,120"` |
+| `--search-extends` | 扩展参数列表 | （具体值） |
 | `--year` | 年份（单个） | `2024` |
 | `--min-sharpe` | 最小夏普率 | `1.5` |
 | `--max-drawdown` | 最大回撤 | `0.3` |
@@ -143,8 +147,11 @@ python3 smart_recommend_v2.py \
 ### 公式
 
 ```
-总查询次数 = len(coins) × len(strategy_types) × len(directions) × len(ai_time_ids)
+总查询次数 = len(coins) × len(strategy_types) × len(directions) × len(ai_time_ids) 
+            × len(versions) × len(leverages) × len(grid_pcts) × len(search_extends)
 ```
+
+**注意**：未指定的维度不参与计算（等于1）
 
 ### 示例
 
