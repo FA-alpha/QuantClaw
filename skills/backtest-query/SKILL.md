@@ -58,7 +58,8 @@ python3 skills/backtest-query/query.py \
 | `--directions` | 方向 | `"long,short"` |
 | `--search-pcts` | 网格比例（逗号分隔） | `"80,100,120"` |
 | `--ai-time-ids` | 时间ID（逗号分隔） | `"5,6"` |
-| `--versions` | 版本（逗号分隔） | `"v4.2,v4.3"` |
+| `--versions` | 版本号（逗号分隔） | `"4.2,4.3"` |
+| `--version-configs` | 版本配置对象数组（JSON） | 见下方说明 |
 | `--search-recommand-type` | 推荐类型 | `1`（推荐）/ `2`（交易中） |
 
 ### 筛选条件
@@ -114,6 +115,46 @@ python3 query.py --list-ai-times
 
 **示例3：用户说"主流币"**
 - 根据常识筛选：`BTC,ETH,SOL,BNB`
+
+### 版本配置对象（version-configs）
+
+当用户指定特定版本时（如"风霆v4.3"），需要传入版本配置对象数组。
+
+**工作流程**：
+```python
+# 1. 查询策略类型的版本列表
+from query import get_ai_strategy_list
+result = get_ai_strategy_list(token)
+strategies = result['info']
+
+# 2. 找到目标策略（如风霆V4，strategy_type=11）
+feng_ting_v4 = [s for s in strategies if s['id'] == 11][0]
+
+# 3. 筛选匹配的版本（如 version=4.3）
+v43_configs = [v for v in feng_ting_v4['versions'] if v['version'] == 4.3]
+# 结果: [
+#   {"version": 4.3, "leverage": 3, "search_extend": "3w"},
+#   {"version": 4.3, "leverage": 1.5, "search_extend": "3w"}
+# ]
+
+# 4. 转为 JSON 并传入参数
+import json
+configs_json = json.dumps(v43_configs)
+```
+
+**命令示例**：
+```bash
+python3 smart_group_recommend.py \
+  --query "BTC 风霆v4.3" \
+  --coins "BTC" \
+  --strategy-types "11" \
+  --version-configs '[{"version":4.3,"leverage":3,"search_extend":"3w"},{"version":4.3,"leverage":1.5,"search_extend":"3w"}]'
+```
+
+**说明**：
+- `version-configs` 优先于 `--versions` 参数
+- 每个配置对象包含：`version`（版本号）、`leverage`（杠杆）、`search_extend`（扩展参数）
+- 系统会对每个配置进行轮询查询并去重合并
 
 ---
 
