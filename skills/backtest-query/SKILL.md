@@ -83,35 +83,37 @@ python3 skills/backtest-query/query.py \
 
 ---
 
-## 策略类型映射
+## 查询可用参数
 
-| ID | 名称 | 说明 |
-|----|------|------|
-| `1` | 风霆 | 马丁策略（基础版） |
-| `11` | 风霆V4 | 马丁策略（最新版） |
-| `7` | 星辰 | 网格策略 |
-| `8` | 鲲鹏V4 | 趋势策略（最新版） |
-| `3` | 鲲鹏V1 | 趋势策略（V1） |
-| `4` | 鲲鹏V2 | 趋势策略（V2） |
-| `5` | 鲲鹏V3 | 趋势策略（V3） |
+在构建查询前，先获取最新的可用参数：
 
-**常用组合**：
-- 马丁策略：`--strategy-types "1,11"`
-- 网格策略：`--strategy-types "7"`
-- 趋势策略：`--strategy-types "3,4,5,8"`
+```bash
+cd /home/ubuntu/work/QuantClaw/skills/backtest-query
 
----
+# 查看可用币种
+python3 query.py --list-coins
 
-## 虚拟货币列表
+# 查看策略类型
+python3 query.py --list-strategies
 
-所有 CRYPTO 类型（13个）：
-```
-BTC, ETH, SOL, BNB, DOGE, XRP, ADA, LINK, LTC, AVAX, BCH, HYPE, XAU
+# 查看时间ID
+python3 query.py --list-ai-times
 ```
 
-**示例**：
-- 主流币：`--coins "BTC,ETH,SOL,BNB"`
-- 全部虚拟货币：`--coins "BTC,ETH,SOL,BNB,DOGE,XRP,ADA,LINK,LTC,AVAX,BCH,HYPE,XAU"`
+### 根据用户需求筛选
+
+**示例1：用户说"马丁策略"**
+1. 查询策略列表 → 找到包含"风霆"的策略
+2. 提取策略类型ID（如 `1, 11`）
+3. 构建参数：`--strategy-types "1,11"`
+
+**示例2：用户说"所有虚拟货币"**
+1. 查询币种列表 → 筛选 `type="CRYPTO"` 的币种
+2. 提取币种代码（如 `BTC,ETH,SOL,...`）
+3. 构建参数：`--coins "BTC,ETH,SOL,..."`
+
+**示例3：用户说"主流币"**
+- 根据常识筛选：`BTC,ETH,SOL,BNB`
 
 ---
 
