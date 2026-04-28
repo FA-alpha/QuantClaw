@@ -4,24 +4,6 @@
 
 ---
 
-## ⚡ 重要提示
-
-**所有 Python 脚本已内置自动获取 token 功能！**
-
-- ❌ **不要使用** `--token` 参数
-- ✅ **直接运行**脚本，token 会自动从 `~/.quantclaw/users.json` 获取
-
-**示例**：
-```bash
-# 正确 ✅
-python3 skills/backtest-query/smart_recommend.py --coins "BTC,ETH" --year 2024
-
-# 错误 ❌ 
-python3 skills/backtest-query/smart_recommend.py --token xxx --coins "BTC,ETH"
-```
-
----
-
 ## 🚀 快速开始
 
 ### 智能分组推荐（推荐使用）
