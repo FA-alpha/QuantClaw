@@ -40,8 +40,12 @@ python3 skills/backtest-query/query.py \
 - `--max-recent-drawdown` - 最大回撤
 - `--output` - 输出文件
 
-#### 自动生成创建命令
-推荐结果会自动提取每个组合的 `strategy_token`，并生成可直接执行的创建命令。用户可以直接复制执行。
+#### 输出格式
+- **JSON 输出**：使用 `--output` 保存完整数据（供 Agent 读取）
+- **文本输出**：包含创建命令示例（供调试/手动使用）
+
+**Agent 使用方式**：
+从 JSON 的 `combinations[0]['strategies'][*]['strategy_token']` 提取 token 列表，直接构建创建命令。
 
 **示例**：
 ```bash

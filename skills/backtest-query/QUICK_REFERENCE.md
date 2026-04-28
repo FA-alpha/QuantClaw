@@ -101,14 +101,28 @@ python3 skills/backtest-query/query.py \
   --strategy-tokens "token1,token2,token3"
 ```
 
-### 完整流程（一步）
-```bash
-# 推荐
-result=$(python3 skills/backtest-query/smart_group_recommend.py \
-  --query "BTC优质策略" --output /tmp/rec.json)
+### Agent 完整流程
+```python
+# 1. 推荐并保存到 JSON
+subprocess.run([
+    'python3', 'skills/backtest-query/smart_group_recommend.py',
+    '--query', '用户需求',
+    '--output', '/tmp/rec.json'
+])
 
-# 提取 tokens（从输出的创建命令中）
-# 自动执行创建
+# 2. 读取 JSON 提取数据
+with open('/tmp/rec.json') as f:
+    result = json.load(f)
+tokens = [s['strategy_token'] for s in result['combinations'][0]['strategies']]
+tokens_str = ','.join(tokens)
+
+# 3. 执行创建
+subprocess.run([
+    'python3', 'skills/backtest-query/query.py',
+    '--create-group',
+    '--group-name', '组合名称',
+    '--strategy-tokens', tokens_str
+])
 ```
 
 ---

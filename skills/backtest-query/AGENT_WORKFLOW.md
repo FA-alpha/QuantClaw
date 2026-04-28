@@ -110,21 +110,49 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 ---
 
-### 3️⃣ 提取创建命令
+### 3️⃣ 从推荐结果提取数据
 
-从智能推荐的输出中找到：
+**方式A：从 JSON 文件读取（推荐）**
 
+```bash
+# 保存推荐结果到文件
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "..." \
+  --output /tmp/recommend.json
 ```
-🔧 创建命令:
-python3 skills/backtest-query/query.py \
-  --create-group \
-  --group-name "智能组合_1_20260428" \
-  --strategy-tokens "st_xxx,st_yyy,st_zzz"
+
+```python
+# Agent 读取并提取数据
+import json
+
+with open('/tmp/recommend.json') as f:
+    result = json.load(f)
+
+# 获取第一个推荐组合
+best_combo = result['combinations'][0]
+
+# 提取 strategy_token 列表
+tokens = [s['strategy_token'] for s in best_combo['strategies']]
+tokens_str = ','.join(tokens)
+
+# 提取组合信息
+score = best_combo['score']
+expected_return = best_combo['expected_return']
+max_drawdown = best_combo['portfolio_risk']['max_drawdown']
+
+print(f"策略 tokens: {tokens_str}")
+print(f"评分: {score}, 收益: {expected_return}%, 回撤: {max_drawdown}%")
 ```
 
-**关键字段**：
-- `--group-name` - 组合名称（自动生成，可修改）
-- `--strategy-tokens` - 策略 token 列表（自动提取）
+**方式B：解析标准输出（不推荐）**
+
+可以从脚本的文本输出中提取"🔧 创建命令"部分，但不如直接读取 JSON 可靠。
+
+**关键数据路径**：
+- `result['combinations'][0]['strategies'][*]['strategy_token']` - 策略 token 列表
+- `result['combinations'][0]['score']` - 评分
+- `result['combinations'][0]['expected_return']` - 预期收益
+- `result['combinations'][0]['portfolio_risk']['max_drawdown']` - 组合回撤
 
 ---
 
@@ -171,22 +199,48 @@ python3 skills/backtest-query/query.py \
 
 ---
 
-### 5️⃣ 执行创建命令
+### 5️⃣ 执行创建
 
-**用户确认后**，执行提取的命令：
+**从提取的数据构建并执行创建命令**：
 
-```bash
-cd /home/ubuntu/work/QuantClaw
+```python
+# 构建组合名称
+from datetime import datetime
+combo_name = f"智能组合_{datetime.now().strftime('%Y%m%d_%H%M')}"
 
-python3 skills/backtest-query/query.py \
-  --create-group \
-  --group-name "<用户确认或修改的名称>" \
-  --strategy-tokens "<自动提取的 tokens>"
+# 如果用户指定了名称，使用用户的
+if user_provided_name:
+    combo_name = user_provided_name
+
+# 构建命令
+import subprocess
+
+cmd = [
+    'python3', 'skills/backtest-query/query.py',
+    '--create-group',
+    '--group-name', combo_name,
+    '--strategy-tokens', tokens_str
+]
+
+# 执行
+result = subprocess.run(
+    cmd,
+    cwd='/home/ubuntu/work/QuantClaw',
+    capture_output=True,
+    text=True
+)
+
+if result.returncode == 0:
+    print(f"✅ 策略组创建成功: {combo_name}")
+    # 解析输出获取策略组 ID
+else:
+    print(f"❌ 创建失败: {result.stderr}")
 ```
 
 **注意**：
-- 如果用户要修改名称，替换 `--group-name` 参数
-- `--strategy-tokens` 不要修改（从推荐结果自动提取）
+- 直接使用提取的 `tokens_str`，不要手动修改
+- 组合名称可以由用户指定或自动生成
+- 需要在正确的工作目录执行
 
 ---
 
@@ -265,20 +319,47 @@ python3 skills/backtest-query/query.py \
 
 **用户**："帮我找 BTC 和 ETH 的低风险策略，创建一个对冲组合"
 
-**Agent**：
+**Agent 内部流程**：
+```python
+# 1. 检测创建意图
+has_create_intent = True  # "创建" in query
+
+# 2. 执行智能推荐，保存到临时文件
+exec("""
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "BTC和ETH的低风险策略" \
+  --coins "BTC,ETH" \
+  --max-recent-drawdown 15 \
+  --output /tmp/recommend.json
+""")
+
+# 3. 读取推荐结果
+with open('/tmp/recommend.json') as f:
+    result = json.load(f)
+
+best_combo = result['combinations'][0]
+tokens = [s['strategy_token'] for s in best_combo['strategies']]
+tokens_str = ','.join(tokens)
+
+# 4. 直接创建（不询问确认）
+exec(f"""
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "BTC+ETH对冲组合_20260428" \
+  --strategy-tokens "{tokens_str}"
+""")
+```
+
+**Agent 回复用户**：
 ```
 收到！我将为您查找 BTC 和 ETH 的低风险策略并创建组合。
 
-[执行智能推荐]
-
 📊 找到 1 个符合要求的组合，正在为您创建...
-
-[自动执行创建命令]
 
 ✅ 策略组创建成功！
 
 组合详情:
-- 名称: 智能组合_1_20260428
+- 名称: BTC+ETH对冲组合_20260428
 - 策略组 ID: 12345
 - 包含策略: 3 个
 - 预期收益: 95.2%
@@ -298,19 +379,41 @@ python3 skills/backtest-query/query.py \
 
 **用户**："帮我看看 BTC 有哪些好的策略"
 
-**Agent**：
+**Agent 内部流程**：
+```python
+# 1. 检测创建意图
+has_create_intent = False  # 无"创建"关键词
+
+# 2. 执行智能推荐
+exec("""
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "BTC的优质策略" \
+  --coins "BTC" \
+  --output /tmp/recommend.json
+""")
+
+# 3. 读取结果并展示
+with open('/tmp/recommend.json') as f:
+    result = json.load(f)
+
+best_combo = result['combinations'][0]
+
+# 4. 暂存数据，等待用户确认
+# 将 tokens 保存到会话上下文中
+session_context['pending_combo'] = best_combo
+```
+
+**Agent 回复用户**：
 ```
 收到！我将为您查找 BTC 的优质策略。
 
-[执行智能推荐]
-
 📊 推荐结果：
 
---- 组合 #1 ---
-评分: 87.3
-预期收益: 95.2%
-组合回撤: 11.5%
-策略数量: 3
+组合 #1:
+- 评分: 87.3
+- 预期收益: 95.2%
+- 组合回撤: 11.5%
+- 包含策略: 3 个
 
 策略列表:
 1. BTC / 鲲鹏_BTC_做多 (年化102%, 夏普2.35, 胜率68.5%)
@@ -320,17 +423,33 @@ python3 skills/backtest-query/query.py \
 这个组合实现了多空对冲，风险较低。我可以帮您创建策略组吗？
 ```
 
+---
+
 **用户**："好的，创建吧"
 
-**Agent**：
+**Agent 内部流程**：
+```python
+# 5. 从会话上下文读取之前保存的数据
+combo = session_context['pending_combo']
+tokens = [s['strategy_token'] for s in combo['strategies']]
+tokens_str = ','.join(tokens)
+
+# 6. 执行创建
+exec(f"""
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "BTC智能组合_20260428" \
+  --strategy-tokens "{tokens_str}"
+""")
+```
+
+**Agent 回复用户**：
 ```
 正在创建策略组...
 
-[执行创建命令]
-
 ✅ 策略组创建成功！
 
-组合名称: 智能组合_1_20260428
+组合名称: BTC智能组合_20260428
 策略组 ID: 12345
 包含策略: 3 个
 
@@ -351,37 +470,101 @@ python3 skills/backtest-query/query.py \
 
 ## 🔧 调试技巧
 
-### 查看推荐原始数据
-```bash
-python3 skills/backtest-query/smart_group_recommend.py \
-  --query "..." \
-  --output /tmp/recommend_result.json
+### 完整流程测试脚本
 
-cat /tmp/recommend_result.json | jq '.combinations[0]'
-```
-
-### 检查策略 token
 ```python
-# 在 Python 中检查
+#!/usr/bin/env python3
+"""测试完整的推荐→创建流程"""
+
 import json
-with open('/tmp/recommend_result.json') as f:
-    data = json.load(f)
-    for combo in data['combinations']:
-        tokens = [s.get('strategy_token') for s in combo['strategies']]
-        print(f"组合 tokens: {tokens}")
+import subprocess
+from datetime import datetime
+
+# 1. 执行推荐
+print("📊 执行智能推荐...")
+recommend_result = subprocess.run([
+    'python3', 'skills/backtest-query/smart_group_recommend.py',
+    '--query', 'BTC优质策略',
+    '--coins', 'BTC',
+    '--output', '/tmp/test_recommend.json'
+], cwd='/home/ubuntu/work/QuantClaw', capture_output=True, text=True)
+
+if recommend_result.returncode != 0:
+    print(f"❌ 推荐失败: {recommend_result.stderr}")
+    exit(1)
+
+# 2. 读取推荐结果
+with open('/tmp/test_recommend.json') as f:
+    result = json.load(f)
+
+if not result.get('combinations'):
+    print("⚠️ 没有推荐组合")
+    exit(1)
+
+# 3. 提取第一个组合的数据
+best_combo = result['combinations'][0]
+print(f"\n📋 推荐组合:")
+print(f"  评分: {best_combo['score']:.2f}")
+print(f"  预期收益: {best_combo['expected_return']:.2f}%")
+print(f"  回撤: {best_combo['portfolio_risk']['max_drawdown']:.2f}%")
+
+# 4. 提取 strategy_token
+tokens = [s['strategy_token'] for s in best_combo['strategies'] if s.get('strategy_token')]
+if not tokens:
+    print("❌ 没有有效的 strategy_token")
+    exit(1)
+
+tokens_str = ','.join(tokens)
+print(f"\n🔑 策略 tokens: {tokens_str}")
+
+# 5. 构建组合名称
+combo_name = f"测试组合_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+print(f"\n📝 组合名称: {combo_name}")
+
+# 6. 执行创建
+print("\n🔧 执行创建...")
+create_result = subprocess.run([
+    'python3', 'skills/backtest-query/query.py',
+    '--create-group',
+    '--group-name', combo_name,
+    '--strategy-tokens', tokens_str
+], cwd='/home/ubuntu/work/QuantClaw', capture_output=True, text=True)
+
+print(create_result.stdout)
+if create_result.returncode != 0:
+    print(f"❌ 创建失败: {create_result.stderr}")
+    exit(1)
+
+print("\n✅ 测试完成")
 ```
 
-### 测试创建命令
-```bash
-# 先测试推荐
-python3 skills/backtest-query/smart_group_recommend.py \
-  --query "测试" --quiet
+### 检查 JSON 数据结构
 
-# 手动创建（如果自动生成失败）
+```bash
+# 查看完整结构
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "测试" \
+  --output /tmp/test.json
+
+# 提取关键字段
+cat /tmp/test.json | jq '{
+  total_selected: .total_selected,
+  combinations: [.combinations[] | {
+    score,
+    expected_return,
+    tokens: [.strategies[].strategy_token]
+  }]
+}'
+```
+
+### 单独测试创建
+
+```bash
+# 直接测试创建功能（使用已知 token）
 python3 skills/backtest-query/query.py \
   --create-group \
-  --group-name "测试组合" \
-  --strategy-tokens "token1,token2"
+  --group-name "测试组合_$(date +%Y%m%d_%H%M%S)" \
+  --strategy-tokens "已知token1,已知token2"
 ```
 
 ---
