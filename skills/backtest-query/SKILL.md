@@ -69,6 +69,57 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 ---
 
+---
+
+## 🔧 创建策略组合
+
+**用途**：将多个优选策略组合成一个策略组，用于分散风险、对冲或构建投资组合。
+
+### 命令
+```bash
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "策略组名称" \
+  --strategy-tokens "token1,token2,token3"
+```
+
+### 参数说明
+- `--create-group` - 创建策略组标志
+- `--group-name` - 策略组名称（必填）
+- `--strategy-tokens` - 策略 token 列表，逗号分隔（必填）
+
+### 典型应用场景
+- **对冲组合**：同时持有做多和做空策略
+- **币种分散**：多个币种的策略组合
+- **策略类型组合**：网格 + 趋势混合
+- **风险分级**：高中低风险策略配比
+
+### 工作流程
+
+#### 1. 查询并筛选策略
+```bash
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "BTC和ETH的优质策略" \
+  --output result.json
+```
+
+从结果中记录优选策略的 `strategy_token`。
+
+#### 2. 创建策略组
+```bash
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "BTC+ETH多空对冲组合" \
+  --strategy-tokens "st_abc123,st_def456,st_xyz789"
+```
+
+**成功响应**：
+```
+✅ 策略组创建成功: BTC+ETH多空对冲组合 (ID: 12345)
+```
+
+---
+
 ## 📚 详细文档
 
 需要深入了解时查阅：
