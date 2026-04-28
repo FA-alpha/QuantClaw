@@ -599,16 +599,33 @@ def main():
     
     args = parser.parse_args()
     
-    # 获取 token
+    # 获取 token（自动从当前 workspace 匹配）
+    def auto_get_token():
+        """自动获取当前 Agent 的 token"""
+        workspace = os.getcwd()
+        agent_id = os.path.basename(workspace).replace('clawd-', '')
+        
+        users_file = os.path.expanduser('~/.quantclaw/users.json')
+        if not os.path.exists(users_file):
+            return None
+        
+        try:
+            with open(users_file, 'r') as f:
+                data = json.load(f)
+            users = data.get('users', [])
+            for user in users:
+                if user.get('agentId') == agent_id:
+                    return user.get('token')
+        except:
+            pass
+        
+        return None
+    
     try:
-        users_file = os.path.expanduser("~/.quantclaw/users.json")
-        with open(users_file, 'r') as f:
-            users = json.load(f)
-            current_user = users.get("current_user")
-            if not current_user:
-                print("❌ 未找到当前用户")
-                sys.exit(1)
-            token = users["users"][current_user]["token"]
+        token = auto_get_token()
+        if not token:
+            print("❌ 无法自动获取 token（当前 workspace 未关联用户）")
+            sys.exit(1)
     except Exception as e:
         print(f"❌ 获取 token 失败: {e}")
         sys.exit(1)
