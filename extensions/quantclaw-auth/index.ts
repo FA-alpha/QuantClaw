@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { TokenValidator, TokenValidatorConfig } from './token-validator';
 
 // ============ 类型定义 ============
 
@@ -33,6 +34,14 @@ interface PluginConfig {
   autoRegister: boolean;  // 是否允许自动注册
   skillsPath: string;  // QuantClaw 技能路径
   templatePath?: string;  // Agent workspace 模板路径
+  tokenValidation?: {
+    enabled: boolean;
+    apiUrl?: string;
+    apiMethod?: string;
+    apiHeaders?: Record<string, string>;
+    showType?: number;
+    timeoutMs?: number;
+  };
 }
 
 // ============ 消息过滤器 ============
@@ -83,10 +92,24 @@ class UserManager {
   private userIndex = new Map<string, string>(); // userId -> token
   private config: PluginConfig;
   private logger: any;
+  private tokenValidator?: TokenValidator;
 
   constructor(config: PluginConfig, logger: any) {
     this.config = config;
     this.logger = logger;
+    
+    // 初始化 Token 验证器
+    if (config.tokenValidation?.enabled && config.tokenValidation.apiUrl) {
+      this.tokenValidator = new TokenValidator({
+        apiUrl: config.tokenValidation.apiUrl,
+        apiMethod: config.tokenValidation.apiMethod,
+        apiHeaders: config.tokenValidation.apiHeaders,
+        showType: config.tokenValidation.showType,
+        timeoutMs: config.tokenValidation.timeoutMs,
+      });
+      this.logger.info('[quantclaw-auth] Token validation enabled');
+    }
+    
     this.loadUsers();
   }
 
@@ -130,7 +153,16 @@ class UserManager {
 
   // 自动注册：绑定客户端传入的 token
   async autoRegister(clientToken: string): Promise<UserRecord> {
-    // 使用客户端 token 的 hash 生成用户ID
+    // 1. 先验证 token 真实性
+    if (this.tokenValidator) {
+      const validation = await this.tokenValidator.validate(clientToken);
+      if (!validation.valid) {
+        throw new Error(validation.message || 'Invalid token');
+      }
+      this.logger.info(`[quantclaw-auth] Token validated: status=${validation.status}`);
+    }
+    
+    // 2. 使用客户端 token 的 hash 生成用户ID
     const hash = crypto.createHash('sha256').update(clientToken).digest('hex').substring(0, 12);
     const userId = `u_${hash}`;
     const agentId = `qc-${hash}`;

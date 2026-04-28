@@ -48,6 +48,40 @@
         "type": "string",
         "default": "anthropic/claude-haiku",
         "description": "Model for LLM-based message classification (use lightweight model)"
+      },
+      "tokenValidation": {
+        "type": "object",
+        "description": "External token validation configuration",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable external token validation"
+          },
+          "apiUrl": {
+            "type": "string",
+            "description": "Token validation API endpoint (e.g., https://api.example.com/Account/usage_info)"
+          },
+          "apiMethod": {
+            "type": "string",
+            "default": "POST",
+            "description": "HTTP method"
+          },
+          "apiHeaders": {
+            "type": "object",
+            "description": "Additional HTTP headers"
+          },
+          "showType": {
+            "type": "number",
+            "default": 2,
+            "description": "show_type parameter for API"
+          },
+          "timeoutMs": {
+            "type": "number",
+            "default": 5000,
+            "description": "Request timeout in milliseconds"
+          }
+        }
       }
     }
   },
@@ -59,6 +93,14 @@
     "webhookPath": { "label": "Webhook Path" },
     "webhookSecret": { "label": "Webhook Secret", "sensitive": true },
     "filterMode": { "label": "Message Filter Mode" },
-    "filterModel": { "label": "Filter Classifier Model" }
+    "filterModel": { "label": "Filter Classifier Model" },
+    "tokenValidation": {
+      "label": "Token Validation",
+      "enabled": { "label": "Enable Validation" },
+      "apiUrl": { "label": "API URL" },
+      "apiMethod": { "label": "HTTP Method" },
+      "showType": { "label": "Show Type" },
+      "timeoutMs": { "label": "Timeout (ms)" }
+    }
   }
 }
