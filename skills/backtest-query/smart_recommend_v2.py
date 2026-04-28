@@ -31,73 +31,85 @@ class SmartRecommenderV2:
     def _identify_loop_dimensions(
         self,
         coins: Optional[List[str]],
-        strategy_type: Optional[int],
-        direction: Optional[str],
-        ai_time_id: Optional[str],
+        strategy_types: Optional[List[int]],
+        directions: Optional[List[str]],
+        ai_time_ids: Optional[List[str]],
         year: Optional[int]
     ) -> Dict[str, any]:
         """
-        识别需要循环的维度
+        识别需要循环的维度 - 统一处理所有参数
+        
+        核心规则：
+        1. 参数为多个值 → 循环该维度
+        2. 参数为单个值 → 固定参数
+        3. 参数未指定 → 不传参数（接口返回全部）
         
         返回格式：
         {
-            'coins': ['BTC', 'SOL'],  # None 表示不循环
-            'directions': ['long', 'short'],
+            'loop_dims': {
+                'coins': ['BTC', 'SOL'],
+                'directions': ['long', 'short'],
+                'strategy_types': [11, 7]
+            },
             'fixed_params': {
-                'strategy_type': 11,
                 'ai_time_id': '5'
             }
         }
         """
-        loop_dims = {
-            'coins': None,
-            'directions': None,
-            'fixed_params': {}
-        }
+        loop_dims = {}
+        fixed_params = {}
         
         # 1. 币种维度
-        if coins and len(coins) > 1:
-            # 多个币种，需要循环
-            loop_dims['coins'] = coins
-            self.log(f"🔄 币种维度循环: {coins}")
-        elif coins and len(coins) == 1:
-            # 单个币种，固定参数
-            loop_dims['fixed_params']['search_coin'] = coins[0]
-            self.log(f"📌 币种固定: {coins[0]}")
+        if coins:
+            if len(coins) > 1:
+                loop_dims['coins'] = coins
+                self.log(f"🔄 币种循环: {coins}")
+            else:
+                fixed_params['search_coin'] = coins[0]
+                self.log(f"📌 币种固定: {coins[0]}")
         else:
-            # 未指定，不传参数（接口返回全部）
             self.log(f"🌐 币种未指定，查询全部")
         
-        # 2. 方向维度
-        if direction:
-            # 指定了方向，固定参数
-            loop_dims['fixed_params']['search_direction'] = direction
-            self.log(f"📌 方向固定: {direction}")
-        else:
-            # 未指定，检查是否需要循环
-            # 对于对冲场景："BTC和SOL对冲" → 需要 long + short 组合
-            if coins and len(coins) > 1:
-                # 多币种对冲，需要循环方向
-                loop_dims['directions'] = ['long', 'short']
-                self.log(f"🔄 方向维度循环（对冲场景）: long + short")
+        # 2. 策略类型维度
+        if strategy_types:
+            if len(strategy_types) > 1:
+                loop_dims['strategy_types'] = strategy_types
+                self.log(f"🔄 策略类型循环: {strategy_types}")
             else:
-                # 单币种或未指定，不传参数
-                self.log(f"🌐 方向未指定，查询全部")
+                fixed_params['strategy_type'] = strategy_types[0]
+                self.log(f"📌 策略类型固定: {strategy_types[0]}")
+        else:
+            self.log(f"🌐 策略类型未指定，查询全部")
         
-        # 3. 策略类型（固定参数）
-        if strategy_type is not None:
-            loop_dims['fixed_params']['strategy_type'] = strategy_type
-            self.log(f"📌 策略类型固定: {strategy_type}")
+        # 3. 方向维度
+        if directions:
+            if len(directions) > 1:
+                loop_dims['directions'] = directions
+                self.log(f"🔄 方向循环: {directions}")
+            else:
+                fixed_params['search_direction'] = directions[0]
+                self.log(f"📌 方向固定: {directions[0]}")
+        else:
+            self.log(f"🌐 方向未指定，查询全部")
         
-        # 4. 时间（固定参数）
-        if ai_time_id:
-            loop_dims['fixed_params']['ai_time_id'] = ai_time_id
-            self.log(f"📌 时间ID固定: {ai_time_id}")
+        # 4. 时间维度
+        if ai_time_ids:
+            if len(ai_time_ids) > 1:
+                loop_dims['ai_time_ids'] = ai_time_ids
+                self.log(f"🔄 时间ID循环: {ai_time_ids}")
+            else:
+                fixed_params['ai_time_id'] = ai_time_ids[0]
+                self.log(f"📌 时间ID固定: {ai_time_ids[0]}")
         elif year:
-            loop_dims['fixed_params']['search_year'] = year
+            fixed_params['search_year'] = year
             self.log(f"📌 年份固定: {year}")
+        else:
+            self.log(f"🌐 时间未指定，查询全部")
         
-        return loop_dims
+        return {
+            'loop_dims': loop_dims,
+            'fixed_params': fixed_params
+        }
     
     def _build_query_params(self, base_params: dict, loop_values: dict) -> dict:
         """
@@ -105,7 +117,7 @@ class SmartRecommenderV2:
         
         Args:
             base_params: 基础固定参数
-            loop_values: 当前循环的参数值 {'coin': 'BTC', 'direction': 'long'}
+            loop_values: 当前循环的参数值 {'coin': 'BTC', 'direction': 'long', 'strategy_type': 11}
         """
         params = {
             'token': self.token,
@@ -119,8 +131,12 @@ class SmartRecommenderV2:
         # 添加循环参数
         if 'coin' in loop_values:
             params['search_coin'] = loop_values['coin']
+        if 'strategy_type' in loop_values:
+            params['strategy_type'] = loop_values['strategy_type']
         if 'direction' in loop_values:
             params['search_direction'] = loop_values['direction']
+        if 'ai_time_id' in loop_values:
+            params['ai_time_id'] = loop_values['ai_time_id']
         
         return params
     
@@ -167,10 +183,10 @@ class SmartRecommenderV2:
         coins: Optional[List[str]] = None,
         amt_type: int = 2,
         sort_type: int = 2,
-        strategy_type: Optional[int] = None,
-        direction: Optional[str] = None,
+        strategy_types: Optional[List[int]] = None,
+        directions: Optional[List[str]] = None,
         year: Optional[int] = None,
-        ai_time_id: Optional[str] = None,
+        ai_time_ids: Optional[List[str]] = None,
         recommand_type: int = 1,
         limit: int = 10,
         min_sharpe: Optional[float] = None,
@@ -180,10 +196,16 @@ class SmartRecommenderV2:
         查询并筛选策略（v2版本）
         
         核心逻辑：
-        1. 识别需要循环的维度（coins + directions）
+        1. 识别需要循环的维度（任何指定了多个值的参数）
         2. 对于需要循环的维度，逐一查询
         3. 对于未指定的维度，不传参数（接口返回全部）
         4. 获取全量数据后，按需分类
+        
+        Args:
+            coins: 币种列表（多个需要循环）
+            strategy_types: 策略类型列表（多个需要循环）
+            directions: 方向列表（多个需要循环）
+            ai_time_ids: 时间ID列表（多个需要循环）
         """
         self.log("\n" + "="*60)
         self.log("🚀 智能推荐 v2 - 接口优化版")
@@ -191,73 +213,98 @@ class SmartRecommenderV2:
         
         # 1. 识别循环维度
         loop_config = self._identify_loop_dimensions(
-            coins, strategy_type, direction, ai_time_id, year
+            coins, strategy_types, directions, ai_time_ids, year
         )
         
         # 2. 准备查询
         all_strategies = []
         query_count = 0
         
-        # 3. 构建查询循环
-        coins_to_query = loop_config['coins'] or [None]
-        directions_to_query = loop_config['directions'] or [None]
+        # 3. 构建查询循环（笛卡尔积）
+        loop_dims = loop_config['loop_dims']
         
-        total_queries = len(coins_to_query) * len(directions_to_query)
+        # 生成所有循环组合
+        import itertools
         
-        if total_queries > 1:
+        if loop_dims:
+            # 获取循环维度的键和值
+            dim_keys = list(loop_dims.keys())
+            dim_values = [loop_dims[k] for k in dim_keys]
+            
+            # 生成笛卡尔积
+            combinations = list(itertools.product(*dim_values))
+            total_queries = len(combinations)
+            
             self.log(f"\n📊 预计查询次数: {total_queries}")
-            self.log(f"   - 币种: {len(coins_to_query)}")
-            self.log(f"   - 方向: {len(directions_to_query)}")
+            for key in dim_keys:
+                self.log(f"   - {key}: {len(loop_dims[key])} 个")
         else:
+            # 没有循环维度，单次查询
+            combinations = [()]
+            dim_keys = []
+            total_queries = 1
             self.log(f"\n📊 单次查询（接口返回全量数据）")
         
         self.log("")
         
         # 4. 执行查询
-        for coin in coins_to_query:
-            for dir_ in directions_to_query:
-                query_count += 1
+        for combo in combinations:
+            query_count += 1
+            
+            # 构建当前循环的参数
+            loop_values = {}
+            label_parts = []
+            
+            for i, key in enumerate(dim_keys):
+                value = combo[i]
                 
-                # 构建查询参数
-                loop_values = {}
-                if coin:
-                    loop_values['coin'] = coin
-                if dir_:
-                    loop_values['direction'] = dir_
-                
-                params = self._build_query_params(
-                    loop_config['fixed_params'],
-                    loop_values
-                )
-                
-                # 构建日志标签
-                label_parts = []
-                if coin:
-                    label_parts.append(f"币种={coin}")
-                if dir_:
-                    label_parts.append(f"方向={dir_}")
-                if strategy_type:
-                    label_parts.append(f"策略={strategy_type}")
-                if ai_time_id:
-                    label_parts.append(f"时间={ai_time_id}")
-                elif year:
-                    label_parts.append(f"年份={year}")
-                
-                label = " / ".join(label_parts) if label_parts else "全部数据"
-                
-                self.log(f"🔍 [{query_count}/{total_queries}] 查询: {label}")
-                
-                # 调用接口
-                result = query_backtest(**params)
-                
-                if "error" in result:
-                    self.log(f"⚠️  查询失败: {result['error']}")
-                    continue
-                
-                strategies = result.get("info", [])
-                self.log(f"✅ 返回 {len(strategies)} 条数据")
-                
-                all_strategies.extend(strategies)
+                if key == 'coins':
+                    loop_values['coin'] = value
+                    label_parts.append(f"币种={value}")
+                elif key == 'strategy_types':
+                    loop_values['strategy_type'] = value
+                    label_parts.append(f"策略={value}")
+                elif key == 'directions':
+                    loop_values['direction'] = value
+                    label_parts.append(f"方向={value}")
+                elif key == 'ai_time_ids':
+                    loop_values['ai_time_id'] = value
+                    label_parts.append(f"时间={value}")
+            
+            # 添加固定参数到标签
+            fixed = loop_config['fixed_params']
+            if 'search_coin' in fixed:
+                label_parts.append(f"币种={fixed['search_coin']}")
+            if 'strategy_type' in fixed:
+                label_parts.append(f"策略={fixed['strategy_type']}")
+            if 'search_direction' in fixed:
+                label_parts.append(f"方向={fixed['search_direction']}")
+            if 'ai_time_id' in fixed:
+                label_parts.append(f"时间={fixed['ai_time_id']}")
+            elif 'search_year' in fixed:
+                label_parts.append(f"年份={fixed['search_year']}")
+            
+            label = " / ".join(label_parts) if label_parts else "全部数据"
+            
+            self.log(f"🔍 [{query_count}/{total_queries}] 查询: {label}")
+            
+            # 构建查询参数
+            params = self._build_query_params(
+                loop_config['fixed_params'],
+                loop_values
+            )
+            
+            # 调用接口
+            result = query_backtest(**params)
+            
+            if "error" in result:
+                self.log(f"⚠️  查询失败: {result['error']}")
+                continue
+            
+            strategies = result.get("info", [])
+            self.log(f"✅ 返回 {len(strategies)} 条数据")
+            
+            all_strategies.extend(strategies)
         
         # 5. 数据分类和统计
         self.log(f"\n📦 总计获取: {len(all_strategies)} 条策略数据")
@@ -329,12 +376,12 @@ class SmartRecommenderV2:
 def main():
     parser = argparse.ArgumentParser(description="智能策略组合推荐 v2")
     
-    # 基础参数
+    # 基础参数（支持多个值）
     parser.add_argument("--coins", type=str, help="币种列表（逗号分隔），如 'BTC,ETH'")
-    parser.add_argument("--strategy-type", type=int, help="策略类型")
-    parser.add_argument("--direction", type=str, choices=['long', 'short'], help="方向")
+    parser.add_argument("--strategy-types", type=str, help="策略类型列表（逗号分隔），如 '11,7'")
+    parser.add_argument("--directions", type=str, help="方向列表（逗号分隔），如 'long,short'")
+    parser.add_argument("--ai-time-ids", type=str, help="时间ID列表（逗号分隔），如 '5,6'")
     parser.add_argument("--year", type=int, help="年份")
-    parser.add_argument("--ai-time-id", type=str, help="时间ID")
     
     # 筛选参数
     parser.add_argument("--min-sharpe", type=float, help="最小夏普率")
@@ -362,10 +409,22 @@ def main():
         print(f"❌ 获取 token 失败: {e}")
         sys.exit(1)
     
-    # 处理币种参数
+    # 处理参数（支持多个值）
     coins = None
     if args.coins:
         coins = [c.strip() for c in args.coins.split(',')]
+    
+    strategy_types = None
+    if args.strategy_types:
+        strategy_types = [int(s.strip()) for s in args.strategy_types.split(',')]
+    
+    directions = None
+    if args.directions:
+        directions = [d.strip() for d in args.directions.split(',')]
+    
+    ai_time_ids = None
+    if args.ai_time_ids:
+        ai_time_ids = [t.strip() for t in args.ai_time_ids.split(',')]
     
     # 创建推荐器
     recommender = SmartRecommenderV2(token, verbose=not args.quiet)
@@ -374,10 +433,10 @@ def main():
         # 查询策略
         strategies = recommender.fetch_strategies(
             coins=coins,
-            strategy_type=args.strategy_type,
-            direction=args.direction,
+            strategy_types=strategy_types,
+            directions=directions,
             year=args.year,
-            ai_time_id=args.ai_time_id,
+            ai_time_ids=ai_time_ids,
             min_sharpe=args.min_sharpe,
             max_drawdown=args.max_drawdown
         )
@@ -406,10 +465,10 @@ def main():
                 "timestamp": datetime.now().isoformat(),
                 "query": {
                     "coins": coins,
-                    "strategy_type": args.strategy_type,
-                    "direction": args.direction,
+                    "strategy_types": strategy_types,
+                    "directions": directions,
                     "year": args.year,
-                    "ai_time_id": args.ai_time_id
+                    "ai_time_ids": ai_time_ids
                 },
                 "strategies": strategies,
                 "combinations": combinations

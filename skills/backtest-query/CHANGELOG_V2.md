@@ -20,32 +20,58 @@
 
 ## 🔄 循环逻辑
 
-### 需要循环的场景
+### 统一的循环规则
 
-| 场景 | 循环维度 | 查询次数 | 示例 |
-|------|---------|---------|-----|
-| 单币种查询 | 无 | 1 | `--coins "BTC"` |
-| 多币种对冲 | 币种 + 方向 | 2N | `--coins "BTC,SOL"` → 4次 |
-| 指定方向 | 币种 | N | `--coins "BTC,ETH" --direction long` → 2次 |
-| 单币种单方向 | 无 | 1 | `--coins "BTC" --direction long` → 1次 |
+**核心原则**：任何参数指定了多个值，就需要循环该维度
 
-### 循环判断规则
+| 参数 | 单个值 | 多个值 | 未指定 |
+|------|--------|--------|--------|
+| `--coins` | 固定参数 | 循环 | 不传（全量） |
+| `--strategy-types` | 固定参数 | 循环 | 不传（全量） |
+| `--directions` | 固定参数 | 循环 | 不传（全量） |
+| `--ai-time-ids` | 固定参数 | 循环 | 不传（全量） |
+
+### 循环场景示例
+
+| 场景 | 参数 | 循环维度 | 查询次数 |
+|------|------|---------|---------|
+| 单币种 | `--coins "BTC"` | 无 | **1次** |
+| 多币种 | `--coins "BTC,ETH"` | 币种 | **2次** |
+| 多策略 | `--strategy-types "11,7"` | 策略类型 | **2次** |
+| 多方向 | `--directions "long,short"` | 方向 | **2次** |
+| 多维度组合 | `--coins "BTC,ETH" --directions "long,short"` | 币种 × 方向 | **4次** |
+| 三维度组合 | `--coins "BTC,ETH" --strategy-types "11,7" --directions "long,short"` | 币种 × 策略 × 方向 | **8次** |
+
+### 代码逻辑
 
 ```python
-# 1. 币种循环
-if len(coins) > 1:
-    # 多币种，需要循环
-    for coin in coins:
-        query(coin=coin, ...)
+# 统一处理所有参数
+def _identify_loop_dimensions(coins, strategy_types, directions, ai_time_ids):
+    loop_dims = {}
+    fixed_params = {}
+    
+    # 任何参数都按统一规则处理
+    if coins:
+        if len(coins) > 1:
+            loop_dims['coins'] = coins  # 需要循环
+        else:
+            fixed_params['search_coin'] = coins[0]  # 固定参数
+    # 未指定则不传参数（接口返回全量）
+    
+    # strategy_types, directions, ai_time_ids 同理
+    
+    return {'loop_dims': loop_dims, 'fixed_params': fixed_params}
 
-# 2. 方向循环（仅对冲场景）
-if len(coins) > 1 and direction is None:
-    # 多币种对冲，需要 long + short 组合
-    for direction in ['long', 'short']:
-        query(direction=direction, ...)
+# 笛卡尔积生成查询组合
+import itertools
+combinations = itertools.product(
+    loop_dims['coins'],
+    loop_dims['strategy_types'],
+    loop_dims['directions']
+)
 
-# 3. 其他维度不循环
-# 策略类型、时间、网格比例等由接口返回全量，代码分类
+# 查询次数 = 所有循环维度的笛卡尔积
+total_queries = len(list(combinations))
 ```
 
 ---
@@ -55,6 +81,11 @@ if len(coins) > 1 and direction is None:
 ### 示例1：单币种查询
 
 **需求**："查询 BTC 的马丁策略"
+
+**命令**：
+```bash
+--coins "BTC" --strategy-types "11"
+```
 
 **v1 版本**：
 ```
@@ -76,6 +107,11 @@ if len(coins) > 1 and direction is None:
 
 **需求**："找到一组 BTC 和 SOL 对冲的策略组"
 
+**命令**：
+```bash
+--coins "BTC,SOL" --directions "long,short"
+```
+
 **v1 版本**：
 ```
 查询次数 = 2个币种 × 2个方向 × M个策略 × N个版本 × 网格 × 时间
@@ -92,6 +128,58 @@ if len(coins) > 1 and direction is None:
 
 每次查询返回该币种+方向下的全部数据
 代码端进行组合优化
+```
+
+---
+
+### 示例3：多策略类型对比
+
+**需求**："对比 BTC 的马丁和网格策略"
+
+**命令**：
+```bash
+--coins "BTC" --strategy-types "11,7"
+```
+
+**v1 版本**：
+```
+查询次数 = 1个币种 × 2个方向 × 2个策略 × 版本 × 网格 × 时间
+         = 数千次
+```
+
+**v2 版本**：
+```
+查询次数 = 2次
+1. BTC + 策略11（马丁）
+2. BTC + 策略7（网格）
+
+每次查询返回该策略类型的全部数据
+```
+
+---
+
+### 示例4：时间周期对比
+
+**需求**："对比 BTC 在最近1年和3年的表现"
+
+**命令**：
+```bash
+--coins "BTC" --ai-time-ids "5,7"
+```
+
+**v1 版本**：
+```
+查询次数 = 1个币种 × 2个方向 × M个策略 × 版本 × 网格 × 2个时间
+         = 数千次
+```
+
+**v2 版本**：
+```
+查询次数 = 2次
+1. BTC + 时间5（最近1年）
+2. BTC + 时间7（最近3年）
+
+每次查询返回该时间周期的全部数据
 ```
 
 ---
