@@ -87,7 +87,7 @@ python3 skills/backtest-query/query.py \
 
 ### 策略类型
 
-- **马丁策略**：名称含"风霆"（strategy_type=11）
+- **马丁策略**：名称含"风霆"
 - **网格策略**：strategy_type=7
 - **趋势策略**：其他策略（如鲲鹏系列）
 
