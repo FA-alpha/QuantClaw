@@ -153,8 +153,9 @@ python3 smart_group_recommend.py \
 
 **说明**：
 - `version-configs` 优先于 `--versions` 参数
-- 每个配置对象包含：`version`（版本号）、`leverage`（杠杆）、`search_extend`（扩展参数）
-- 系统会对每个配置进行轮询查询并去重合并
+- 配置对象结构**动态根据 API 返回**（直接使用 `versions` 数组中的对象）
+- 系统会提取对象中的所有字段作为查询参数（version、leverage、search_extend 等）
+- 对每个配置进行轮询查询并去重合并
 
 ---
 
