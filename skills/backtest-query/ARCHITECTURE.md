@@ -6,9 +6,7 @@
 skills/backtest-query/
 ├── query.py                    # 基础查询模块（API 封装）
 ├── defaults.py                 # 默认参数管理
-├── smart_recommend.py          # 智能推荐 v1
-├── smart_recommend_v2.py       # 智能推荐 v2（接口优化版）
-├── smart_group_recommend.py   # 智能分组推荐系统（NEW）
+├── smart_group_recommend.py    # 智能分组推荐系统（主要工具）
 ├── analysis/                   # 分析模块
 │   ├── __init__.py
 │   ├── correlation.py          # 相关性分析
@@ -21,42 +19,21 @@ skills/backtest-query/
 
 ---
 
-## 🔄 版本演进
+## 🧠 智能分组推荐系统架构
 
-### v1: smart_recommend.py
-**特点**：
-- 手动指定查询参数
-- 每个币种循环查询
-- 固定 `limit=10`
-- 详情获取限制 `max_fetch=20`
-
-**适用场景**：
-- 明确知道要查询什么
-- 单一维度筛选
-
-### v2: smart_recommend_v2.py
-**特点**：
-- 接口优化，`limit=-1` 获取全部
-- 减少 API 调用次数
-- 支持多维度循环查询
-- 定义了分组函数但未使用
-
-**适用场景**：
-- 需要全量数据
-- 减少网络请求
-
-### v3: smart_group_recommend.py（推荐）
-**特点**：
+### 核心特性
 - ✅ 智能推断分组策略
-- ✅ 自动分组 + Top-N 筛选
+- ✅ 多维度排序 Top-N（7种排序方式）
 - ✅ 详情深度分析
 - ✅ 二次筛选优化
 - ✅ 稳定性指标
+- ✅ 自动生成最优组合
 
-**适用场景**：
-- 需要智能推荐
+### 适用场景
+- 智能推荐最优策略
 - 深度策略分析
 - 组合优化
+- 跨币种/跨策略/跨方向组合
 
 ---
 
@@ -274,9 +251,10 @@ if 'new_criteria' in criteria:
 ## 🚀 性能优化
 
 ### 已优化
-- ✅ v2 版本减少循环查询
+- ✅ API 查询优化（默认按收益率排序）
 - ✅ 详情批量获取带进度显示
 - ✅ 缓存机制（币种列表等）
+- ✅ 多维度排序去重
 
 ### 待优化
 - ⏳ 详情并发获取（线程池）
@@ -288,11 +266,12 @@ if 'new_criteria' in criteria:
 ## 📚 相关文档
 
 - [使用示例](examples/smart_group_example.md)
-- [API 文档](../../docs/api.md)（如有）
-- [分析模块说明](analysis/README.md)（如有）
+- [排序策略](SORTING_STRATEGY.md)
+- [排序方式详解](SORT_METHODS.md)
+- [API 排序配置](API_SORT.md)
+- [维度说明](DIMENSIONS.md)
 
 ---
 
 **最后更新**: 2025-01-24  
-**版本**: v3.0  
 **维护者**: QuantClaw Team

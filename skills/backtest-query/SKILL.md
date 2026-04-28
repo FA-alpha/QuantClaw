@@ -55,7 +55,7 @@ python3 skills/backtest-query/query.py \
 
 ## 🎯 使用场景
 
-### 何时使用智能分组推荐 (`smart_group_recommend.py`) ⭐推荐
+### 何时使用智能推荐 (`smart_group_recommend.py`)
 
 - ✅ 需要智能推荐最优策略组合
 - ✅ 跨币种、跨方向、跨策略类型组合
@@ -66,21 +66,12 @@ python3 skills/backtest-query/query.py \
 
 → **详见**：`examples/smart_group_example.md`、`SORTING_STRATEGY.md`
 
-### 何时使用智能推荐 v1/v2 (`smart_recommend.py`, `smart_recommend_v2.py`)
-
-- ✅ 简单的组合推荐
-- ✅ 不需要详情深度分析
-- ✅ 快速查询和组合
-
-→ **详见**：`skills/smart_recommend.md`
-
 ### 何时使用基础查询 (`query.py`)
 
 - ✅ 查询策略列表
 - ✅ 获取可用币种/策略类型
 - ✅ 简单查询和浏览
 - ✅ "查询BTC做多的策略"
-- ✅ "2024年夏普率最高的策略"
 
 → **详见**：`skills/query_basic.md`、`skills/query_advanced.md`
 
@@ -98,17 +89,11 @@ python3 skills/backtest-query/query.py \
 
 ### 工具选择
 
-| 需求 | 推荐使用 | 备选 |
-|------|---------|------|
-| 智能推荐组合 | `smart_group_recommend.py` ⭐ | `smart_recommend_v2.py` |
-| 简单查询列表 | `query.py` | - |
-| 创建策略组 | `query.py --create-group` | - |
-
-**推荐优先级**：
-1. 智能分组推荐（`smart_group_recommend.py`）- 功能最全
-2. 智能推荐 v2（`smart_recommend_v2.py`）- 快速查询
-3. 智能推荐 v1（`smart_recommend.py`）- 基础推荐
-4. 基础查询（`query.py`）- 简单查询
+| 需求 | 使用工具 |
+|------|---------|
+| 智能推荐组合 | `smart_group_recommend.py` |
+| 简单查询列表 | `query.py` |
+| 创建策略组 | `query.py --create-group` |
 
 ---
 
@@ -136,25 +121,20 @@ python3 skills/backtest-query/query.py \
 用户提问
     ↓
 需要智能推荐？
-    ├─ 是 → smart_group_recommend.py ⭐ （推荐）
+    ├─ 是 → smart_group_recommend.py
     │        - 自动分组
     │        - 多维度筛选
     │        - 详情深度分析
     │
-    ├─ 快速查询 → smart_recommend_v2.py
-    │        - 简单推荐
-    │        - 快速组合
-    │
-    └─ 简单查询 → query.py
+    └─ 否 → query.py
              - 列表查询
              - 基础筛选
 ```
 
-**推荐使用 smart_group_recommend.py 的场景**：
-- ✅ "帮我找最优策略"
-- ✅ "推荐一个组合"
-- ✅ "高收益低风险的策略"
-- ✅ 需要详细分析和筛选
+**使用场景**：
+- ✅ "帮我找最优策略" → `smart_group_recommend.py`
+- ✅ "推荐一个组合" → `smart_group_recommend.py`
+- ✅ "查询BTC策略列表" → `query.py`
 
 ---
 
