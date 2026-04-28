@@ -48,21 +48,18 @@
    - **注册 Agent 到 Gateway**（关键）
 4. 返回认证信息
 
-### 2. Agent 注册问题（已修复）
+### 2. Agent 动态创建
 
-**之前的问题**：
-- Plugin 将 agent 写入 `~/.quantclaw/agents-config.json`
-- Gateway 不读取这个文件
-- Gateway 找不到 agent 时使用 fallback 模式
-- 创建了错误的 workspace: `/home/ubuntu/clawd-qc-{hash}`
+**工作原理**：
+- Gateway 不预先注册用户 agent（不写入配置文件）
+- 当收到请求时，Gateway 自动创建 agent 实例（fallback 模式）
+- workspace 路径由 `quantclaw-auth` 插件在用户数据中指定
+- Agent 使用 `~/quantclaw-users/qc-{hash}` 作为工作区
 
-**解决方案**：
-- 直接修改 Gateway 配置文件 `~/.clawdbot/clawdbot.json`
-- 将 agent 添加到 `agents.list` 数组
-- **需要重启 Gateway 生效**
-
-**未来优化**：
-- 如果 Clawdbot 提供动态注册 API，使用 API 而非修改配置文件
+**注意事项**：
+- 用户数据必须包含正确的 `workspace` 路径
+- 模板文件需要提前准备好
+- Agent 配置继承 Gateway 的 `agents.defaults`
 
 ---
 
@@ -142,13 +139,16 @@
       "userId": "u_{hash}",
       "token": "client_token",
       "agentId": "qc-{hash}",
-      "workspace": "/home/ubuntu/quantclaw-users/qc-{hash}",
+      "workspace": "~/quantclaw-users/qc-{hash}",
       "createdAt": "2026-04-23T...",
       "enabled": true
     }
   ]
 }
 ```
+
+**关键字段**：
+- `workspace`: 使用 `~` 开头的相对路径（会被 Gateway 展开）
 
 ---
 
@@ -196,20 +196,31 @@
 - [ ] 检查 Gateway 状态: `clawdbot gateway status`
 - [ ] 检查用户数据: `cat ~/.quantclaw/users.json`
 - [ ] 检查工作区: `ls ~/quantclaw-users/`
-- [ ] 检查错误工作区: `ls ~/clawd-qc-*` (不应存在)
+- [ ] 验证模板文件: `ls ~/work/QuantClaw/templates/agent-workspace/`
 
 ---
 
 ## 常见问题
 
-### Q: 创建了 `clawd-qc-*` 目录？
-A: Agent 未正确注册到 Gateway。检查插件是否正确写入 `~/.clawdbot/clawdbot.json`，然后重启 Gateway。
+### Q: workspace 路径错误？
+A: 确保 `users.json` 中的 `workspace` 字段使用 `~/quantclaw-users/qc-{hash}` 格式（`~` 开头）。插件在创建用户时应该正确设置此路径。
 
 ### Q: Agent 不使用技能？
-A: 检查 SOUL.md 中的"能力边界"，确保允许"使用技能查询数据"。
+A: 检查以下内容：
+1. 技能软链接是否存在: `ls -la ~/quantclaw-users/qc-{hash}/skills`
+2. AGENTS.md 是否正确加载
+3. Gateway 日志中是否有技能相关错误
 
 ### Q: 模板更新后新用户没有生效？
-A: 检查 `templatePath` 配置是否正确，默认为 `~/work/QuantClaw/templates/agent-workspace`。
+A: 检查 plugin 配置中的 `templatePath`，应为 `~/work/QuantClaw/templates/agent-workspace`。
 
-### Q: 如何更新现有用户的模板？
-A: 使用 `python scripts/sync-templates.py --files SOUL.md`
+### Q: 如何删除所有用户？
+A: 清空三个位置的数据：
+```bash
+# 1. 用户注册信息
+echo '{"users":[]}' > ~/.quantclaw/users.json
+# 2. 工作区
+rm -rf ~/quantclaw-users
+# 3. 聊天记录
+rm -f ~/work/QuantClaw/server/data/chats/*.json
+```
