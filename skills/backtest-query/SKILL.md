@@ -66,9 +66,14 @@ python3 skills/backtest-query/smart_group_recommend.py \
 - 网格策略：strategy_type=7
 - 趋势策略：其他（如鲲鹏）
 
-### 决策逻辑
+### Agent 决策逻辑
+- **用户包含"创建"关键词** → 推荐后直接创建（无需确认）
+- **用户仅查询** → 推荐后询问是否创建
 - 需要推荐组合 → `smart_group_recommend.py`
 - 查询列表 → `query.py --list-xxx`
+
+### 创建意图关键词
+`创建`、`建立`、`建个`、`生成`、`并创建`、`然后创建`
 
 ---
 
