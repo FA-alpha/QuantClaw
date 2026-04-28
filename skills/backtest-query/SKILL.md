@@ -40,6 +40,9 @@ python3 skills/backtest-query/query.py \
 - `--max-recent-drawdown` - 最大回撤
 - `--output` - 输出文件
 
+#### 自动生成创建命令
+推荐结果会自动提取每个组合的 `strategy_token`，并生成可直接执行的创建命令。用户可以直接复制执行。
+
 **示例**：
 ```bash
 # 简单推荐
@@ -96,26 +99,50 @@ python3 skills/backtest-query/query.py \
 
 ### 工作流程
 
-#### 1. 查询并筛选策略
+#### 方式1：智能推荐 + 自动生成命令（推荐）
+
 ```bash
+# 1. 智能推荐
 python3 skills/backtest-query/smart_group_recommend.py \
-  --query "BTC和ETH的优质策略" \
-  --output result.json
+  --query "BTC和ETH的优质策略"
 ```
 
-从结果中记录优选策略的 `strategy_token`。
+**输出示例**：
+```
+--- 组合 #1 ---
+评分: 85.5
+预期收益: 120.5%
+...
 
-#### 2. 创建策略组
-```bash
+🔧 创建命令:
 python3 skills/backtest-query/query.py \
   --create-group \
-  --group-name "BTC+ETH多空对冲组合" \
+  --group-name "智能组合_1_20260428" \
+  --strategy-tokens "st_abc123,st_def456,st_xyz789"
+```
+
+```bash
+# 2. 复制并执行创建命令
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "智能组合_1_20260428" \
   --strategy-tokens "st_abc123,st_def456,st_xyz789"
 ```
 
 **成功响应**：
 ```
-✅ 策略组创建成功: BTC+ETH多空对冲组合 (ID: 12345)
+✅ 策略组创建成功: 智能组合_1_20260428 (ID: 12345)
+```
+
+#### 方式2：手动创建
+
+如果已知 `strategy_token`，可以直接创建：
+
+```bash
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "自定义组合名称" \
+  --strategy-tokens "token1,token2,token3"
 ```
 
 ---
