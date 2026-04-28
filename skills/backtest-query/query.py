@@ -263,22 +263,6 @@ def get_version_info(token: str, strategy_type: int, version: str) -> dict:
     return {}
 
 
-def get_default_ai_time_id(token: str) -> str:
-    """
-    获取默认的 ai_time_id（接口返回的第1个）
-    
-    注意：此函数已重构为使用统一的 defaults.py 模块
-    
-    Args:
-        token: 用户 token
-    
-    Returns:
-        str: 默认的 ai_time_id，失败时返回 "5"
-    """
-    from defaults import get_default_ai_time_id as _get_default
-    return _get_default(token, verbose=False)
-
-
 def query_backtest(
     token: str,
     page: int = 1,
@@ -461,7 +445,7 @@ def main():
     parser.add_argument("--limit", type=int, default=10, help="每页数量，-1获取全部")
     parser.add_argument("--name", dest="search_val", help="策略名称")
     
-    # 查询参数（查询回测时必填）
+    # 查询回测时的参数（查询时必填）
     parser.add_argument("--coin", dest="search_coin", help="币种，多选逗号分割")
     parser.add_argument("--amt-type", dest="search_amt_type", type=int,
                         choices=[1, 2], help="类型: 1现货 2合约")
@@ -478,9 +462,9 @@ def main():
     current_year = datetime.now().year
     parser.add_argument("--year", dest="search_year", type=int,
                         choices=range(2011, current_year + 1), metavar="YEAR",
-                        help=f"按年份查询（2011-{current_year}）。注意：优先使用 --ai-time-id")
+                        help=f"按年份查询（2011-{current_year}），与 --ai-time-id 二选一")
     parser.add_argument("--ai-time-id", dest="ai_time_id",
-                        help="按时间ID查询（推荐使用，默认5=最近1年）。优先级高于 --year")
+                        help="按时间ID查询，与 --year 二选一")
     parser.add_argument("--recommand-type", dest="search_recommand_type", type=int,
                         choices=[1, 2], help="推荐类型: 1推荐 2交易中策略")
     parser.add_argument("--pct", dest="search_pct", 
@@ -571,31 +555,18 @@ def main():
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     
-    # 查询回测需要 token 和必要参数
+    # 查询回测需要 token
     if not args.token:
         print("错误: 查询回测数据需要 --token")
         return
     
-    # 验证必填参数
-    if not args.search_coin:
-        print("错误: 查询回测数据需要 --coin")
-        return
-    if not args.sort_type:
-        print("错误: 查询回测数据需要 --sort")
-        return
-    if not args.strategy_type:
-        print("错误: 查询回测数据需要 --strategy-type")
-        return
-    
-    # 验证时间参数（优先使用 ai_time_id，默认使用接口第1个）
-    if not args.search_year and not args.ai_time_id:
-        args.ai_time_id = get_default_ai_time_id(args.token)
-        print(f"ℹ️  未指定时间范围，使用默认（接口第1个）: ai_time_id={args.ai_time_id}")
-    
-    # 如果同时传了，优先用 ai_time_id
+    # 验证时间参数（二选一必传）
     if args.search_year and args.ai_time_id:
-        print("⚠️  同时传入 --year 和 --ai-time-id，优先使用 --ai-time-id")
-        args.search_year = None
+        print("错误: --year 和 --ai-time-id 参数不能同时使用，请选择其一")
+        return
+    if not args.search_year and not args.ai_time_id:
+        print("错误: --year 或 --ai-time-id 必须传一个")
+        return
     
     # 验证方向参数
     if args.search_direction and args.strategy_type not in (1, 7, 11):

@@ -75,6 +75,19 @@
             color: #f85149;
             border: 1px solid #f8514944;
         }
+        .message.thinking {
+            color: #8b949e;
+        }
+        .thinking-dots .dots::after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
         .message .time {
             font-size: 0.7em;
             color: #8b949e;
@@ -239,6 +252,8 @@
             <p>我是您的量化交易助手，可以帮您分析市场、制定策略。</p>
             <p>试试问我：</p>
             <div class="examples">
+                <span class="example" onclick="askExample(this)">查看并分析最新回测的结果</span>
+                <span class="example" onclick="askExample(this)">回测我最新的3个策略</span>
                 <span class="example" onclick="askExample(this)">查询 BTC 价格</span>
                 <span class="example" onclick="askExample(this)">分析 ETH 近期走势</span>
                 <span class="example" onclick="askExample(this)">设计一个网格策略</span>
@@ -256,6 +271,7 @@
     <script>
         const TOKEN_KEY = 'quantclaw_token';
         const API_URL = '/api/chat';
+        // WebSocket URL配置 - 通过/ws代理到Gateway
         const WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws';
 
         let token = localStorage.getItem(TOKEN_KEY);
@@ -330,9 +346,7 @@
             ws = new WebSocket(WS_URL + '?sessionKey=' + encodeURIComponent(sessionKey) + '&userId=' + encodeURIComponent(userId));
             
             ws.onopen = () => {
-                console.log('WS connected');
-                document.getElementById('status').textContent = '已连接';
-                document.getElementById('status').className = 'status auth';
+                onWebSocketOpen();
                 if (onReady) onReady();
             };
 
@@ -346,6 +360,8 @@
                     if (data.type === 'history') {
                         loadHistory(data.messages || []);
                     } else if (data.type === 'stream') {
+                        // 收到流式响应，隐藏思考状态
+                        hideThinking();
                         // 流式响应
                         if (!streamingMsg) {
                             streamingMsg = createStreamingMessage();
@@ -368,8 +384,14 @@
                         }
                         streamingMsg = null;
                     } else if (data.type === 'error') {
+                        hideThinking();
                         addMessage('❌ ' + (data.error?.message || data.error || 'Error'), 'error');
                         streamingMsg = null;
+                    } else if (data.type === 'message') {
+                        hideThinking();
+                        if (data.role === 'system') {
+                            addMessage(data.content, 'system');
+                        }
                     }
                 } catch (e) {
                     console.error('Parse error:', e);
@@ -379,21 +401,123 @@
             ws.onerror = (err) => {
                 console.error('WS error:', err);
                 addMessage('❌ WebSocket 连接错误', 'error');
+                // 连接失败，安排重试
+                ws = null;
+                if (retryQueue.length > 0) {
+                    setTimeout(() => {
+                        connectWebSocket();
+                    }, 2000);
+                }
             };
 
             ws.onclose = () => {
                 console.log('WS closed');
                 ws = null;
+                document.getElementById('status').textContent = '已断开';
+                document.getElementById('status').className = 'status';
+                // 如果有待发送消息，自动重连
+                if (retryQueue.length > 0 || thinkingIndicator) {
+                    console.log('Auto reconnecting...');
+                    setTimeout(() => {
+                        connectWebSocket();
+                    }, 2000);
+                }
             };
         }
 
-        // 通过 WebSocket 发送消息
-        function sendViaWebSocket(message) {
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                connectWebSocket(() => sendViaWebSocket(message));
-                return;
+        // 保持连接心跳
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
             }
-            ws.send(JSON.stringify({ type: 'message', text: message }));
+        }, 30000);
+
+        // 通过 WebSocket 发送消息（带重试）
+        let retryQueue = [];  // 待发送消息队列
+        let retryTimeout = null;
+        let retryCount = 0;
+
+        function sendViaWebSocket(message) {
+            // 添加到队列
+            retryQueue.push(message);
+            processRetryQueue();
+        }
+
+        // 处理发送队列
+        function processRetryQueue() {
+            if (retryTimeout) return;  // 已有定时器在运行
+            if (retryQueue.length === 0) return;
+
+            const message = retryQueue[0];
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                // WebSocket 已连接，发送消息
+                try {
+                    ws.send(JSON.stringify({ type: 'message', text: message }));
+                    // 显示思考状态
+                    showThinking();
+                    // 移除队列中的消息
+                    retryQueue.shift();
+                    retryCount = 0;
+                    // 继续处理队列
+                    processRetryQueue();
+                } catch (e) {
+                    console.error('Send error:', e);
+                    // 发送失败，重试
+                    scheduleRetry();
+                }
+            } else {
+                // WebSocket 未连接，先连接
+                connectWebSocket(() => {
+                    // 连接成功后重试
+                    scheduleRetry();
+                });
+            }
+        }
+
+        // 安排重试
+        function scheduleRetry() {
+            if (retryTimeout) return;
+
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);  // 最多等待10秒
+            retryCount++;
+
+            console.log(`Retry in ${delay}ms (attempt ${retryCount})`);
+
+            retryTimeout = setTimeout(() => {
+                retryTimeout = null;
+                processRetryQueue();
+            }, delay);
+        }
+
+        // WebSocket 连接成功后处理队列
+        function onWebSocketOpen() {
+            console.log('WS connected');
+            document.getElementById('status').textContent = '已连接';
+            document.getElementById('status').className = 'status auth';
+            // 连接成功后，重置重试计数并处理队列
+            retryCount = 0;
+            processRetryQueue();
+        }
+
+        // 显示思考状态
+        let thinkingIndicator = null;
+        function showThinking() {
+            hideThinking();
+            const chat = document.getElementById('chat');
+            thinkingIndicator = document.createElement('div');
+            thinkingIndicator.className = 'message assistant thinking';
+            thinkingIndicator.innerHTML = '<span class="thinking-dots">🤔 正在思考<span class="dots"></span></span>';
+            chat.appendChild(thinkingIndicator);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        // 隐藏思考状态
+        function hideThinking() {
+            if (thinkingIndicator) {
+                thinkingIndicator.remove();
+                thinkingIndicator = null;
+            }
         }
 
         // 从服务端加载本地历史

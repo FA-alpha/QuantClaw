@@ -362,7 +362,11 @@ async def handle_websocket(request):
                                 data = json.loads(msg.data)
                                 msg_type = data.get('type', 'message')
                                 
-                                if msg_type == 'history':
+                                if msg_type == 'ping':
+                                    # 心跳响应
+                                    await ws_client.send_json({'type': 'pong'})
+                                    continue
+                                elif msg_type == 'history':
                                     # 从本地存储获取历史
                                     if user_id:
                                         messages = chat_store.load(user_id)
@@ -410,9 +414,17 @@ async def handle_websocket(request):
                                 # RPC 响应
                                 if msg_type == 'res':
                                     if data.get('error'):
+                                        error_msg = data.get('error')
+                                        logger.error(f'RPC error: {error_msg}')
                                         await ws_client.send_json({
                                             'type': 'error',
-                                            'error': data.get('error'),
+                                            'error': error_msg,
+                                        })
+                                        # 同时作为消息显示给用户
+                                        await ws_client.send_json({
+                                            'type': 'message',
+                                            'role': 'system',
+                                            'content': f'⚠️ 错误: {error_msg}',
                                         })
                                     continue
                                 
@@ -438,6 +450,19 @@ async def handle_websocket(request):
                                             })
                                         elif stream == 'lifecycle':
                                             phase = stream_data.get('phase')
+                                            error = stream_data.get('error')
+                                            if error:
+                                                # Agent 执行出错
+                                                logger.error(f'Agent error: {error}')
+                                                await ws_client.send_json({
+                                                    'type': 'error',
+                                                    'error': error,
+                                                })
+                                                await ws_client.send_json({
+                                                    'type': 'message',
+                                                    'role': 'system',
+                                                    'content': f'⚠️ Agent 错误: {error}',
+                                                })
                                             if phase == 'end':
                                                 # 保存完整回复到本地
                                                 if user_id and current_response[0]:
