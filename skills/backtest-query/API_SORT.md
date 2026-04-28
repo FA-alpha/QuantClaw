@@ -14,32 +14,34 @@
 
 ---
 
-## ⚠️ 重要变更
+## ⚠️ 配置说明
 
-### 之前（v1-v3）
+### 默认行为
 ```python
+# 默认按收益率排序
 fetch_params = {
-    'sort_type': 2,  # 硬编码按收益率
+    'sort_type': 2,  # 按收益率
 }
 ```
 
-**问题**：
-- API 只返回高收益策略
-- 限制了数据多样性
-- 可能错过低收益但高夏普、低回撤的策略
+**理由**：
+- ✅ 收益率是最重要的指标
+- ✅ 用户通常关注高收益策略
+- ✅ 客户端多维度排序可以进一步筛选
 
-### 现在（v4）
+### 自定义排序
 ```python
-fetch_params = {
-    # 不设置 sort_type
-}
+# 通过参数指定
+if api_sort_type is not None:
+    fetch_params['sort_type'] = api_sort_type
+else:
+    fetch_params['sort_type'] = 2  # 默认收益率
 ```
 
-**改进**：
-- ✅ API 返回更多样化的数据
-- ✅ 由客户端的多维度排序筛选
-- ✅ 避免 API 层面的偏见
-- ✅ 可选指定 `--api-sort` 参数
+**灵活性**：
+- ✅ 可通过 `--api-sort` 参数自定义
+- ✅ 支持按最新、夏普率、回撤率排序
+- ✅ 默认值符合大多数场景
 
 ---
 
@@ -53,26 +55,34 @@ python3 smart_group_recommend.py \
   --sort-methods "sharpe,return,drawdown"
 ```
 
-**优势**：
-- 不指定 API 排序
-- 获取更全面的数据
-- 客户端多维度筛选
+**行为**：
+- API 按收益率排序（默认）
+- 获取高收益策略
+- 客户端多维度筛选（夏普、收益、回撤）
 
 ---
 
-### 指定 API 排序
+### 自定义 API 排序
 ```bash
+# 按夏普率排序
 python3 smart_group_recommend.py \
-  --query "BTC策略" \
+  --query "BTC高夏普策略" \
   --coins "BTC" \
-  --api-sort 2 \
+  --api-sort 3 \
+  --sort-methods "return,drawdown"
+
+# 按回撤率排序
+python3 smart_group_recommend.py \
+  --query "BTC低风险策略" \
+  --coins "BTC" \
+  --api-sort 4 \
   --sort-methods "sharpe,return"
 ```
 
 **场景**：
-- 明确只要高收益策略
-- 减少客户端排序计算
-- 数据量过大时预筛选
+- 明确需要特定类型策略
+- API 预筛选，客户端再精选
+- 根据需求灵活调整
 
 ---
 
@@ -80,77 +90,106 @@ python3 smart_group_recommend.py \
 
 ### 场景：BTC 策略池（假设 1000 个）
 
-#### 1. API排序：收益率（sort_type=2）
+#### 1. 默认：API按收益率排序（sort_type=2）
 ```
 API 返回：Top 1000 按收益排序
   → [收益180%, 收益175%, ..., 收益5%]
   
 客户端筛选：
-  - 按夏普排序 → 只能从这 1000 个中选
-  - 按回撤排序 → 只能从这 1000 个中选
+  - 按夏普排序 → 从这 1000 个高收益中选高夏普
+  - 按回撤排序 → 从这 1000 个高收益中选低回撤
   
-问题：可能错过收益中等但夏普高的策略
+优势：收益优先，再考虑其他指标
 ```
 
-#### 2. API不排序（sort_type=None）
+#### 2. 自定义：API按夏普率排序（sort_type=3）
 ```
-API 返回：1000 个（默认排序或随机）
-  → [夏普2.5收益120%, 回撤5%收益80%, 收益180%夏普1.2, ...]
+API 返回：Top 1000 按夏普排序
+  → [夏普2.8收益80%, 夏普2.5收益120%, ...]
   
 客户端筛选：
-  - 按夏普排序 → 从全量数据中选
-  - 按回撤排序 → 从全量数据中选
-  - 按收益排序 → 从全量数据中选
+  - 按收益排序 → 从这 1000 个高夏普中选高收益
+  - 按回撤排序 → 从这 1000 个高夏普中选低回撤
   
-优势：数据更全面，筛选更灵活
+优势：稳健优先，再考虑收益
+```
+
+#### 3. 自定义：API按回撤率排序（sort_type=4）
+```
+API 返回：Top 1000 按回撤排序
+  → [回撤5%收益60%, 回撤7%收益80%, ...]
+  
+客户端筛选：
+  - 按夏普排序 → 从这 1000 个低回撤中选高夏普
+  - 按收益排序 → 从这 1000 个低回撤中选高收益
+  
+优势：风控优先，再考虑收益
 ```
 
 ---
 
 ## 🔬 实验对比
 
-### 实验1：只按收益率API排序
+### 实验1：默认（API按收益率）
 ```bash
---api-sort 2 --sort-methods "sharpe"
+# 默认 --api-sort=2（可不写）
+--sort-methods "sharpe,return,drawdown"
 ```
 
 **结果**：
-- API 返回 Top 100 高收益策略
-- 客户端按夏普排序
-- 可能错过：中等收益但高夏普的策略
+- API 返回高收益策略
+- 客户端从中选高夏普、低回撤
+- 适合：追求收益，兼顾风险
 
-### 实验2：不指定API排序
+### 实验2：API按夏普率
 ```bash
---sort-methods "sharpe,return"
+--api-sort 3 --sort-methods "return,drawdown"
 ```
 
 **结果**：
-- API 返回多样化数据
-- 客户端同时按夏普和收益排序
-- 覆盖更全面
+- API 返回高夏普策略
+- 客户端从中选高收益、低回撤
+- 适合：稳健优先，追求性价比
+
+### 实验3：API按回撤率
+```bash
+--api-sort 4 --sort-methods "sharpe,return"
+```
+
+**结果**：
+- API 返回低回撤策略
+- 客户端从中选高夏普、高收益
+- 适合：保守投资，控制风险
 
 ---
 
 ## ⚙️ 配置建议
 
-### 小数据集（< 100 个策略）
+### 追求收益（默认）
 ```bash
-# 不指定 API 排序
+# 默认 API 按收益率
 --sort-methods "sharpe,return,drawdown"
 ```
 
-### 大数据集（> 1000 个策略）
+### 稳健投资
 ```bash
-# 可选指定 API 排序预筛选
---api-sort 2 \
---sort-methods "sharpe,return,drawdown"
+# API 按夏普率
+--api-sort 3 \
+--sort-methods "return,drawdown,score"
 ```
 
-### 明确需求（只要高收益）
+### 风险控制
 ```bash
-# API 层面就筛选高收益
---api-sort 2 \
---sort-methods "sharpe"
+# API 按回撤率
+--api-sort 4 \
+--sort-methods "sharpe,return,score"
+```
+
+### 最新策略
+```bash
+# API 按最新
+--api-sort 1 \
+--sort-methods "score,sharpe,return"
 ```
 
 ---
@@ -175,21 +214,22 @@ API 返回：1000 个（默认排序或随机）
 
 ## 🎯 最佳实践
 
-### 1. 探索阶段
+### 1. 收益优先（默认推荐）
 ```bash
-# 不指定 API 排序，获取多样化数据
+# API 按收益率（默认）
 --sort-methods "sharpe,return,drawdown,score"
 ```
 
-### 2. 明确目标
+### 2. 风险优先
 ```bash
-# 如果只要高收益，API 预筛选
---api-sort 2 --sort-methods "sharpe,stability"
+# API 按回撤率
+--api-sort 4 \
+--sort-methods "sharpe,return,score"
 ```
 
 ### 3. 全面分析
 ```bash
-# 不指定 API 排序，客户端深度筛选
+# API 按收益率（默认）+ 客户端深度筛选
 --sort-methods "score,sharpe,return,drawdown,win_rate,stability" \
 --min-total-win-rate 60 \
 --max-recent-drawdown 15
@@ -199,80 +239,105 @@ API 返回：1000 个（默认排序或随机）
 
 ## ⚠️ 注意事项
 
-### 1. API 返回数量限制
-- 即使 `limit=-1`，API 可能有最大返回数量
-- 不指定排序可能获得更随机/全面的数据
+### 1. 默认收益率排序
+- 符合大多数用户需求（追求收益）
+- 客户端多维度排序可以进一步筛选
+- 如需其他优先级，使用 `--api-sort`
 
-### 2. 性能考虑
-- 不指定排序：客户端需要更多计算
-- 指定排序：API 层面预筛选，减少数据量
+### 2. API 排序的影响
+- API 排序决定返回数据的初始偏向
+- 客户端排序从 API 返回的数据中精选
+- 两者配合，先粗筛再精选
 
-### 3. 数据偏差
-- 指定排序：可能产生"幸存者偏差"
-- 不指定排序：更接近真实分布
+### 3. 灵活配置
+- 默认值适合大多数场景
+- 特殊需求可自定义
+- 建议根据投资风格选择
 
 ---
 
 ## 🔄 版本迁移
 
-### 从 v3 迁移到 v4
+### v4 配置方式
 
-#### 之前
+#### 代码实现
 ```python
-# 硬编码 sort_type=2
-fetch_params = {'sort_type': 2}
-```
-
-#### 现在
-```python
-# 默认不设置
-fetch_params = {}
-
-# 或可选指定
-if api_sort_type:
+# 默认按收益率
+if api_sort_type is not None:
     fetch_params['sort_type'] = api_sort_type
+else:
+    fetch_params['sort_type'] = 2  # 默认收益率
 ```
 
 #### 用户使用
 ```bash
-# 默认行为（推荐）
-python3 smart_group_recommend.py --query "xxx"
+# 默认按收益率（推荐）
+python3 smart_group_recommend.py --query "BTC策略"
 
-# 如果需要 API 排序
-python3 smart_group_recommend.py --query "xxx" --api-sort 2
+# 按夏普率
+python3 smart_group_recommend.py --query "BTC策略" --api-sort 3
+
+# 按回撤率
+python3 smart_group_recommend.py --query "BTC策略" --api-sort 4
 ```
+
+#### 向后兼容
+- ✅ 默认行为与 v1-v3 一致（按收益率）
+- ✅ 新增参数灵活自定义
+- ✅ 无需修改现有使用方式
 
 ---
 
 ## 📊 实际测试建议
 
-### 测试1：对比数据质量
+### 测试：不同 API 排序对比
 ```bash
-# 不指定 API 排序
+# 按收益率（默认）
 python3 smart_group_recommend.py \
   --query "BTC策略" --coins "BTC" \
   --sort-methods "sharpe,return,drawdown" \
-  --output result_no_api_sort.json
+  --output result_return.json
 
-# 指定 API 排序
+# 按夏普率
 python3 smart_group_recommend.py \
   --query "BTC策略" --coins "BTC" \
-  --api-sort 2 \
-  --sort-methods "sharpe,return,drawdown" \
-  --output result_api_sort.json
+  --api-sort 3 \
+  --sort-methods "return,drawdown,score" \
+  --output result_sharpe.json
 
-# 对比两个结果的多样性
+# 按回撤率
+python3 smart_group_recommend.py \
+  --query "BTC策略" --coins "BTC" \
+  --api-sort 4 \
+  --sort-methods "sharpe,return,score" \
+  --output result_drawdown.json
+
+# 对比三个结果的策略类型分布
 ```
 
 ---
 
 **推荐配置**：
+
+### 收益优先（默认）
 ```bash
-# 默认不指定 API 排序，让多维度排序发挥最大作用
+# 默认 API 按收益率
 --sort-methods "score,sharpe,return,drawdown"
 ```
 
-**原因**：
-- API 返回更全面的数据
-- 客户端多维度排序能覆盖各种需求
-- 避免 API 层面的选择偏差
+### 稳健优先
+```bash
+--api-sort 3 \
+--sort-methods "return,drawdown,score"
+```
+
+### 风险控制
+```bash
+--api-sort 4 \
+--sort-methods "sharpe,return,score"
+```
+
+**原则**：
+- API 排序做粗筛（决定数据类型）
+- 客户端排序做精选（多维度筛选）
+- 根据投资风格选择 API 排序

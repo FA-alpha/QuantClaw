@@ -69,7 +69,7 @@ skills/backtest-query/
    ↓
 推断分组策略 (infer_grouping_strategy)
    ↓
-查询全量数据 (query_backtest)
+查询数据 (query_backtest, API默认按收益率排序)
    ↓
 按维度分组 (classify_strategies)
    ↓
@@ -77,6 +77,7 @@ skills/backtest-query/
    ├─ 按夏普率排序 → Top N
    ├─ 按收益率排序 → Top N
    ├─ 按回撤排序 → Top N
+   ├─ 按综合评分排序 → Top N
    └─ 去重合并
    ↓
 批量获取详情 (fetch_detail_data)
@@ -89,6 +90,8 @@ skills/backtest-query/
    ↓
 返回推荐结果
 ```
+
+**注**：API 查询时默认按收益率排序（sort_type=2），可通过 `--api-sort` 参数自定义
 
 ### 关键模块
 
