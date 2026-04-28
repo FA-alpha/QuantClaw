@@ -360,6 +360,7 @@ export default function register(api: any) {
     autoRegister: cfg.autoRegister ?? true,
     skillsPath: cfg.skillsPath || '~/work/QuantClaw/skills',
     templatePath: cfg.templatePath || '~/work/QuantClaw/templates/agent-workspace',
+    tokenValidation: cfg.tokenValidation,
   };
 
   const userManager = new UserManager(config, api.logger);
