@@ -84,7 +84,10 @@ def analyze_drawdown_overlap(
     all_periods = []
     for idx in selected_indices:
         strategy = strategies[idx]
-        net_value = strategy.get('total_stat', {}).get('net_value', {}).get('lists', [])
+        # 尝试从 _detail 或顶层获取 net_value
+        detail = strategy.get('_detail', {})
+        total_stat = detail.get('total_stat', {}) if detail else strategy.get('total_stat', {})
+        net_value = total_stat.get('net_value', {}).get('lists', [])
         if not net_value:
             continue
         
@@ -173,24 +176,28 @@ def calculate_portfolio_risk(
     
     # 加权平均
     max_drawdown = sum(
-        s.get('total_stat', {}).get('max_loss', 0) * w
+        float(s.get('max_loss', 0)) * w
         for s, w in zip(selected, weights)
     )
     
     sharpe_ratio = sum(
-        s.get('total_stat', {}).get('sharp_rate', 0) * w
+        float(s.get('sharp_rate', 0)) * w
         for s, w in zip(selected, weights)
     )
     
+    # win_rate 可能在 _metrics 或顶层
     win_rate = sum(
-        s.get('total_stat', {}).get('win_rate', 0) * w
+        float(s.get('_metrics', {}).get('total_win_rate', 0) or s.get('win_rate', 0)) * w
         for s, w in zip(selected, weights)
     )
     
     # 计算波动率（基于净值序列）
     all_returns = []
     for s in selected:
-        net_values = [item['net'] for item in s.get('total_stat', {}).get('net_value', {}).get('lists', [])]
+        # 尝试从 _detail 或顶层获取 net_value
+        detail = s.get('_detail', {})
+        total_stat = detail.get('total_stat', {}) if detail else s.get('total_stat', {})
+        net_values = [item['net'] for item in total_stat.get('net_value', {}).get('lists', [])]
         if len(net_values) > 1:
             returns = np.diff(net_values) / net_values[:-1]
             all_returns.extend(returns)

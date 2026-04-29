@@ -188,10 +188,10 @@ def recommend_combinations(
             'strategies': [
                 {
                     'name': s.get('name'),
-                    'coin': s.get('strategy', [{}])[0].get('coin') if isinstance(s.get('strategy'), list) else None,
-                    'year_rate': s.get('total_stat', {}).get('year_rate'),
-                    'sharp_rate': s.get('total_stat', {}).get('sharp_rate'),
-                    'max_loss': s.get('total_stat', {}).get('max_loss'),
+                    'coin': s.get('coin') or (s.get('strategy', [{}])[0].get('coin') if isinstance(s.get('strategy'), list) else None),
+                    'year_rate': float(s.get('year_rate', 0)),
+                    'sharp_rate': float(s.get('sharp_rate', 0)),
+                    'max_loss': float(s.get('max_loss', 0)),
                     'strategy_token': s.get('strategy_token')
                 }
                 for s in selected

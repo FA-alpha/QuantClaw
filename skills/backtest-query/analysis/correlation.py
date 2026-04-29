@@ -56,14 +56,29 @@ def build_correlation_matrix(strategies: List[Dict]) -> Tuple[np.ndarray, List[s
     
     # 计算两两相关性
     for i in range(n):
-        net_a = [item['net'] for item in strategies[i]['net_value']['lists']]
+        # 尝试从 _detail 或顶层获取 net_value
+        detail_i = strategies[i].get('_detail', {})
+        total_stat_i = detail_i.get('total_stat', {}) if detail_i else strategies[i].get('total_stat', {})
+        net_value_i = total_stat_i.get('net_value', {}).get('lists', [])
+        
+        if not net_value_i:
+            continue
+        
+        net_a = [item['net'] for item in net_value_i]
         
         for j in range(i + 1, n):
-            net_b = [item['net'] for item in strategies[j]['net_value']['lists']]
+            detail_j = strategies[j].get('_detail', {})
+            total_stat_j = detail_j.get('total_stat', {}) if detail_j else strategies[j].get('total_stat', {})
+            net_value_j = total_stat_j.get('net_value', {}).get('lists', [])
+            
+            if not net_value_j:
+                continue
+            
+            net_b = [item['net'] for item in net_value_j]
             
             # 对齐日期（取交集）
-            dates_a = {item['date']: item['net'] for item in strategies[i]['net_value']['lists']}
-            dates_b = {item['date']: item['net'] for item in strategies[j]['net_value']['lists']}
+            dates_a = {item['date']: item['net'] for item in net_value_i}
+            dates_b = {item['date']: item['net'] for item in net_value_j}
             common_dates = sorted(set(dates_a.keys()) & set(dates_b.keys()))
             
             if len(common_dates) < 2:
