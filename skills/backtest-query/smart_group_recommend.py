@@ -55,16 +55,39 @@ def format_params(params: Dict) -> str:
 # ==================== Token 管理 ====================
 
 def get_user_token() -> Optional[str]:
-    """从当前 workspace 自动获取 token"""
-    agent_id = None
-    current = os.path.abspath(os.getcwd())
+    """
+    从当前 workspace 自动获取 token
     
-    while current != '/':
-        basename = os.path.basename(current)
-        if basename.startswith('clawd-'):
-            agent_id = basename.replace('clawd-', '')
-            break
-        current = os.path.dirname(current)
+    支持两种情况：
+    1. 直接在 workspace 内执行：/home/ubuntu/clawd-qc-xxx/skills/...
+    2. 通过软链接执行：workspace/skills -> /home/ubuntu/work/QuantClaw/skills
+    
+    解决方案：优先使用 PWD 环境变量（保留软链接路径），回退到物理路径
+    """
+    agent_id = None
+    
+    def find_agent_id_in_path(start_path: str) -> Optional[str]:
+        """向上遍历路径查找 clawd-* 目录"""
+        current = start_path
+        
+        while current != '/':
+            basename = os.path.basename(current)
+            
+            if basename.startswith('clawd-'):
+                return basename.replace('clawd-', '')
+            
+            current = os.path.dirname(current)
+        
+        return None
+    
+    # 方法1：从 PWD 环境变量获取（保留软链接路径）
+    pwd = os.environ.get('PWD')
+    if pwd:
+        agent_id = find_agent_id_in_path(pwd)
+    
+    # 方法2：从物理路径查找（回退方案）
+    if not agent_id:
+        agent_id = find_agent_id_in_path(os.path.abspath(os.getcwd()))
     
     if not agent_id:
         return None
