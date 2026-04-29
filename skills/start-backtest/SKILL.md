@@ -320,7 +320,7 @@ python skills/start-backtest/start.py \
 
 2. **执行监控脚本：**
 ```bash
-cd /home/ubuntu/QuantClaw/skills/backtest-query
+cd /home/ubuntu/QuantClaw/skills/start-backtest
 python backtest_monitor.py --token <用户token> --back-id <回测ID> --daemon
 ```
 
