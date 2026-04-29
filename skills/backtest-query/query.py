@@ -450,15 +450,39 @@ def format_result(data: dict, output_format: str = "table") -> str:
 
 
 def auto_get_token():
-    """自动获取当前 Agent 的 token"""
+    """
+    自动获取当前 Agent 的 token
+    
+    支持软链接访问：优先使用 PWD 环境变量（保留软链接路径），
+    回退到物理路径
+    """
     agent_id = None
-    current = os.path.abspath(os.getcwd())                                                                                                                             
-    while current != '/':                                                                                                                                              
-        basename = os.path.basename(current)                                                                                                                           
-        if basename.startswith('clawd-'):                                                                                                                              
-            agent_id = basename.replace('clawd-', '')                                                                                                                  
-            break                                                                                                                                                      
-        current = os.path.dirname(current)  
+    
+    def find_agent_id_in_path(start_path):
+        """向上遍历路径查找 clawd-* 目录"""
+        current = start_path
+        
+        while current != '/':
+            basename = os.path.basename(current)
+            
+            if basename.startswith('clawd-'):
+                return basename.replace('clawd-', '')
+            
+            current = os.path.dirname(current)
+        
+        return None
+    
+    # 方法1：从 PWD 环境变量获取（保留软链接路径）
+    pwd = os.environ.get('PWD')
+    if pwd:
+        agent_id = find_agent_id_in_path(pwd)
+    
+    # 方法2：从物理路径查找（回退方案）
+    if not agent_id:
+        agent_id = find_agent_id_in_path(os.path.abspath(os.getcwd()))
+    
+    if not agent_id:
+        return None
     
     users_file = os.path.expanduser('~/.quantclaw/users.json')
     if not os.path.exists(users_file):
