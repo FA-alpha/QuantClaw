@@ -54,7 +54,7 @@ read memory/strategy_types.md
 
 **策略类型**：
 - 马丁策略：`1, 11`（名称含"风霆"）
-- 网格策略：`7`（天阙网格）
+- 网格策略：`7`（网格）
 - 趋势策略：其他所有
 
 **详细文档**：查看 `skills/backtest-query/SKILL.md`

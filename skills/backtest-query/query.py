@@ -39,10 +39,10 @@ def check_auth(response: dict) -> tuple[bool, str]:
         
         # 将 version 字段错误视为空数据（兼容性处理）
         if "Column not found" in info_str and "version" in info_str:
-            return True, []  # 视为成功，返回空数据
+            return True, '[]'  # 视为成功，返回空数据
         
         return False, info_str
-    return True, []
+    return True, '[]'
 
 
 def get_coin_list(token: str, force_refresh: bool = False) -> dict:
