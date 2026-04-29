@@ -8,11 +8,250 @@ import sys
 import os
 import json
 import argparse
-from typing import List, Dict, Optional, Tuple, Callable
+import itertools
+from typing import List, Dict, Optional, Tuple, Set
 from datetime import datetime
 from query import query_backtest, get_backtest_detail
 from analysis import recommend_combinations
 
+
+# ==================== 错误类 ====================
+
+class QueryError(Exception):
+    """查询错误"""
+    pass
+
+
+class ValidationError(Exception):
+    """参数验证错误"""
+    pass
+
+
+# ==================== 工具函数 ====================
+
+def parse_csv(value: Optional[str]) -> Optional[List[str]]:
+    """解析逗号分隔字符串"""
+    if not value:
+        return None
+    return [v.strip() for v in value.split(',')]
+
+
+def parse_csv_int(value: Optional[str]) -> Optional[List[int]]:
+    """解析逗号分隔整数"""
+    if not value:
+        return None
+    return [int(v.strip()) for v in value.split(',')]
+
+
+def format_params(params: Dict) -> str:
+    """格式化参数显示"""
+    parts = []
+    for key, value in params.items():
+        if value is not None:
+            parts.append(f"{key}={value}")
+    return ', '.join(parts) if parts else '无筛选'
+
+
+# ==================== Token 管理 ====================
+
+def get_user_token() -> Optional[str]:
+    """从当前 workspace 自动获取 token"""
+    agent_id = None
+    current = os.path.abspath(os.getcwd())
+    
+    while current != '/':
+        basename = os.path.basename(current)
+        if basename.startswith('clawd-'):
+            agent_id = basename.replace('clawd-', '')
+            break
+        current = os.path.dirname(current)
+    
+    if not agent_id:
+        return None
+    
+    users_file = os.path.expanduser('~/.quantclaw/users.json')
+    if not os.path.exists(users_file):
+        return None
+    
+    try:
+        with open(users_file, 'r') as f:
+            data = json.load(f)
+        users = data.get('users', [])
+        for user in users:
+            if user.get('agentId') == agent_id:
+                return user.get('token')
+    except Exception:
+        pass
+    
+    return None
+
+
+# ==================== 参数处理 ====================
+
+def validate_args(args):
+    """统一参数验证"""
+    if args.version_configs:
+        try:
+            configs = json.loads(args.version_configs)
+            if not isinstance(configs, list):
+                raise ValidationError("--version-configs 必须是 JSON 数组格式")
+            return configs
+        except json.JSONDecodeError as e:
+            raise ValidationError(f"--version-configs JSON 解析失败: {e}")
+    return None
+
+
+def build_query_combinations(args) -> List[Dict]:
+    """
+    根据参数生成查询组合（统一返回字典列表）
+    
+    Returns:
+        [{'coin': 'BTC', 'strategy_type': 1, 'direction': 'long', ...}, ...]
+    """
+    # 解析所有参数
+    coins = parse_csv(args.coins) or [None]
+    strategy_types = parse_csv_int(args.strategy_types) or [None]
+    directions = parse_csv(args.directions) or [None]
+    
+    combinations = []
+    
+    if args.version_configs:
+        # 版本配置对象模式（version_configs 优先，忽略 versions）
+        version_configs = json.loads(args.version_configs)
+        
+        for coin, st, direction, vc in itertools.product(
+            coins, strategy_types, directions, version_configs
+        ):
+            combo = {
+                'coin': coin,
+                'strategy_type': st,
+                'direction': direction,
+            }
+            # 合并版本配置对象的所有字段
+            combo.update(vc)
+            combinations.append(combo)
+    else:
+        # 传统模式
+        search_pcts = parse_csv(args.search_pcts) or [None]
+        ai_time_ids = parse_csv(args.ai_time_ids) or [None]
+        versions = parse_csv(args.versions) or [None]
+        
+        for coin, st, direction, pct, time_id, version in itertools.product(
+            coins, strategy_types, directions, search_pcts, ai_time_ids, versions
+        ):
+            combo = {
+                'coin': coin,
+                'strategy_type': st,
+                'direction': direction,
+                'search_pct': pct,
+                'ai_time_id': time_id,
+                'version': version
+            }
+            combinations.append(combo)
+    
+    return combinations
+
+
+def build_detail_criteria(args) -> Optional[Dict]:
+    """构建详情筛选条件"""
+    criteria = {}
+    
+    if args.min_total_win_rate:
+        criteria['min_total_win_rate'] = args.min_total_win_rate
+    if args.min_recent_profit_rate:
+        criteria['min_recent_profit_rate'] = args.min_recent_profit_rate
+    if args.max_recent_drawdown:
+        criteria['max_recent_drawdown'] = args.max_recent_drawdown
+    if args.min_trade_count:
+        criteria['min_trade_count'] = args.min_trade_count
+    if args.min_stability:
+        criteria['min_stability'] = args.min_stability
+    
+    return criteria if criteria else None
+
+
+# ==================== 批量查询 ====================
+
+def deduplicate_and_add(strategies: List[Dict], all_strategies: List[Dict], seen_ids: Set[str]) -> int:
+    """去重并添加策略"""
+    new_count = 0
+    for strategy in strategies:
+        back_id = strategy.get('back_id')
+        if back_id and back_id not in seen_ids:
+            seen_ids.add(back_id)
+            all_strategies.append(strategy)
+            new_count += 1
+    return new_count
+
+
+def batch_query_strategies(token: str, combinations: List[Dict], base_params: Dict, verbose: bool = True) -> List[Dict]:
+    """
+    批量查询策略并去重合并
+    
+    Args:
+        token: 用户 token
+        combinations: 查询参数组合列表
+        base_params: 基础查询参数
+        verbose: 是否输出详细信息
+    
+    Returns:
+        合并去重后的策略列表
+    """
+    all_strategies = []
+    seen_back_ids = set()
+    
+    # 参数映射（命令行参数 → API 参数）
+    param_mapping = {
+        'coin': 'search_coin',
+        'strategy_type': 'strategy_type',
+        'direction': 'search_direction',
+        'search_pct': 'search_pct',
+        'ai_time_id': 'ai_time_id',
+        'version': 'version',
+        'leverage': 'leverage',
+        'search_extend': 'search_extend'
+    }
+    
+    if verbose:
+        print(f"📋 共需查询 {len(combinations)} 个参数组合")
+    
+    for i, params in enumerate(combinations, 1):
+        fetch_params = base_params.copy()
+        
+        # 应用参数映射
+        for key, value in params.items():
+            if value is not None and key in param_mapping:
+                fetch_params[param_mapping[key]] = value
+        
+        if verbose:
+            print(f"\n🔍 [{i}/{len(combinations)}] 查询: {format_params(params)}")
+        
+        try:
+            result = query_backtest(**fetch_params)
+            
+            if "error" in result:
+                if verbose:
+                    print(f"   ⚠️  查询失败: {result['error']}")
+                continue
+            
+            strategies = result.get("info", [])
+            new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids)
+            
+            if verbose:
+                print(f"   ✅ 获取 {len(strategies)} 条，新增 {new_count} 条（去重后）")
+            
+        except Exception as e:
+            if verbose:
+                print(f"   ⚠️  查询异常: {str(e)}")
+            continue
+    
+    if verbose:
+        print(f"\n📊 合并后共 {len(all_strategies)} 条策略")
+    
+    return all_strategies
+
+
+# ==================== 推荐器类 ====================
 
 class SmartGroupRecommender:
     """智能分组推荐器"""
@@ -20,7 +259,7 @@ class SmartGroupRecommender:
     def __init__(self, token: str, verbose: bool = True):
         self.token = token
         self.verbose = verbose
-        
+    
     def log(self, msg: str):
         if self.verbose:
             print(msg)
@@ -36,11 +275,6 @@ class SmartGroupRecommender:
         
         Returns:
             分组维度列表，如 ['coin', 'direction']
-        
-        示例:
-            "帮我找BTC和ETH的多空策略" → ['coin', 'direction']
-            "不同周期的网格策略" → ['ai_time_id', 'strategy_type']
-            "各个币种的最优策略" → ['coin']
         """
         query_lower = query_text.lower()
         dimensions = []
@@ -72,11 +306,7 @@ class SmartGroupRecommender:
         
         return dimensions
     
-    def classify_strategies(
-        self,
-        strategies: List[Dict],
-        group_by: List[str]
-    ) -> Dict[Tuple, List[Dict]]:
+    def classify_strategies(self, strategies: List[Dict], group_by: List[str]) -> Dict[Tuple, List[Dict]]:
         """
         按指定维度分组
         
@@ -173,45 +403,33 @@ class SmartGroupRecommender:
             'max_loss': strategy.get('max_loss', 100),
             
             # 详情指标（total_stat）
-            'total_profit_rate': total_stat.get('profit_rate', 0),  # 总收益率
-            'total_win_rate': total_stat.get('win_rate', 0),  # 总胜率
-            'total_trade_count': total_stat.get('trade_count', 0),  # 总交易次数
-            'total_max_drawdown': total_stat.get('max_loss', 100),  # 总最大回撤
+            'total_profit_rate': total_stat.get('profit_rate', 0),
+            'total_win_rate': total_stat.get('win_rate', 0),
+            'total_trade_count': total_stat.get('trade_count', 0),
+            'total_max_drawdown': total_stat.get('max_loss', 100),
             
             # 近期指标（recent_stat）
-            'recent_profit_rate': recent_stat.get('profit_rate', 0),  # 近期收益率
-            'recent_win_rate': recent_stat.get('win_rate', 0),  # 近期胜率
-            'recent_trade_count': recent_stat.get('trade_count', 0),  # 近期交易次数
-            'recent_max_drawdown': recent_stat.get('max_loss', 100),  # 近期最大回撤
+            'recent_profit_rate': recent_stat.get('profit_rate', 0),
+            'recent_win_rate': recent_stat.get('win_rate', 0),
+            'recent_trade_count': recent_stat.get('trade_count', 0),
+            'recent_max_drawdown': recent_stat.get('max_loss', 100),
         }
         
         # 计算稳定性指标
         if metrics['total_profit_rate'] > 0:
-            # 近期表现 vs 总体表现
             metrics['recent_stability'] = metrics['recent_profit_rate'] / metrics['total_profit_rate']
         else:
             metrics['recent_stability'] = 0
         
         return metrics
     
-    def filter_by_detail_criteria(
-        self,
-        strategies: List[Dict],
-        criteria: Dict[str, any]
-    ) -> List[Dict]:
+    def filter_by_detail_criteria(self, strategies: List[Dict], criteria: Dict) -> List[Dict]:
         """
         基于详情指标筛选策略
         
         Args:
             strategies: 包含详情的策略列表
             criteria: 筛选条件
-                {
-                    'min_total_win_rate': 60,  # 总胜率 >= 60%
-                    'min_recent_profit_rate': 10,  # 近期收益 >= 10%
-                    'max_recent_drawdown': 15,  # 近期回撤 <= 15%
-                    'min_trade_count': 50,  # 总交易次数 >= 50
-                    'min_stability': 0.8  # 稳定性 >= 0.8
-                }
         
         Returns:
             筛选后的策略列表
@@ -220,8 +438,6 @@ class SmartGroupRecommender:
         
         for strategy in strategies:
             metrics = self.analyze_detail_metrics(strategy)
-            
-            # 应用筛选条件
             passed = True
             
             if 'min_total_win_rate' in criteria:
@@ -264,14 +480,7 @@ class SmartGroupRecommender:
         Args:
             strategies: 策略列表
             top_n: 每种排序方式取几个
-            sort_methods: 排序方式列表，支持：
-                - 'sharpe': 夏普率（默认）
-                - 'return': 年化收益率
-                - 'drawdown': 最小回撤
-                - 'win_rate': 胜率（需详情）
-                - 'stability': 稳定性（需详情）
-                - 'score': 综合评分（如果数据中有）
-                - 'custom:字段名': 自定义字段排序
+            sort_methods: 排序方式列表
         
         Returns:
             去重后的策略列表
@@ -285,57 +494,24 @@ class SmartGroupRecommender:
             self.log(f"   🔹 按 {method} 排序取 Top {top_n}")
             
             if method == 'sharpe':
-                sorted_list = sorted(
-                    strategies,
-                    key=lambda s: s.get('sharp_rate', 0),
-                    reverse=True
-                )
+                sorted_list = sorted(strategies, key=lambda s: s.get('sharp_rate', 0), reverse=True)
             elif method == 'return':
-                sorted_list = sorted(
-                    strategies,
-                    key=lambda s: s.get('year_rate', 0),
-                    reverse=True
-                )
+                sorted_list = sorted(strategies, key=lambda s: s.get('year_rate', 0), reverse=True)
             elif method == 'drawdown':
-                sorted_list = sorted(
-                    strategies,
-                    key=lambda s: s.get('max_loss', 100),
-                    reverse=False  # 回撤越小越好
-                )
+                sorted_list = sorted(strategies, key=lambda s: s.get('max_loss', 100), reverse=False)
             elif method == 'win_rate':
-                # 需要详情数据
-                sorted_list = sorted(
-                    strategies,
-                    key=lambda s: s.get('_metrics', {}).get('total_win_rate', 0),
-                    reverse=True
-                )
+                sorted_list = sorted(strategies, key=lambda s: s.get('_metrics', {}).get('total_win_rate', 0), reverse=True)
             elif method == 'stability':
-                # 需要详情数据
-                sorted_list = sorted(
-                    strategies,
-                    key=lambda s: s.get('_metrics', {}).get('recent_stability', 0),
-                    reverse=True
-                )
+                sorted_list = sorted(strategies, key=lambda s: s.get('_metrics', {}).get('recent_stability', 0), reverse=True)
             elif method == 'score':
-                # 综合评分（支持多种字段名）
                 sorted_list = sorted(
                     strategies,
-                    key=lambda s: (
-                        s.get('score', 0) or 
-                        s.get('total_score', 0) or
-                        s.get('recommend_score', 0) or
-                        s.get('rating', 0)
-                    ),
+                    key=lambda s: (s.get('score', 0) or s.get('total_score', 0) or s.get('recommend_score', 0) or s.get('rating', 0)),
                     reverse=True
                 )
             elif method.startswith('custom:'):
-                # 自定义字段排序
                 field_name = method.split(':', 1)[1]
-                sorted_list = sorted(
-                    strategies,
-                    key=lambda s: s.get(field_name, 0),
-                    reverse=True
-                )
+                sorted_list = sorted(strategies, key=lambda s: s.get(field_name, 0), reverse=True)
                 self.log(f"      📌 自定义字段: {field_name}")
             else:
                 self.log(f"      ⚠️  未知排序方式: {method}")
@@ -353,8 +529,7 @@ class SmartGroupRecommender:
     def smart_recommend(
         self,
         query_text: str,
-        fetch_params: Dict = None,
-        strategies: List[Dict] = None,
+        strategies: List[Dict],
         top_per_group: int = 5,
         detail_criteria: Optional[Dict] = None,
         max_combinations: int = 10,
@@ -366,13 +541,12 @@ class SmartGroupRecommender:
         
         Args:
             query_text: 用户查询需求
-            fetch_params: 数据查询参数（与 strategies 二选一）
-            strategies: 预先查询的策略列表（与 fetch_params 二选一）
+            strategies: 预先查询的策略列表
             top_per_group: 每组取几个策略
             detail_criteria: 详情筛选条件
             max_combinations: 最多推荐几个组合
-            sort_methods: 排序方式列表 ['sharpe', 'return', 'drawdown', ...]
-            api_sort_type: API排序类型（None=不排序, 1=最新, 2=收益, 3=夏普, 4=回撤）
+            sort_methods: 排序方式列表
+            api_sort_type: API排序类型（仅用于日志）
         
         Returns:
             推荐结果
@@ -386,31 +560,8 @@ class SmartGroupRecommender:
         group_by = self.infer_grouping_strategy(query_text)
         self.log(f"🎯 分组策略: {' → '.join(group_by)}")
         
-        # 2. 获取策略数据
-        if strategies is not None:
-            # 使用预先查询的数据
-            self.log(f"\n📊 使用预先查询的 {len(strategies)} 条策略")
-        else:
-            # 通过 API 查询
-            self.log(f"\n🔍 查询策略数据...")
-            
-            # 应用 API 排序类型（默认按收益率）
-            sort_map = {1: '最新', 2: '收益率', 3: '夏普率', 4: '回撤率'}
-            if api_sort_type is not None:
-                fetch_params['sort_type'] = api_sort_type
-                self.log(f"   📌 API排序: {sort_map.get(api_sort_type, '未知')}")
-            else:
-                # 默认按收益率排序
-                fetch_params['sort_type'] = 2
-                self.log(f"   📌 API排序: 收益率（默认）")
-            
-            result = query_backtest(**fetch_params)
-            
-            if "error" in result:
-                return {"error": result["error"]}
-            
-            strategies = result.get("info", [])
-            self.log(f"✅ 获取 {len(strategies)} 条策略")
+        # 2. 使用预先查询的数据
+        self.log(f"\n📊 使用预先查询的 {len(strategies)} 条策略")
         
         if not strategies:
             return {"error": "未找到策略"}
@@ -419,12 +570,11 @@ class SmartGroupRecommender:
         groups = self.classify_strategies(strategies, group_by)
         self.log(f"\n📦 分组结果: {len(groups)} 组")
         
-        # 打印分组统计
         for key, group_strategies in groups.items():
             label = " / ".join([f"{dim}={val}" for dim, val in zip(group_by, key)])
             self.log(f"   - {label}: {len(group_strategies)} 个策略")
         
-        # 4. 每组按多种排序方式筛选 top 策略
+        # 4. 每组筛选策略
         all_selected = []
         
         if sort_methods:
@@ -438,20 +588,13 @@ class SmartGroupRecommender:
             label = " / ".join([f"{val}" for val in key])
             self.log(f"\n--- {label} ({len(group_strategies)} 个策略) ---")
             
-            # 使用多种排序方式取 Top-N
-            top_strategies = self.get_top_by_multiple_sorts(
-                group_strategies,
-                top_n=top_per_group,
-                sort_methods=sort_methods
-            )
-            
+            top_strategies = self.get_top_by_multiple_sorts(group_strategies, top_n=top_per_group, sort_methods=sort_methods)
             self.log(f"📊 去重后选择 {len(top_strategies)} 个策略")
             
             # 获取详情
-            self.log(f"\n📊 获取详情数据...")
             enriched = self.fetch_detail_data(top_strategies, max_fetch=len(top_strategies))
             
-            # 基于详情进一步筛选
+            # 基于详情筛选
             if detail_criteria:
                 self.log(f"\n🔬 应用详情筛选条件...")
                 before = len(enriched)
@@ -474,12 +617,7 @@ class SmartGroupRecommender:
             }
         
         self.log(f"\n🎲 生成策略组合（最多 {max_combinations} 个）...")
-        combinations = recommend_combinations(
-            all_selected,
-            max_combinations=max_combinations,
-            min_sharpe=None,
-            max_drawdown=None
-        )
+        combinations = recommend_combinations(all_selected, max_combinations=max_combinations, min_sharpe=None, max_drawdown=None)
         
         # 6. 返回结果
         return {
@@ -544,17 +682,7 @@ class SmartGroupRecommender:
         self.log(f"\n💾 结果已保存: {output_file}")
     
     def get_create_group_command(self, combo_index: int, strategies: List[Dict]) -> Optional[str]:
-        """
-        生成创建策略组的命令
-        
-        Args:
-            combo_index: 组合编号
-            strategies: 策略列表
-        
-        Returns:
-            命令字符串，如果无法生成则返回 None
-        """
-        # 提取 strategy_token
+        """生成创建策略组的命令"""
         tokens = []
         for s in strategies:
             token = s.get('strategy_token')
@@ -566,11 +694,9 @@ class SmartGroupRecommender:
         if not tokens:
             return None
         
-        # 生成组合名称
         combo_name = f"智能组合_{combo_index}_{datetime.now().strftime('%Y%m%d')}"
         tokens_str = ','.join(tokens)
         
-        # 生成命令
         cmd = (
             f"python3 skills/backtest-query/query.py \\\n"
             f"  --create-group \\\n"
@@ -581,7 +707,10 @@ class SmartGroupRecommender:
         return cmd
 
 
-def main():
+# ==================== 主函数 ====================
+
+def parse_arguments():
+    """解析命令行参数"""
     parser = argparse.ArgumentParser(description="智能分组推荐系统")
     
     # 查询需求
@@ -594,330 +723,113 @@ def main():
     parser.add_argument("--search-pcts", type=str, help="比例选择列表（逗号分隔）")
     parser.add_argument("--ai-time-ids", type=str, help="AI时间ID列表（逗号分隔）")
     parser.add_argument("--versions", type=str, help="策略版本列表（逗号分隔）")
-    parser.add_argument("--version-configs", type=str, help="版本配置对象数组（JSON格式），例：'[{\"version\":4.3,\"leverage\":3,\"search_extend\":\"3w\"}]'")
-    parser.add_argument("--search-recommand-type", type=int, default=1, help="推荐类型（1=推荐 2=交易中策略，默认=1）")
+    parser.add_argument("--version-configs", type=str, help="版本配置对象数组（JSON格式）")
+    parser.add_argument("--search-recommand-type", type=int, default=1, help="推荐类型（1=推荐 2=交易中，默认=1）")
     
     # 分组和筛选参数
     parser.add_argument("--top-per-group", type=int, default=5, help="每种排序方式取几个策略")
     parser.add_argument("--max-combinations", type=int, default=10, help="最多推荐几个组合")
-    parser.add_argument("--sort-methods", type=str, help="排序方式（逗号分隔），支持: sharpe,return,drawdown,win_rate,stability,score,custom:字段名")
-    parser.add_argument("--api-sort", type=int, choices=[1, 2, 3, 4], help="API排序类型（1=最新 2=收益 3=夏普 4=回撤）默认=2收益")
+    parser.add_argument("--sort-methods", type=str, help="排序方式（逗号分隔）")
+    parser.add_argument("--api-sort", type=int, choices=[1, 2, 3, 4], help="API排序类型（1=最新 2=收益 3=夏普 4=回撤，默认=2）")
     
     # 详情筛选条件
     parser.add_argument("--min-total-win-rate", type=float, help="最小总胜率")
     parser.add_argument("--min-recent-profit-rate", type=float, help="最小近期收益率")
     parser.add_argument("--max-recent-drawdown", type=float, help="最大近期回撤")
     parser.add_argument("--min-trade-count", type=int, help="最小交易次数")
-    parser.add_argument("--min-stability", type=float, help="最小稳定性（近期/总体）")
+    parser.add_argument("--min-stability", type=float, help="最小稳定性")
     
     # 输出参数
     parser.add_argument("--output", type=str, help="输出文件路径")
     parser.add_argument("--quiet", action="store_true", help="静默模式")
     
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main():
+    """主函数"""
+    # 1. 解析参数
+    args = parse_arguments()
     
-    # 获取 token（自动从当前 workspace 匹配）
-    def auto_get_token():
-        """自动获取当前 Agent 的 token"""
-        agent_id=None
-        current = os.path.abspath(os.getcwd())                                                                                                                             
-        while current != '/':                                                                                                                                              
-            basename = os.path.basename(current)                                                                                                                           
-            if basename.startswith('clawd-'):                                                                                                                              
-                agent_id = basename.replace('clawd-', '')                                                                                                                  
-                break                                                                                                                                                      
-            current = os.path.dirname(current)  
-        
-        users_file = os.path.expanduser('~/.quantclaw/users.json')
-        if not os.path.exists(users_file):
-            return None
-        
-        try:
-            with open(users_file, 'r') as f:
-                data = json.load(f)
-            users = data.get('users', [])
-            for user in users:
-                if user.get('agentId') == agent_id:
-                    return user.get('token')
-        except:
-            pass
-        
-        return None
-    
+    # 2. 验证参数
     try:
-        token = auto_get_token()
-        if not token:
-            print("❌ 无法自动获取 token（当前 workspace 未关联用户）")
-            sys.exit(1)
-    except Exception as e:
-        print(f"❌ 获取 token 失败: {e}")
+        validate_args(args)
+    except ValidationError as e:
+        print(f"❌ 参数错误: {e}")
         sys.exit(1)
     
-    # 构建基础查询参数
+    # 3. 获取 token
+    token = get_user_token()
+    if not token:
+        print("❌ 无法自动获取 token（当前 workspace 未关联用户）")
+        sys.exit(1)
+    
+    # 4. 生成查询组合
+    try:
+        combinations = build_query_combinations(args)
+    except Exception as e:
+        print(f"❌ 生成查询组合失败: {e}")
+        sys.exit(1)
+    
+    # 5. 构建基础查询参数
     base_params = {
         'token': token,
         'page': 1,
         'limit': -1,
-        'search_recommand_type': args.search_recommand_type
-        # sort_type 在查询时动态设置（默认为2-按收益率）
+        'search_recommand_type': args.search_recommand_type,
+        'sort_type': args.api_sort if args.api_sort else 2  # 默认按收益排序
     }
     
-    # 解析 version_configs（优先）
-    version_configs = []
-    if args.version_configs:
-        try:
-            version_configs = json.loads(args.version_configs)
-            if not isinstance(version_configs, list):
-                print("❌ --version-configs 必须是 JSON 数组格式")
-                sys.exit(1)
-            print(f"📦 使用版本配置对象: {len(version_configs)} 个配置")
-            # version_configs 与 versions 互斥，清空 versions
-            args.versions = None
-        except json.JSONDecodeError as e:
-            print(f"❌ --version-configs JSON 解析失败: {e}")
-            sys.exit(1)
+    # 6. 批量查询
+    try:
+        strategies = batch_query_strategies(token, combinations, base_params, verbose=not args.quiet)
+    except Exception as e:
+        print(f"❌ 查询失败: {e}")
+        sys.exit(1)
     
-    # 解析多值参数
-    coins = []
-    if args.coins:
-        coins = [c.strip() for c in args.coins.split(',')]
-    
-    strategy_types = []
-    if args.strategy_types:
-        strategy_types = [int(t.strip()) for t in args.strategy_types.split(',')]
-    
-    directions = []
-    if args.directions:
-        directions = [d.strip() for d in args.directions.split(',')]
-    
-    search_pcts = []
-    if args.search_pcts:
-        search_pcts = [p.strip() for p in args.search_pcts.split(',')]
-    
-    ai_time_ids = []
-    if args.ai_time_ids:
-        ai_time_ids = [t.strip() for t in args.ai_time_ids.split(',')]
-    
-    versions = []
-    if args.versions:
-        versions = [v.strip() for v in args.versions.split(',')]
-    
-    # 生成所有参数组合
-    import itertools
-    
-    # 如果指定了 version_configs，使用它；否则使用传统轮询
-    if version_configs:
-        # 使用版本配置对象轮询
-        # 其他参数仍然需要组合
-        if not coins:
-            coins = [None]
-        if not strategy_types:
-            strategy_types = [None]
-        if not directions:
-            directions = [None]
-        
-        # 生成组合：币种 × 策略类型 × 方向 × 版本配置
-        param_combinations = []
-        for coin in coins:
-            for strategy_type in strategy_types:
-                for direction in directions:
-                    for version_config in version_configs:
-                        param_combinations.append((coin, strategy_type, direction, version_config))
-    else:
-        # 传统轮询方式
-        if not coins:
-            coins = [None]
-        if not strategy_types:
-            strategy_types = [None]
-        if not directions:
-            directions = [None]
-        if not search_pcts:
-            search_pcts = [None]
-        if not ai_time_ids:
-            ai_time_ids = [None]
-        if not versions:
-            versions = [None]
-        
-        param_combinations = list(itertools.product(coins, strategy_types, directions, search_pcts, ai_time_ids, versions))
-    
-    print(f"📋 共需查询 {len(param_combinations)} 个参数组合")
-    
-    # 轮询查询所有组合
-    all_strategies = []
-    seen_back_ids = set()
-    
-    if version_configs:
-        # 使用版本配置对象轮询
-        for i, (coin, strategy_type, direction, version_config) in enumerate(param_combinations, 1):
-            fetch_params = base_params.copy()
-            
-            params_desc = []
-            if coin:
-                fetch_params['search_coin'] = coin
-                params_desc.append(f"币种={coin}")
-            if strategy_type:
-                fetch_params['strategy_type'] = strategy_type
-                params_desc.append(f"类型={strategy_type}")
-            if direction:
-                fetch_params['search_direction'] = direction
-                params_desc.append(f"方向={direction}")
-            
-            # 从版本配置对象中提取参数
-            if 'version' in version_config:
-                fetch_params['version'] = version_config['version']
-                params_desc.append(f"版本={version_config['version']}")
-            if 'leverage' in version_config:
-                fetch_params['leverage'] = version_config['leverage']
-                params_desc.append(f"杠杆={version_config['leverage']}倍")
-            if 'search_extend' in version_config:
-                fetch_params['search_extend'] = version_config['search_extend']
-                params_desc.append(f"扩展={version_config['search_extend']}")
-            
-            params_str = ', '.join(params_desc) if params_desc else '无筛选'
-            print(f"\n🔍 [{i}/{len(param_combinations)}] 查询: {params_str}")
-            
-            try:
-                result = query_backtest(**fetch_params)
-                
-                if "error" in result:
-                    print(f"   ⚠️  查询失败: {result['error']}")
-                    continue
-                
-                strategies = result.get("info", [])
-                
-                # 去重并添加
-                new_count = 0
-                for strategy in strategies:
-                    back_id = strategy.get('back_id')
-                    if back_id and back_id not in seen_back_ids:
-                        seen_back_ids.add(back_id)
-                        all_strategies.append(strategy)
-                        new_count += 1
-                
-                print(f"   ✅ 获取 {len(strategies)} 条，新增 {new_count} 条（去重后）")
-                
-            except Exception as e:
-                print(f"   ⚠️  查询异常: {str(e)}")
-                continue
-    else:
-        # 传统轮询方式
-        for i, (coin, strategy_type, direction, search_pct, ai_time_id, version) in enumerate(param_combinations, 1):
-            fetch_params = base_params.copy()
-            
-            params_desc = []
-            if coin:
-                fetch_params['search_coin'] = coin
-                params_desc.append(f"币种={coin}")
-            if strategy_type:
-                fetch_params['strategy_type'] = strategy_type
-                params_desc.append(f"类型={strategy_type}")
-            if direction:
-                fetch_params['search_direction'] = direction
-                params_desc.append(f"方向={direction}")
-            if search_pct:
-                fetch_params['search_pct'] = search_pct
-                params_desc.append(f"比例={search_pct}")
-            if ai_time_id:
-                fetch_params['ai_time_id'] = ai_time_id
-                params_desc.append(f"时间ID={ai_time_id}")
-            if version:
-                fetch_params['version'] = version
-                params_desc.append(f"版本={version}")
-            
-            params_str = ', '.join(params_desc) if params_desc else '无筛选'
-            print(f"\n🔍 [{i}/{len(param_combinations)}] 查询: {params_str}")
-            
-            try:
-                result = query_backtest(**fetch_params)
-                
-                if "error" in result:
-                    print(f"   ⚠️  查询失败: {result['error']}")
-                    continue
-                
-                strategies = result.get("info", [])
-                
-                # 去重并添加
-                new_count = 0
-                for strategy in strategies:
-                    back_id = strategy.get('back_id')
-                    if back_id and back_id not in seen_back_ids:
-                        seen_back_ids.add(back_id)
-                        all_strategies.append(strategy)
-                        new_count += 1
-                
-                print(f"   ✅ 获取 {len(strategies)} 条，新增 {new_count} 条（去重后）")
-                
-            except Exception as e:
-                print(f"   ⚠️  查询异常: {str(e)}")
-                continue
-    
-    print(f"\n📊 合并后共 {len(all_strategies)} 条策略")
-    
-    if not all_strategies:
+    if not strategies:
         print("❌ 未查询到任何策略")
         sys.exit(1)
     
-    # 将合并后的策略包装成标准结果格式
-    merged_result = {
-        "info": all_strategies,
-        "page": 1,
-        "total": len(all_strategies)
-    }
+    # 7. 构建筛选条件
+    detail_criteria = build_detail_criteria(args)
+    sort_methods = parse_csv(args.sort_methods) if args.sort_methods else None
     
-    # 修改 fetch_params，用于传递给 smart_recommend（仅用于日志）
-    fetch_params = base_params
-    
-    # 构建详情筛选条件
-    detail_criteria = {}
-    if args.min_total_win_rate:
-        detail_criteria['min_total_win_rate'] = args.min_total_win_rate
-    if args.min_recent_profit_rate:
-        detail_criteria['min_recent_profit_rate'] = args.min_recent_profit_rate
-    if args.max_recent_drawdown:
-        detail_criteria['max_recent_drawdown'] = args.max_recent_drawdown
-    if args.min_trade_count:
-        detail_criteria['min_trade_count'] = args.min_trade_count
-    if args.min_stability:
-        detail_criteria['min_stability'] = args.min_stability
-    
-    # 处理排序方式
-    sort_methods = None
-    if args.sort_methods:
-        sort_methods = [m.strip() for m in args.sort_methods.split(',')]
-    
-    # 创建推荐器
+    # 8. 智能推荐
     recommender = SmartGroupRecommender(token, verbose=not args.quiet)
     
     try:
-        # 执行智能推荐（传入预先合并的策略列表）
         result = recommender.smart_recommend(
             query_text=args.query,
-            strategies=all_strategies,  # 使用合并后的策略列表
+            strategies=strategies,
             top_per_group=args.top_per_group,
-            detail_criteria=detail_criteria if detail_criteria else None,
+            detail_criteria=detail_criteria,
             max_combinations=args.max_combinations,
             sort_methods=sort_methods,
             api_sort_type=args.api_sort
         )
-        
-        # 打印结果
-        recommender.print_result(result)
-        
-        # 保存结果
-        if args.output:
-            recommender.save_result(result, args.output)
-        
-        print("\n✅ 推荐完成")
-        
+    except Exception as e:
+        print(f"❌ 推荐失败: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+    
+    # 9. 输出结果
+    recommender.print_result(result)
+    if args.output:
+        recommender.save_result(result, args.output)
+    
+    print("\n✅ 推荐完成")
+
+
+if __name__ == "__main__":
+    try:
+        main()
     except KeyboardInterrupt:
         print("\n⚠️  用户中断")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ 错误: {e}")
+        print(f"\n❌ 未预期错误: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
