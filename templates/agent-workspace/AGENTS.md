@@ -1,4 +1,4 @@
-# AGENTS.md - QuantClaw 工作区
+# QuantClaw 量化工作区
 
 ## 项目结构
 - `strategies/` - 交易策略代码与笔记
@@ -7,270 +7,184 @@
 - `skills/` - 量化技能模块（链接自 QuantClaw）
 - `analysis/` - 深度分析报告
 
-## 🔑 认证信息
+## 使用说明
+你可以询问关于加密货币、交易策略、市场分析、风险管理等问题。
 
-**用户 Token** 存储在 `users.json` 文件中，读取方式：
+## 工作流程
+1. **数据获取** - 获取并清洗市场数据
+2. **策略开发** - 设计和实现交易策略
+3. **回测验证** - 历史数据回测
+4. **风险评估** - 分析潜在风险
+5. **优化迭代** - 根据结果优化策略
+
+## 重要记忆文件
+
+### memory/strategy_types.md
+记录所有策略类型的分类（马丁/网格/趋势）
+
+**何时使用**：
+- 用户询问策略类型时
+- 需要了解策略分类时
+
+**查看方式**：
 ```bash
-TOKEN=$(cat users.json | jq -r '.fourieralpha.usertoken')
-```
-
-这个 token 用于：
-- 查询策略列表
-- 查询回测结果
-- 启动回测任务
-
----
-
-## 📋 查询策略列表
-
-当用户需要查找策略ID时，使用以下命令：
-
-**方法1：使用 Python 脚本（推荐）**
-```bash
-python3 query_strategies.py
-```
-
-**方法2：使用 Shell 脚本**
-```bash
-./query_strategies.sh
-```
-
-**方法3：直接调用 API**
-```bash
-TOKEN=$(cat users.json | jq -r '.fourieralpha.usertoken')
-curl -s -X POST "https://www.fourieralpha.com/Mobile/Strategy/lists" \
-  -d "usertoken=$TOKEN" \
-  -d "page=1" \
-  -d "limit=100" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-info = data.get('info', [])
-print(f'总策略数: {len(info)}\n')
-for s in info:
-    print(f\"ID: {s.get('id')} | {s.get('name')} | {s.get('coin')} {s.get('direction')}\")
-"
-```
-
-**触发关键词**：
-- "有哪些策略"
-- "什么策略"
-- "所有策略"
-- "策略列表"
-- "最新添加的策略"
-- "我的策略"
-
-**重要**：当用户提到"最新添加的X个策略"、"我的X个策略"等，**必须先查询策略列表**，找出符合条件的策略ID，然后再执行回测。
-
----
-
-## 📝 多策略回测命令格式（必须遵守）
-
-**推荐脚本：backtest_helper.py（位置：/home/ubuntu/QuantClaw/skills/start-backtest/）**
-
-这个脚本使用正确的 API 参数格式，简单可靠。
-
-**用法：**
-```bash
-# 先读取 token
-TOKEN=$(cat users.json | jq -r '.fourieralpha.usertoken')
-
-# 执行回测
-python3 backtest_helper.py "$TOKEN" <策略IDs> [选项]
-```
-
-**示例：**
-
-1. 独占模式（默认）：
-```bash
-TOKEN=$(cat users.json | jq -r '.fourieralpha.usertoken')
-python3 backtest_helper.py "$TOKEN" "4619,4682,4681" \
-  --start 2025-03-24 --end 2025-04-23
-```
-
-2. 共享模式（平分）：
-```bash
-TOKEN=$(cat users.json | jq -r '.fourieralpha.usertoken')
-python3 backtest_helper.py "$TOKEN" "4619,4682,4681" \
-  --shared \
-  --allocation 33.33,33.33,33.34 \
-  --start 2025-03-24 --end 2025-04-23
-```
-
-3. 共享模式（自定义分配）：
-```bash
-TOKEN=$(cat users.json | jq -r '.fourieralpha.usertoken')
-python3 backtest_helper.py "$TOKEN" "4619,4682,4681" \
-  --shared \
-  --allocation 40,30,30 \
-  --start 2024-01-01 --end 2024-12-31 \
-  --balance 20000
-```
-
-**可用选项：**
-- `--shared` - 启用共享保证金模式
-- `--allocation 30,30,40` - 共享模式分配比例
-- `--start YYYY-MM-DD` - 开始日期
-- `--end YYYY-MM-DD` - 结束日期
-- `--balance 10000` - 初始保证金（默认10000）
-
-**强制规则：多策略回测必须使用 backtest_helper.py 脚本！**
-
-该脚本使用正确的 API 参数格式：
-```json
-{
-  "date_lists": [{"bgn_date": "2025-03-24", "end_date": "2025-04-23"}],
-  "margin_mode_config": {
-    "is_shared_margin": true,
-    "global_margin_limit": 10000,
-    "strategy_margin_limit": {
-      "4619": "3333",
-      "4682": "3333",
-      "4681": "3334"
-    }
-  }
-}
-```
-
-**❌ 不要使用旧的 curl 命令格式**（会导致独占模式）：
-```bash
-# 错误的格式（不要使用！）
-curl -d "margin_mode=shared" -d "margin_ratio=33.33,33.33,33.34"
+read memory/strategy_types.md
 ```
 
 ---
 
-## ⚠️ 多策略回测强制流程（最重要）
+## 技能使用指南
 
-**当检测到以下情况时，必须先询问用户，不能直接执行回测：**
-- 用户提到"策略组"
-- 用户要回测多个策略
-- 用户要同时对多个策略进行操作
+### backtest-query - 智能推荐策略组合（核心技能）
 
-### 强制执行步骤：
+**何时使用**：
+- 用户需要**创建策略组合**时（最常用）
+- 用户询问"推荐策略"/"组合"/"对冲"/"分散"等关键词
+- 用户指定条件查询策略（币种、方向、风险偏好等）
 
-**步骤0：如果用户没有指定策略ID，先查询策略列表**
+---
 
-当用户说"最新添加的X个策略"、"我的X个策略"等时：
+### 🎯 核心工作流程
+
+#### 1️⃣ 智能推荐（主要功能）
+
 ```bash
-python3 query_strategies.py
-```
-筛选出符合条件的策略ID，然后进入步骤1。
-
-**步骤1：检测到多策略回测需求后，立即询问保证金模式**
-
-```
-您要对多个策略进行回测，请先选择保证金模式：
-
-1️⃣ **独占模式** - 每个策略独立使用保证金，互不影响
-2️⃣ **共享模式** - 多个策略共享同一保证金池
-
-请回复 1 或 2
+cd /home/ubuntu/work/QuantClaw
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "用户需求描述" \
+  --coins "BTC,ETH" \
+  --directions "long,short" \
+  --min-total-win-rate 60 \
+  --max-recent-drawdown 15 \
+  --output /tmp/rec_$(date +%s).json
 ```
 
-**步骤2：等待用户回复**
-
-- 用户回复 1 → 使用独占模式，继续执行回测
-- 用户回复 2 → 进入步骤3
-
-**步骤3：如果用户选择共享模式，询问保证金分配比例**
-
+**典型场景**：
 ```
-请为 3 个策略分配保证金比例（总和100%）：
+❓ "帮我推荐BTC的对冲组合"
+✅ --query "BTC对冲" --coins "BTC" --directions "long,short"
 
-| # | 策略 |
-|---|------|
-| 1 | XXX-策略 |
-| 2 | YYY-策略 |
-| 3 | ZZZ-策略 |
+❓ "主流币做多，要稳定一点的"
+✅ --coins "BTC,ETH,SOL" --directions "long" 
+   --min-total-win-rate 65 --max-recent-drawdown 10
 
-格式如：**40,30,30**
-
-或回复 **平均** 自动平均分配（每个约33.33%）
+❓ "风霆策略组合"
+✅ --strategy-types "1,11" --coins "BTC,ETH"
 ```
 
-**步骤4：执行回测**
+#### 2️⃣ 自动创建策略组
 
-先从 `users.json` 读取 token，然后使用 backtest_helper.py 脚本执行回测：
+**判断逻辑**：
+- 用户说"创建"/"建立"/"生成" → 推荐后**自动创建**
+- 否则 → 推荐后**询问确认**
+
 ```bash
-TOKEN=$(cat users.json | jq -r '.fourieralpha.usertoken')
-python3 backtest_helper.py "$TOKEN" "策略IDs" [选项]
+# 提取 tokens
+TOKENS=$(python3 -c "
+import json
+with open('/tmp/rec_*.json') as f:
+    data = json.load(f)
+tokens = [s['strategy_token'] for s in data['combinations'][0]['strategies']]
+print(','.join(tokens))
+")
+
+# 创建策略组
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "组合名_$(date +%Y%m%d)" \
+  --strategy-tokens "$TOKENS"
 ```
 
 ---
 
-## 常用策略ID
+### 📋 参数速查表
 
-### 最新3个风霆V4.2策略
-| ID | 策略名 | 币种 | 方向 |
-|----|--------|------|------|
-| 4619 | SOL-风霆V4.2-做空 | SOL | 做空 |
-| 4682 | BTC-风霆V4.2-做空 | BTC | 做空 |
-| 4681 | ETH-风霆V4.2-做空 | ETH | 做空 |
+#### 查询范围
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| `--coins` | 币种（逗号分隔） | `"BTC,ETH,SOL"` |
+| `--strategy-types` | 策略类型ID | `"1,11"` (马丁) |
+| `--directions` | 方向 | `"long,short"` |
+| `--ai-time-ids` | 时间ID | `"5,6"` |
 
-### 策略组12333（6个策略）
-4300,4679,4680,4619,4681,4682
+#### 筛选条件
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--min-total-win-rate` | 最小总胜率（%） | 60 |
+| `--min-recent-profit-rate` | 最小近期收益（%） | - |
+| `--max-recent-drawdown` | 最大近期回撤（%） | 15 |
+| `--min-trade-count` | 最小交易次数 | 50 |
 
----
-
-## API 端点参考
-
-### FourierAlpha Mobile API
-- 基础 URL: `https://www.fourieralpha.com/Mobile`
-- 认证: 通过 `usertoken` 参数（从 `users.json` 读取）
-
-**主要端点：**
-
-| 端点 | 说明 |
-|------|------|
-| `/Strategy/lists` | 查询策略列表 |
-| `/Strategy/group_lists` | 查询策略组列表 |
-| `/Backtrack/apply_do` | 启动回测 |
-| `/Backtrack/lists` | 查询回测结果 |
-
-**重要提示：**
-- 回测时必须使用 `date_lists` JSON 数组格式
-- 保证金配置必须使用 `margin_mode_config` JSON 对象
-- 不要使用旧的 `bgn_date`/`end_date` 和 `margin_mode`/`margin_ratio` 参数
+#### 排序与组合
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--top-per-group` | 每组取几个 | 5 |
+| `--sort-methods` | 排序方式 | `"sharpe,return,drawdown"` |
+| `--max-combinations` | 最多推荐几个组合 | 10 |
 
 ---
 
-## 工作流程示例
+### 🔍 查询可用参数
 
-**完整流程：用户回测最新策略**
+**在推荐前先查询最新数据**（已缓存，快速返回）：
 
-1. **用户输入**："帮我回测我的最新添加的3个风霆V4.2策略，用共享模式，平分保证金，最近30天"
+```bash
+cd /home/ubuntu/work/QuantClaw/skills/backtest-query
 
-2. **步骤0 - 查询策略**：
-   ```bash
-   python3 query_strategies.py
-   ```
-   筛选出最新的3个风霆V4.2策略：4619, 4682, 4681
+# 可用币种
+python3 query.py --list-coins
 
-3. **步骤1 - 确认策略**：
-   ```
-   我找到了您的最新3个风霆V4.2策略：
-   - SOL-风霆V4.2-做空 (ID: 4619)
-   - BTC-风霆V4.2-做空 (ID: 4682)
-   - ETH-风霆V4.2-做空 (ID: 4681)
-   
-   用共享模式回测，平分保证金，最近30天，对吗？
-   ```
+# 策略类型
+python3 query.py --list-strategies
 
-4. **步骤2 - 执行回测**：
-   ```bash
-   TOKEN=$(cat users.json | jq -r '.fourieralpha.usertoken')
-   python3 backtest_helper.py "$TOKEN" "4619,4682,4681" \
-     --shared \
-     --allocation 33.33,33.33,33.34 \
-     --start $(date -d "30 days ago" +%Y-%m-%d) \
-     --end $(date +%Y-%m-%d)
-   ```
+# 时间ID
+python3 query.py --list-ai-times
+```
 
-5. **返回结果**：
-   ```
-   ✅ 回测已提交
-   回测ID: 5655
-   策略: SOL/BTC/ETH 风霆V4.2-做空
-   保证金模式: 共享（10000）
-   分配: 平均（各33.33%）
-   ```
+**策略类型映射**：
+| 用户描述 | 策略类型ID | 说明 |
+|---------|-----------|------|
+| 马丁策略 | `1, 11` | 名称含"风霆" |
+| 网格策略 | `7` | 天阙网格 |
+| 趋势策略 | 其他所有 | 鲲鹏等 |
+
+---
+
+### 🎨 典型场景速查
+
+```bash
+# 1. 对冲组合（多空）
+--coins "BTC" --directions "long,short" --query "BTC对冲"
+
+# 2. 币种分散（主流币）
+--coins "BTC,ETH,SOL" --directions "long" --query "主流币做多"
+
+# 3. 马丁策略
+--strategy-types "1,11" --coins "BTC,ETH" --query "马丁组合"
+
+# 4. 高质量策略（严格筛选）
+--min-total-win-rate 65 --max-recent-drawdown 10 --min-trade-count 100
+
+# 5. 特定版本（如风霆v4.3）
+--strategy-types "11" --version-configs '[{"version":4.3,"leverage":3}]'
+```
+
+---
+
+### ⚠️ 常见错误
+
+| 错误 | 原因 | 解决 |
+|------|------|------|
+| `未查询到任何策略` | 筛选太严格 | 放宽条件或扩大范围 |
+| `策略数量不足` | 少于2个策略 | 降低筛选标准 |
+| 创建失败 | token 无效 | 重新推荐获取最新 |
+
+---
+
+**详细文档**：查看 `skills/backtest-query/SKILL.md`
+
+## 注意事项
+- 所有分析需要注明数据来源
+- 回测结果需要记录参数和时间范围
+- 风险警示必须明确说明
+- 使用技能前先检查参数是否完整
