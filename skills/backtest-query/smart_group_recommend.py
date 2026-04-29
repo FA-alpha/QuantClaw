@@ -633,7 +633,20 @@ class SmartGroupRecommender:
             }
         
         self.log(f"\n🎲 生成策略组合（最多 {max_combinations} 个）...")
-        combinations = recommend_combinations(all_selected, max_combinations=max_combinations, min_sharpe=None, max_drawdown=None)
+        
+        # 构建偏好参数
+        preferences = {}
+        if detail_criteria:
+            if 'max_recent_drawdown' in detail_criteria:
+                preferences['max_drawdown'] = detail_criteria['max_recent_drawdown']
+            # 可以根据其他筛选条件动态调整偏好
+        
+        combinations = recommend_combinations(
+            strategies=all_selected,
+            group_size=min(len(all_selected), 5),  # 组合大小默认5个策略
+            top_n=max_combinations,
+            preferences=preferences if preferences else None
+        )
         
         # 6. 返回结果
         return {
