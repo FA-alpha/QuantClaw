@@ -619,8 +619,13 @@ def main():
     # 获取 token（自动从当前 workspace 匹配）
     def auto_get_token():
         """自动获取当前 Agent 的 token"""
-        workspace = os.getcwd()
-        agent_id = os.path.basename(workspace).replace('clawd-', '')
+        current = os.path.abspath(os.getcwd())                                                                                                                             
+        while current != '/':                                                                                                                                              
+            basename = os.path.basename(current)                                                                                                                           
+            if basename.startswith('clawd-'):                                                                                                                              
+                agent_id = basename.replace('clawd-', '')                                                                                                                  
+                break                                                                                                                                                      
+            current = os.path.dirname(current)  
         
         users_file = os.path.expanduser('~/.quantclaw/users.json')
         if not os.path.exists(users_file):
