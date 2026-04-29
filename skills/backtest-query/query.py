@@ -365,6 +365,11 @@ def query_backtest(
     if app_v:
         data["app_v"] = app_v
     
+    # DEBUG: 输出参数
+    import json as _json
+    _debug_data = {k: v for k, v in data.items() if k != 'usertoken'}
+    print(f"[DEBUG] POST 参数: {_json.dumps(_debug_data, ensure_ascii=False)}")
+    
     try:
         resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
@@ -434,6 +439,7 @@ def format_result(data: dict, output_format: str = "table") -> str:
 
 def auto_get_token():
     """自动获取当前 Agent 的 token"""
+    agent_id = None
     current = os.path.abspath(os.getcwd())                                                                                                                             
     while current != '/':                                                                                                                                              
         basename = os.path.basename(current)                                                                                                                           
