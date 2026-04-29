@@ -619,6 +619,7 @@ def main():
     # 获取 token（自动从当前 workspace 匹配）
     def auto_get_token():
         """自动获取当前 Agent 的 token"""
+        agent_id=None
         current = os.path.abspath(os.getcwd())                                                                                                                             
         while current != '/':                                                                                                                                              
             basename = os.path.basename(current)                                                                                                                           
@@ -670,6 +671,8 @@ def main():
                 print("❌ --version-configs 必须是 JSON 数组格式")
                 sys.exit(1)
             print(f"📦 使用版本配置对象: {len(version_configs)} 个配置")
+            # version_configs 与 versions 互斥，清空 versions
+            args.versions = None
         except json.JSONDecodeError as e:
             print(f"❌ --version-configs JSON 解析失败: {e}")
             sys.exit(1)
