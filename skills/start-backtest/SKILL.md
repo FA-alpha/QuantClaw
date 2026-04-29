@@ -320,8 +320,8 @@ python skills/start-backtest/start.py \
 
 2. **执行监控脚本：**
 ```bash
-cd /home/ubuntu/QuantClaw/skills/start-backtest
-python backtest_monitor.py --token <用户token> --back-id <回测ID> --daemon
+# 使用相对路径调用当前技能目录下的脚本
+python skills/start-backtest/backtest_monitor.py --token <用户token> --back-id <回测ID> --daemon
 ```
 
 3. **确认启动成功：**
