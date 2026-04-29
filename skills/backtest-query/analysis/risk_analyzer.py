@@ -191,6 +191,12 @@ def calculate_portfolio_risk(
         for s, w in zip(selected, weights)
     )
     
+    # 计算预期收益（加权平均年化收益率）
+    expected_return = sum(
+        float(s.get('year_rate', 0)) * w
+        for s, w in zip(selected, weights)
+    )
+    
     # 计算波动率（基于净值序列）
     all_returns = []
     for s in selected:
@@ -208,5 +214,6 @@ def calculate_portfolio_risk(
         'max_drawdown': round(max_drawdown, 2),
         'sharpe_ratio': round(sharpe_ratio, 2),
         'volatility': round(volatility, 2),
-        'win_rate': round(win_rate, 2)
+        'win_rate': round(win_rate, 2),
+        'expected_return': round(expected_return, 2)
     }

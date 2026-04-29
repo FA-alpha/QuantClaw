@@ -185,6 +185,7 @@ def recommend_combinations(
         recommendations.append({
             'rank': i,
             'score': result['score'],
+            'expected_return': result['risk'].get('expected_return', 0),  # 从 risk 中提取
             'strategies': [
                 {
                     'name': s.get('name'),
