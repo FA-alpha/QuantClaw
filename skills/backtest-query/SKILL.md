@@ -9,7 +9,6 @@
 ### 1. 推荐策略
 
 ```bash
-cd /home/ubuntu/work/QuantClaw
 python3 skills/backtest-query/smart_group_recommend.py \
   --query "用户需求描述" \
   --coins "BTC,ETH" \
@@ -18,6 +17,8 @@ python3 skills/backtest-query/smart_group_recommend.py \
   --max-recent-drawdown 15 \
   --output /tmp/rec_$(date +%s).json
 ```
+
+> 📍 使用相对路径，确保在用户工作区执行
 
 **判断是否直接创建**：
 - 用户说"创建"/"建立"/"生成" → 推荐后直接创建
@@ -89,17 +90,17 @@ python3 skills/backtest-query/query.py \
 在构建查询前，先获取最新的可用参数：
 
 ```bash
-cd /home/ubuntu/work/QuantClaw/skills/backtest-query
-
 # 查看可用币种
-python3 query.py --list-coins
+python3 skills/backtest-query/query.py --list-coins
 
 # 查看策略类型
-python3 query.py --list-strategies
+python3 skills/backtest-query/query.py --list-strategies
 
 # 查看时间ID
-python3 query.py --list-ai-times
+python3 skills/backtest-query/query.py --list-ai-times
 ```
+
+> 📍 所有命令使用相对路径，保持在当前工作区
 
 ### 根据用户需求筛选
 
@@ -144,7 +145,7 @@ configs_json = json.dumps(v43_configs)
 
 **命令示例**：
 ```bash
-python3 smart_group_recommend.py \
+python3 skills/backtest-query/smart_group_recommend.py \
   --query "BTC 风霆v4.3" \
   --coins "BTC" \
   --strategy-types "11" \
