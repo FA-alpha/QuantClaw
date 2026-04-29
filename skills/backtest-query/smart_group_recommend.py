@@ -11,7 +11,7 @@ import argparse
 import itertools
 from typing import List, Dict, Optional, Tuple, Set
 from datetime import datetime
-from query import query_backtest, get_backtest_detail
+from query import query_backtest, get_backtest_detail, get_version_info
 from analysis import recommend_combinations
 
 
@@ -101,17 +101,23 @@ def validate_args(args):
     return None
 
 
-def build_query_combinations(args) -> List[Dict]:
+def build_query_combinations(args, token: str) -> List[Dict]:
     """
     根据参数生成查询组合（统一返回字典列表）
     
+    Args:
+        args: 命令行参数
+        token: 用户 token（用于获取 version_info）
+    
     Returns:
-        [{'coin': 'BTC', 'strategy_type': 1, 'direction': 'long', ...}, ...]
+        [{'coin': 'BTC', 'strategy_type': 1, 'direction': 'long', 'version': '4.3', 'version_extra': {...}, ...}, ...]
     """
     # 解析所有参数
     coins = parse_csv(args.coins) or [None]
     strategy_types = parse_csv_int(args.strategy_types) or [None]
     directions = parse_csv(args.directions) or [None]
+    search_pcts = parse_csv(args.search_pcts) or [None]
+    ai_time_ids = parse_csv(args.ai_time_ids) or [None]
     
     combinations = []
     
@@ -119,21 +125,21 @@ def build_query_combinations(args) -> List[Dict]:
         # 版本配置对象模式（version_configs 优先，忽略 versions）
         version_configs = json.loads(args.version_configs)
         
-        for coin, st, direction, vc in itertools.product(
-            coins, strategy_types, directions, version_configs
+        for coin, st, direction, pct, time_id, vc in itertools.product(
+            coins, strategy_types, directions, search_pcts, ai_time_ids, version_configs
         ):
             combo = {
                 'coin': coin,
                 'strategy_type': st,
                 'direction': direction,
+                'search_pct': pct,
+                'ai_time_id': time_id,
+                'version': vc.get('version'),  # 提取 version 字段
+                'version_extra': vc  # 整个对象作为 version_extra
             }
-            # 合并版本配置对象的所有字段
-            combo.update(vc)
             combinations.append(combo)
     else:
-        # 传统模式
-        search_pcts = parse_csv(args.search_pcts) or [None]
-        ai_time_ids = parse_csv(args.ai_time_ids) or [None]
+        # 传统模式：使用 versions 参数
         versions = parse_csv(args.versions) or [None]
         
         for coin, st, direction, pct, time_id, version in itertools.product(
@@ -147,6 +153,17 @@ def build_query_combinations(args) -> List[Dict]:
                 'ai_time_id': time_id,
                 'version': version
             }
+            
+            # 如果指定了 version，需要调用 get_version_info 获取 version_extra
+            if version and st:
+                try:
+                    version_extra = get_version_info(token, st, version)
+                    if version_extra:
+                        combo['version_extra'] = version_extra
+                except Exception as e:
+                    # 获取失败时跳过，不阻塞流程
+                    print(f"⚠️  获取 version_info 失败 (strategy_type={st}, version={version}): {e}")
+            
             combinations.append(combo)
     
     return combinations
@@ -200,7 +217,7 @@ def batch_query_strategies(token: str, combinations: List[Dict], base_params: Di
     all_strategies = []
     seen_back_ids = set()
     
-    # 参数映射（命令行参数 → API 参数）
+    # 参数映射（组合参数 → API 参数）
     param_mapping = {
         'coin': 'search_coin',
         'strategy_type': 'strategy_type',
@@ -208,8 +225,7 @@ def batch_query_strategies(token: str, combinations: List[Dict], base_params: Di
         'search_pct': 'search_pct',
         'ai_time_id': 'ai_time_id',
         'version': 'version',
-        'leverage': 'leverage',
-        'search_extend': 'search_extend'
+        'version_extra': 'version_extra'  # 整个版本配置对象
     }
     
     if verbose:
@@ -766,7 +782,7 @@ def main():
     
     # 4. 生成查询组合
     try:
-        combinations = build_query_combinations(args)
+        combinations = build_query_combinations(args, token)
     except Exception as e:
         print(f"❌ 生成查询组合失败: {e}")
         sys.exit(1)
