@@ -18,8 +18,6 @@ python3 skills/backtest-query/smart_group_recommend.py \
   --output /tmp/rec_$(date +%s).json
 ```
 
-> 📍 使用相对路径，确保在用户工作区执行
-
 **判断是否直接创建**：
 - 用户说"创建"/"建立"/"生成" → 推荐后直接创建
 - 否则 → 推荐后询问确认
@@ -99,8 +97,6 @@ python3 skills/backtest-query/query.py --list-strategies
 # 查看时间ID
 python3 skills/backtest-query/query.py --list-ai-times
 ```
-
-> 📍 所有命令使用相对路径，保持在当前工作区
 
 ### 根据用户需求筛选
 
