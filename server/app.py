@@ -17,6 +17,10 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
+# CORS 配置
+ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', '*').split(',')
+CORS_ENABLED = os.getenv('CORS_ENABLED', 'true').lower() == 'true'
+
 # 配置
 GATEWAY_URL = os.getenv('GATEWAY_URL', 'http://127.0.0.1:18789')
 GATEWAY_WS = os.getenv('GATEWAY_WS', 'ws://127.0.0.1:18789')
@@ -509,8 +513,66 @@ async def handle_index(request):
     return web.Response(text='QuantClaw Server', content_type='text/plain')
 
 
+# ============ CORS 中间件 ============
+
+@web.middleware
+async def cors_middleware(request, handler):
+    """处理 CORS 跨域请求"""
+    if not CORS_ENABLED:
+        return await handler(request)
+    
+    # 处理 OPTIONS 预检请求
+    if request.method == 'OPTIONS':
+        origin = request.headers.get('Origin', '*')
+        
+        # 检查是否允许该源
+        allowed = False
+        if '*' in ALLOWED_ORIGINS:
+            allowed = True
+        elif origin in ALLOWED_ORIGINS:
+            allowed = True
+        
+        if allowed:
+            response = web.Response()
+            response.headers['Access-Control-Allow-Origin'] = origin if origin != '*' else '*'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Max-Age'] = '86400'
+            return response
+        else:
+            return web.Response(status=403, text='CORS origin not allowed')
+    
+    # 处理实际请求
+    response = await handler(request)
+    
+    origin = request.headers.get('Origin', '*')
+    
+    # 检查是否允许该源
+    allowed = False
+    if '*' in ALLOWED_ORIGINS:
+        allowed = True
+        origin = '*'
+    elif origin in ALLOWED_ORIGINS:
+        allowed = True
+    
+    if allowed:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+    
+    return response
+
+
 def create_app():
-    app = web.Application()
+    # 添加 CORS 中间件
+    middlewares = []
+    if CORS_ENABLED:
+        middlewares.append(cors_middleware)
+        logger.info(f'CORS enabled. Allowed origins: {ALLOWED_ORIGINS}')
+    
+    app = web.Application(middlewares=middlewares)
     
     app.router.add_get('/', handle_index)
     app.router.add_get('/health', handle_health)
