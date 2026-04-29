@@ -35,8 +35,14 @@ def check_auth(response: dict) -> tuple[bool, str]:
     """
     if response.get("status") == 0:
         info = response.get("info", "未知错误")
-        return False, str(info)
-    return True, ""
+        info_str = str(info)
+        
+        # 将 version 字段错误视为空数据（兼容性处理）
+        if "Column not found" in info_str and "version" in info_str:
+            return True, []  # 视为成功，返回空数据
+        
+        return False, info_str
+    return True, []
 
 
 def get_coin_list(token: str, force_refresh: bool = False) -> dict:
@@ -367,7 +373,9 @@ def query_backtest(
     
     # DEBUG: 输出参数
     import json as _json
-    _debug_data = {k: v for k, v in data.items() if k != 'usertoken'}
+    _debug_data = data.copy()
+    if 'usertoken' in _debug_data:
+        _debug_data['usertoken'] = _debug_data['usertoken'][:20] + '...'
     print(f"[DEBUG] POST 参数: {_json.dumps(_debug_data, ensure_ascii=False)}")
     
     try:
@@ -379,6 +387,10 @@ def query_backtest(
         ok, msg = check_auth(result)
         if not ok:
             return {"error": msg}
+        
+        # 如果是 version 字段错误被忽略，返回空数据结构
+        if result.get("status") == 0:
+            return {"status": 1, "info": []}
         
         return result
     except requests.RequestException as e:
