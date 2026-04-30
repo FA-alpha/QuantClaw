@@ -397,6 +397,9 @@ async def handle_websocket(request):
                                             }
                                         }
                                         await gateway_ws.send_json(rpc_msg)
+                                        # 保存用户消息到本地
+                                        if user_id:
+                                            chat_store.append(user_id, 'user', text)
                                         logger.info(f'Sent to gateway: {text[:50]}...')
                             except json.JSONDecodeError:
                                 pass
