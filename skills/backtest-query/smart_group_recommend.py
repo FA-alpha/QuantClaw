@@ -128,66 +128,158 @@ def build_query_combinations(args, token: str) -> List[Dict]:
     """
     根据参数生成查询组合（统一返回字典列表）
     
+    智能处理参数依赖关系：
+    - versions 依赖 strategy_type（从策略的 versions 字段获取）
+    - directions 依赖 strategy_type（仅 1, 7, 11 需要方向）
+    - search_pcts 依赖 coin（BTC 特殊比例）
+    
     Args:
         args: 命令行参数
-        token: 用户 token（用于获取 version_info）
+        token: 用户 token（用于查询默认值）
     
     Returns:
         [{'coin': 'BTC', 'strategy_type': 1, 'direction': 'long', 'version': '4.3', 'version_extra': {...}, ...}, ...]
     """
-    # 解析所有参数
-    coins = parse_csv(args.coins) or [None]
-    strategy_types = parse_csv_int(args.strategy_types) or [None]
-    directions = parse_csv(args.directions) or [None]
-    search_pcts = parse_csv(args.search_pcts) or [None]
-    ai_time_ids = parse_csv(args.ai_time_ids) or [None]
+    from query import get_coin_list, get_ai_time_list, get_ai_strategy_list
+    
+    # ==================== 第1步：获取独立参数 ====================
+    
+    # 1. 币种列表
+    if args.coins:
+        coins = parse_csv(args.coins)
+    else:
+        # 查询所有币种
+        result = get_coin_list(token)
+        if "error" in result:
+            print(f"⚠️  获取币种列表失败: {result['error']}，使用默认值")
+            coins = ["BTC", "ETH", "SOL"]
+        else:
+            coins = [c["coin"] for c in result.get("info", [])]
+            if not coins:
+                coins = ["BTC", "ETH", "SOL"]
+    
+    # 2. 策略类型列表
+    if args.strategy_types:
+        strategy_types = parse_csv_int(args.strategy_types)
+    else:
+        # 查询所有策略类型
+        result = get_ai_strategy_list(token)
+        if "error" in result:
+            print(f"⚠️  获取策略列表失败: {result['error']}，使用默认值")
+            strategy_types = [11, 7, 1]
+        else:
+            strategy_types = [s["strategy_type"] for s in result.get("info", [])]
+            if not strategy_types:
+                strategy_types = [11, 7, 1]
+    
+    # 3. 时间ID列表
+    if args.ai_time_ids:
+        ai_time_ids = parse_csv(args.ai_time_ids)
+    else:
+        # 查询所有时间ID
+        result = get_ai_time_list(token)
+        if "error" in result:
+            print(f"⚠️  获取时间列表失败: {result['error']}，使用默认值")
+            ai_time_ids = ["5"]
+        else:
+            ai_time_ids = [str(t["id"]) for t in result.get("info", [])]
+            if not ai_time_ids:
+                ai_time_ids = ["5"]
+    
+    # ==================== 第2步：获取策略完整信息（用于提取 versions） ====================
+    
+    strategy_info_map = {}  # {strategy_type: strategy_info}
+    result = get_ai_strategy_list(token)
+    if "error" not in result:
+        for s in result.get("info", []):
+            strategy_info_map[s["strategy_type"]] = s
+    
+    # ==================== 第3步：嵌套生成组合（处理依赖关系） ====================
     
     combinations = []
     
-    if args.version_configs:
-        # 版本配置对象模式（version_configs 优先，忽略 versions）
-        version_configs = json.loads(args.version_configs)
+    # 需要方向的策略类型
+    DIRECTION_REQUIRED_TYPES = {1, 7, 11}
+    
+    for st in strategy_types:
+        # === 获取该策略类型的 versions ===
+        if args.version_configs:
+            # 版本配置对象模式（version_configs 优先）
+            version_configs = json.loads(args.version_configs)
+            versions_list = version_configs
+        elif args.versions:
+            # 用户指定了版本
+            versions_list = [{'version': v} for v in parse_csv(args.versions)]
+        else:
+            # 自动从策略信息中提取版本
+            strategy_info = strategy_info_map.get(st)
+            if strategy_info and "versions" in strategy_info:
+                versions_list = strategy_info["versions"]
+            else:
+                # 没有版本信息，不传 version
+                versions_list = [None]
         
-        for coin, st, direction, pct, time_id, vc in itertools.product(
-            coins, strategy_types, directions, search_pcts, ai_time_ids, version_configs
-        ):
-            combo = {
-                'coin': coin,
-                'strategy_type': st,
-                'direction': direction,
-                'search_pct': pct,
-                'ai_time_id': time_id,
-                'version': vc.get('version'),  # 提取 version 字段
-                'version_extra': vc  # 整个对象作为 version_extra
-            }
-            combinations.append(combo)
-    else:
-        # 传统模式：使用 versions 参数
-        versions = parse_csv(args.versions) or [None]
+        # === 获取该策略类型的 directions ===
+        if args.directions:
+            # 用户指定了方向
+            directions = parse_csv(args.directions)
+        else:
+            # 根据策略类型判断是否需要方向
+            if st in DIRECTION_REQUIRED_TYPES:
+                directions = ["long", "short"]  # 需要方向时轮询两个方向
+            else:
+                directions = [None]  # 不需要方向
         
-        for coin, st, direction, pct, time_id, version in itertools.product(
-            coins, strategy_types, directions, search_pcts, ai_time_ids, versions
-        ):
-            combo = {
-                'coin': coin,
-                'strategy_type': st,
-                'direction': direction,
-                'search_pct': pct,
-                'ai_time_id': time_id,
-                'version': version
-            }
-            
-            # 如果指定了 version，需要调用 get_version_info 获取 version_extra
-            if version and st:
-                try:
-                    version_extra = get_version_info(token, st, version)
-                    if version_extra:
-                        combo['version_extra'] = version_extra
-                except Exception as e:
-                    # 获取失败时跳过，不阻塞流程
-                    print(f"⚠️  获取 version_info 失败 (strategy_type={st}, version={version}): {e}")
-            
-            combinations.append(combo)
+        # === 嵌套循环：version → direction → coin → pct → time_id ===
+        for version_item in versions_list:
+            for direction in directions:
+                for coin in coins:
+                    # === 获取该币种的 search_pcts ===
+                    if args.search_pcts:
+                        # 用户指定了比例
+                        search_pcts = parse_csv(args.search_pcts)
+                    else:
+                        # 根据币种自动判断（参考 defaults.py 的 get_grid_pcts 逻辑）
+                        is_btc = coin and 'BTC' in coin.upper()
+                        if is_btc:
+                            # BTC 特殊比例
+                            search_pcts = ['10', '20', '30', '40', '50', '60', '80', '100', '120']
+                        else:
+                            # 其他币种通用比例
+                            search_pcts = ['60', '80', '100', '120', '140']
+                    
+                    for pct in search_pcts:
+                        for time_id in ai_time_ids:
+                            # === 构建组合 ===
+                            combo = {
+                                'coin': coin,
+                                'strategy_type': st,
+                                'direction': direction,
+                                'search_pct': pct,
+                                'ai_time_id': time_id,
+                            }
+                            
+                            # 处理版本信息
+                            if version_item is None:
+                                # 没有版本信息，不添加 version 字段
+                                pass
+                            elif isinstance(version_item, dict):
+                                if args.version_configs:
+                                    # version_configs 模式
+                                    combo['version'] = version_item.get('version')
+                                    combo['version_extra'] = version_item
+                                else:
+                                    # 自动提取的版本
+                                    combo['version'] = version_item.get('version')
+                                    # 调用 get_version_info 获取完整信息
+                                    try:
+                                        version_extra = get_version_info(token, st, str(version_item.get('version')))
+                                        if version_extra:
+                                            combo['version_extra'] = version_extra
+                                    except Exception as e:
+                                        print(f"⚠️  获取 version_info 失败 (strategy_type={st}, version={version_item.get('version')}): {e}")
+                            
+                            combinations.append(combo)
     
     return combinations
 
