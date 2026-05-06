@@ -163,7 +163,7 @@ python3 skills/backtest-query/query.py --list-strategies  # 策略类型
 python3 skills/backtest-query/query.py --list-ai-times    # 时间ID
 ```
 
-**常用策略**: 1=鲲鹏(马丁), 7=网格, 11=风霆(马丁)
+**常用策略**: 1=风霆(马丁), 3=鲲鹏(趋势), 7=网格, 11=风霆(马丁)
 
 ---
 
