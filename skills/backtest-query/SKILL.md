@@ -50,6 +50,8 @@ python3 skills/backtest-query/query.py \
 
 ### 查询范围
 
+#### 全局参数
+
 | 参数 | 说明 | 示例 | 依赖关系 | 未传时行为 |
 |------|------|------|---------|-----------|
 | `--coins` | 币种（逗号分隔） | `"BTC,ETH,SOL"` | 独立 | 查询所有可用币种 |
@@ -58,29 +60,85 @@ python3 skills/backtest-query/query.py \
 | `--versions` | 版本号（逗号分隔） | `"4.2,4.3"` | **依赖 strategy-types** | 自动提取该策略的所有版本 |
 | `--directions` | 方向 | `"long,short"` | **依赖 strategy-types** | 类型 1,7,11 轮询 long/short，其他不传 |
 | `--search-pcts` | 网格比例（逗号分隔） | `"80,100,120"` | **依赖 coins** | BTC: 10~120，其他: 60~140 |
-| `--version-configs` | 版本配置对象数组（JSON） | 见下方说明 | 优先级最高 | - |
+| `--version-configs` | 版本配置对象数组（JSON） | ⚠️ **已废弃** | 全局生效，多策略易出错 | - |
 | `--search-recommand-type` | 推荐类型 | `1`（推荐）/ `2`（交易中） | 独立 | 默认 1 |
 
-#### 重要：参数依赖关系
+#### 映射参数（🔥 推荐使用）
 
-参数之间存在依赖关系，系统会智能处理：
+| 参数 | 说明 | 格式 | 优先级 |
+|------|------|------|--------|
+| `--strategy-version-map` | 按策略指定版本配置 | JSON 对象 | 🔥 最高 |
+| `--strategy-direction-map` | 按策略指定方向 | JSON 对象 | 🔥 最高 |
+| `--coin-pct-map` | 按币种指定比例 | JSON 对象 | 🔥 最高 |
+
+**格式说明**：
+```json
+// strategy-version-map 格式（支持三种）
+{
+  "11": ["4.3", "4.4"],                          // 简化格式：版本号数组
+  "7": [{"version": "3.2", "leverage": 10}],     // 完整格式：配置对象数组
+  "1": null                                       // null：自动查询所有版本
+}
+
+// strategy-direction-map 格式
+{
+  "11": ["long", "short"],   // 指定方向
+  "7": ["long"],             // 单方向
+  "8": null                  // null：自动判断
+}
+
+// coin-pct-map 格式
+{
+  "BTC": ["80", "100", "120"],  // 指定比例
+  "ETH": ["60", "80"],          // 不同币种不同比例
+  "SOL": null                   // null：使用默认比例
+}
+```
+
+#### 参数优先级规则
+
+系统按以下优先级处理参数：
+
+**优先级 1：映射参数（最高）** 🔥
+- `--strategy-version-map`：按策略精确指定版本
+- `--strategy-direction-map`：按策略精确指定方向
+- `--coin-pct-map`：按币种精确指定比例
+
+**优先级 2：全局参数（中）**
+- `--versions`：对所有策略类型生效
+- `--directions`：对所有策略类型生效
+- `--search-pcts`：对所有币种生效
+
+**优先级 3：自动查询（最低）**
+- 未传任何参数时，系统自动查询所有可能值
+
+**示例**：
+```bash
+# 场景：11 使用 v4.3，7 使用 v3.2，其他策略自动查询
+--strategy-types "11,7,1" \
+--versions "4.0" \                      # 全局：所有策略用 v4.0
+--strategy-version-map '{
+  "11": ["4.3"],                        # 覆盖：策略11用v4.3
+  "7": ["3.2"]                          # 覆盖：策略7用v3.2
+}'
+# 结果：11→v4.3, 7→v3.2, 1→v4.0（使用全局参数）
+```
+
+#### 参数依赖关系
 
 **1. versions 依赖 strategy-types**
 - 每个策略类型有不同的版本列表
-- 未传 `--versions` 时，自动从 `get_ai_strategy_list` 中提取该策略的所有版本
-- 如果策略没有 `versions` 字段，则不传 version 参数
+- 映射参数可为每个策略单独指定
+- 简化格式（版本号字符串）会自动查询该版本的所有配置（如所有杠杆组合）
 
 **2. directions 依赖 strategy-types**
 - 仅策略类型 **1, 7, 11** 需要传方向
-- 未传 `--directions` 时：
-  - 类型 1,7,11 → 自动轮询 `["long", "short"]`
-  - 其他类型 → 不传 direction 参数
-- 已传 `--directions` 时：使用指定值
+- 映射参数可为支持方向的策略单独指定
 
 **3. search-pcts 依赖 coins**
-- BTC 有特殊比例配置：`['10', '20', '30', '40', '50', '60', '80', '100', '120']`
-- 其他币种通用比例：`['60', '80', '100', '120', '140']`
-- 未传 `--search-pcts` 时自动根据币种选择
+- BTC：`['10', '20', '30', '40', '50', '60', '80', '100', '120']`
+- 其他：`['60', '80', '100', '120', '140']`
+- 映射参数可为每个币种单独指定
 
 ### 筛选条件
 
@@ -150,46 +208,105 @@ python3 skills/backtest-query/query.py --list-ai-times
 - 其他参数留空，让系统自动查询和组合
 - 这样可以获得更全面的推荐结果
 
-### 版本配置对象（version-configs）
+### Agent 使用指南
 
-当用户指定特定版本时（如"风霆v4.3"），需要传入版本配置对象数组。
+#### 场景1：用户为不同策略指定不同版本
 
-**工作流程**：
-```python
-# 1. 查询策略类型的版本列表
-from query import get_ai_strategy_list
-result = get_ai_strategy_list(token)
-strategies = result['info']
+**用户需求**："BTC 风霆 v4.3/v4.4，ETH 网格 v3.2"
 
-# 2. 找到目标策略（如风霆V4，strategy_type=11）
-feng_ting_v4 = [s for s in strategies if s['id'] == 11][0]
-
-# 3. 筛选匹配的版本（如 version=4.3）
-v43_configs = [v for v in feng_ting_v4['versions'] if v['version'] == 4.3]
-# 结果: [
-#   {"version": 4.3, "leverage": 3, "search_extend": "3w"},
-#   {"version": 4.3, "leverage": 1.5, "search_extend": "3w"}
-# ]
-
-# 4. 转为 JSON 并传入参数
-import json
-configs_json = json.dumps(v43_configs)
-```
-
-**命令示例**：
+✅ **正确做法**：使用 `--strategy-version-map`
 ```bash
-python3 skills/backtest-query/smart_group_recommend.py \
-  --query "BTC 风霆v4.3" \
-  --coins "BTC" \
-  --strategy-types "11" \
-  --version-configs '[{"version":4.3,"leverage":3,"search_extend":"3w"},{"version":4.3,"leverage":1.5,"search_extend":"3w"}]'
+--coins "BTC,ETH" \
+--strategy-types "11,7" \
+--strategy-version-map '{
+  "11": ["4.3", "4.4"],
+  "7": ["3.2"]
+}'
 ```
 
-**说明**：
-- `version-configs` 优先于 `--versions` 参数
-- 配置对象结构**动态根据 API 返回**（直接使用 `versions` 数组中的对象）
-- 系统会提取对象中的所有字段作为查询参数（version、leverage、search_extend 等）
-- 对每个配置进行轮询查询并去重合并
+❌ **错误做法**：使用全局参数
+```bash
+--versions "4.3,4.4,3.2"  # 会导致网格查询 v4.3/v4.4（但它可能没有）
+```
+
+#### 场景2：用户明确指定杠杆等参数
+
+**用户需求**："BTC 风霆 v4.3，3倍杠杆"
+
+✅ **使用完整格式**：
+```bash
+--strategy-version-map '{
+  "11": [{"version": "4.3", "leverage": 3, "search_extend": "3w"}]
+}'
+```
+
+#### 场景3：混合使用（部分精确，部分宽泛）
+
+**用户需求**："BTC 风霆 v4.3(3倍)，其他策略用最新版本"
+
+✅ **结合映射和全局参数**：
+```bash
+--strategy-types "11,7,1" \
+--versions "4.5" \              # 全局：默认用 v4.5
+--strategy-version-map '{
+  "11": [{"version": "4.3", "leverage": 3}]  # 策略11特殊指定
+}'
+# 结果：11→v4.3(3x), 7→v4.5, 1→v4.5
+```
+
+#### 场景4：用户需求宽泛
+
+**用户需求**："推荐 BTC 策略"
+
+✅ **只传明确的，其他自动**：
+```bash
+--coins "BTC"
+# strategy-types/versions/directions 全部自动查询
+```
+
+#### Agent 决策树
+
+```
+分析用户需求
+├─ 是否为不同策略指定了不同参数（版本/方向/比例）？
+│  ├─ 是 → 使用映射参数 (strategy-version-map 等)
+│  └─ 否 ↓
+│
+├─ 是否明确指定了 leverage 等额外字段？
+│  ├─ 是 → 使用完整格式 {"version": "4.3", "leverage": 3}
+│  └─ 否 → 使用简化格式 ["4.3", "4.4"]（自动获取所有配置）
+│
+└─ 用户明确说的 → 传入
+   用户没说的 → 不传（自动查询）
+```
+
+---
+
+### 废弃参数说明
+
+#### version-configs（已废弃）
+
+**问题**：全局生效，多策略时容易产生无效组合
+
+```bash
+# ❌ 废弃用法
+--strategy-types "11,7" \
+--version-configs '[
+  {"version": 4.3, "leverage": 3},
+  {"version": 3.2, "leverage": 10}
+]'
+# 问题：会产生 11×v3.2（可能不存在）和 7×v4.3（可能不存在）
+```
+
+**迁移方案**：改用 `--strategy-version-map`
+
+```bash
+# ✅ 新用法
+--strategy-version-map '{
+  "11": [{"version": "4.3", "leverage": 3}],
+  "7": [{"version": "3.2", "leverage": 10}]
+}'
+```
 
 ---
 
@@ -238,40 +355,53 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 ## 快速参考
 
-### 典型场景
+### 典型场景示例
 
 ```bash
-# 1. 对冲组合（BTC 多空）
-# ✅ 只传币种和方向，其他参数自动查询
+# 场景1：对冲组合（BTC 多空）
 --query "BTC 对冲组合" \
 --coins "BTC" \
 --directions "long,short"
 
-# 2. 币种分散（只做多）
-# ✅ 只传币种和方向
+# 场景2：币种分散（只做多）
 --query "多币种分散做多" \
 --coins "BTC,ETH,SOL" \
 --directions "long"
 
-# 3. 马丁策略（所有币种）
-# ✅ 只传策略类型，coins/versions/directions 自动处理
+# 场景3：马丁策略（所有币种）
 --query "马丁策略推荐" \
 --strategy-types "1,11"
 
-# 4. 高质量策略（不限类型、不限币种）
-# ✅ 完全依赖自动查询，只设置筛选条件
+# 场景4：高质量策略（不限类型、不限币种）
 --query "高质量低回撤策略" \
 --min-total-win-rate 65 \
 --max-recent-drawdown 10 \
 --min-trade-count 100
 
-# 5. 特定策略版本（风霆 v4.3）
-# ✅ 指定策略类型和版本，其他自动
---query "BTC 风霆 v4.3 做多" \
+# 场景5：多策略不同版本（使用映射参数）
+--query "BTC 风霆 v4.3/v4.4，ETH 网格 v3.2" \
+--coins "BTC,ETH" \
+--strategy-types "11,7" \
+--strategy-version-map '{
+  "11": ["4.3", "4.4"],
+  "7": ["3.2"]
+}'
+
+# 场景6：精确控制杠杆
+--query "BTC 风霆 v4.3 3倍杠杆" \
 --coins "BTC" \
 --strategy-types "11" \
---versions "4.3" \
---directions "long"
+--strategy-version-map '{
+  "11": [{"version": "4.3", "leverage": 3}]
+}'
+
+# 场景7：不同币种不同比例
+--query "BTC 高比例，ETH 低比例" \
+--coins "BTC,ETH" \
+--coin-pct-map '{
+  "BTC": ["100", "120"],
+  "ETH": ["60", "80"]
+}'
 ```
 
 ### 📌 参数传递原则
