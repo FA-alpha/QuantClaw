@@ -113,14 +113,7 @@ def get_user_token() -> Optional[str]:
 
 def validate_args(args):
     """统一参数验证"""
-    if args.version_configs:
-        try:
-            configs = json.loads(args.version_configs)
-            if not isinstance(configs, list):
-                raise ValidationError("--version-configs 必须是 JSON 数组格式")
-            return configs
-        except json.JSONDecodeError as e:
-            raise ValidationError(f"--version-configs JSON 解析失败: {e}")
+    # 映射参数验证在 build_query_combinations 中进行
     return None
 
 
@@ -294,19 +287,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         else:
             return ['60', '80', '100', '120', '140']
     
-    # ==================== 第3步：向后兼容 version_configs ====================
-    
-    if args.version_configs:
-        print("⚠️  警告：--version-configs 是全局参数，建议使用 --strategy-version-map")
-        if len(strategy_types) > 1:
-            print("⚠️  检测到多个策略类型，version_configs 会对所有策略生效，可能产生无效组合")
-        
-        # 保持原有的 version_configs 逻辑（全局生效）
-        version_configs = json.loads(args.version_configs)
-        
-        # 后续逻辑会在循环中判断是否使用 version_configs
-    
-    # ==================== 第4步：嵌套生成组合（处理依赖关系） ====================
+    # ==================== 第3步：嵌套生成组合（处理依赖关系） ====================
     
     combinations = []
     
@@ -338,12 +319,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
                 print(f"⚠️  策略 {st} 版本配置格式错误: {version_spec}，跳过该策略")
                 continue
         
-        # ==================== 优先级2：version_configs（兼容旧逻辑） ====================
-        elif args.version_configs:
-            version_configs = json.loads(args.version_configs)
-            versions_list = version_configs
-        
-        # ==================== 优先级3：versions（全局参数） ====================
+        # ==================== 优先级2：versions（全局参数） ====================
         elif args.versions:
             user_versions = parse_csv(args.versions)
             versions_list = []
@@ -354,7 +330,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
                 print(f"⚠️  策略 {st} 没有版本 {user_versions}，跳过该策略")
                 continue
         
-        # ==================== 优先级4：自动查询 ====================
+        # ==================== 优先级3：自动查询 ====================
         else:
             versions_list = auto_get_versions(st)
         
@@ -1017,7 +993,6 @@ def parse_arguments():
     parser.add_argument("--search-pcts", type=str, help="比例选择列表（逗号分隔）")
     parser.add_argument("--ai-time-ids", type=str, help="AI时间ID列表（逗号分隔）")
     parser.add_argument("--versions", type=str, help="策略版本列表（逗号分隔）")
-    parser.add_argument("--version-configs", type=str, help="版本配置对象数组（JSON格式，已废弃，建议使用 --strategy-version-map）")
     parser.add_argument("--search-recommand-type", type=int, default=1, help="推荐类型（1=推荐 2=交易中，默认=1）")
     
     # 映射参数（按策略/币种区分，优先级高于全局参数）

@@ -60,7 +60,6 @@ python3 skills/backtest-query/query.py \
 | `--versions` | 版本号（逗号分隔） | `"4.2,4.3"` | **依赖 strategy-types** | 自动提取该策略的所有版本 |
 | `--directions` | 方向 | `"long,short"` | **依赖 strategy-types** | 类型 1,7,11 轮询 long/short，其他不传 |
 | `--search-pcts` | 网格比例（逗号分隔） | `"80,100,120"` | **依赖 coins** | BTC: 10~120，其他: 60~140 |
-| `--version-configs` | 版本配置对象数组（JSON） | ⚠️ **已废弃** | 全局生效，多策略易出错 | - |
 | `--search-recommand-type` | 推荐类型 | `1`（推荐）/ `2`（交易中） | 独立 | 默认 1 |
 
 #### 映射参数（🔥 推荐使用）
@@ -278,34 +277,6 @@ python3 skills/backtest-query/query.py --list-ai-times
 │
 └─ 用户明确说的 → 传入
    用户没说的 → 不传（自动查询）
-```
-
----
-
-### 废弃参数说明
-
-#### version-configs（已废弃）
-
-**问题**：全局生效，多策略时容易产生无效组合
-
-```bash
-# ❌ 废弃用法
---strategy-types "11,7" \
---version-configs '[
-  {"version": 4.3, "leverage": 3},
-  {"version": 3.2, "leverage": 10}
-]'
-# 问题：会产生 11×v3.2（可能不存在）和 7×v4.3（可能不存在）
-```
-
-**迁移方案**：改用 `--strategy-version-map`
-
-```bash
-# ✅ 新用法
---strategy-version-map '{
-  "11": [{"version": "4.3", "leverage": 3}],
-  "7": [{"version": "3.2", "leverage": 10}]
-}'
 ```
 
 ---
