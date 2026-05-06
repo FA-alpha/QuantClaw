@@ -438,18 +438,23 @@ def deduplicate_and_add(strategies: List[Dict], all_strategies: List[Dict], seen
 class ParallelQueryExecutor:
     """并行查询执行器（专为 Agent 优化）"""
     
-    def __init__(self, max_workers=10, max_qps=20, retry_times=3, verbose=True):
+    def __init__(self, max_workers=10, max_qps=20, retry_times=3, verbose=True, log_level="normal"):
         """
         Args:
             max_workers: 并发线程数
             max_qps: 每秒最大查询数
             retry_times: 失败重试次数
             verbose: 是否输出日志
+            log_level: 日志级别
+                - "quiet": 只输出关键结果
+                - "normal": 输出进度和汇总（默认，适合Agent）
+                - "detail": 输出每个失败详情（调试用）
         """
         self.max_workers = max_workers
         self.max_qps = max_qps
         self.retry_times = retry_times
         self.verbose = verbose
+        self.log_level = log_level
         self.query_lock = Lock()
         self.last_query_time = 0
     
@@ -499,8 +504,9 @@ class ParallelQueryExecutor:
         all_strategies = []
         seen_back_ids = set()
         failed_count = 0
+        failed_details = []  # 记录失败详情
         
-        if self.verbose:
+        if self.verbose and self.log_level != "quiet":
             print(f"\n🚀 开始并行查询 {total} 个组合...")
             print(f"   并发: {self.max_workers} 线程, 限流: {self.max_qps} QPS")
             print(f"   预计耗时: ~{total / self.max_qps:.0f} 秒\n")
@@ -546,7 +552,9 @@ class ParallelQueryExecutor:
                     
                     if "error" in result:
                         failed_count += 1
-                        if self.verbose:
+                        failed_details.append(f"#{idx+1}: {result['error']}")
+                        # 只在 detail 模式输出每个失败
+                        if self.verbose and self.log_level == "detail":
                             print(f"⚠️  组合 #{idx+1} 查询失败: {result['error']}")
                     else:
                         strategies = result.get("info", [])
@@ -554,19 +562,32 @@ class ParallelQueryExecutor:
                 
                 except Exception as e:
                     failed_count += 1
-                    if self.verbose:
+                    failed_details.append(f"#{idx+1}: {e}")
+                    # 只在 detail 模式输出每个异常
+                    if self.verbose and self.log_level == "detail":
                         print(f"❌ 组合 #{idx+1} 异常: {e}")
                 
                 # 里程碑输出
-                if self.verbose and completed % milestone_interval == 0:
+                if self.verbose and self.log_level == "normal" and completed % milestone_interval == 0:
                     progress = completed / total * 100
                     print(f"   进度: {progress:.0f}% ({completed}/{total})")
         
-        if self.verbose:
+        if self.verbose and self.log_level != "quiet":
             print(f"\n✅ 查询完成:")
             print(f"   成功: {total - failed_count}/{total}")
             print(f"   失败: {failed_count}")
-            print(f"   策略数: {len(all_strategies)} (去重后)\n")
+            print(f"   策略数: {len(all_strategies)} (去重后)")
+            
+            # 失败率过高时给出提示
+            if failed_count > total * 0.3:
+                print(f"\n⚠️  失败率过高 ({failed_count}/{total} = {failed_count/total*100:.1f}%)")
+                print(f"   建议: 降低 --max-qps 或检查网络连接")
+                # detail 模式才显示前几个失败原因
+                if self.log_level == "detail" and failed_details:
+                    print(f"   前5个失败原因:")
+                    for detail in failed_details[:5]:
+                        print(f"     - {detail}")
+            print()
         
         return all_strategies
 
@@ -666,19 +687,15 @@ class SmartGroupRecommender:
             包含详情的策略列表
         """
         enriched = []
+        failed = 0
         
         self.log(f"\n📊 获取详情数据（最多 {max_fetch} 个）...")
         
         for i, strategy in enumerate(strategies[:max_fetch], 1):
             back_id = strategy.get('back_id')
             if not back_id:
-                self.log(f"   [{i}/{min(len(strategies), max_fetch)}] ⚠️  缺少 back_id，跳过")
+                failed += 1
                 continue
-            
-            coin = strategy.get('coin', 'N/A')
-            name = strategy.get('name', 'N/A')
-            
-            self.log(f"   [{i}/{min(len(strategies), max_fetch)}] {coin} / {name}")
             
             try:
                 detail = get_backtest_detail(self.token, back_id)
@@ -694,12 +711,12 @@ class SmartGroupRecommender:
                     }
                     enriched.append(strategy)
                 else:
-                    self.log(f"      ⚠️  API返回错误: {detail['error']}，跳过该策略")
+                    failed += 1
             except Exception as e:
-                self.log(f"      ⚠️  获取异常: {str(e)}，跳过该策略")
+                failed += 1
                 continue
         
-        self.log(f"✅ 成功获取 {len(enriched)} 个策略详情")
+        self.log(f"   完成: {len(enriched)}/{min(len(strategies), max_fetch)} 成功, {failed} 失败")
         return enriched
     
     def analyze_detail_metrics(self, strategy: Dict) -> Dict[str, float]:
@@ -810,8 +827,11 @@ class SmartGroupRecommender:
         
         selected = {}  # 用 back_id 去重
         
+        # 只在开头输出一次排序方式
+        if sort_methods and self.verbose:
+            self.log(f"   排序: {', '.join(sort_methods)}, 每种取 Top {top_n}")
+        
         for method in sort_methods:
-            self.log(f"   🔹 按 {method} 排序取 Top {top_n}")
             
             if method == 'sharpe':
                 sorted_list = sorted(strategies, key=lambda s: s.get('sharp_rate', 0), reverse=True)
@@ -837,12 +857,11 @@ class SmartGroupRecommender:
                 self.log(f"      ⚠️  未知排序方式: {method}")
                 continue
             
-            # 取前 N 个
+            # 取前 N 个（不再逐个输出）
             for strategy in sorted_list[:top_n]:
                 back_id = strategy.get('back_id')
                 if back_id and back_id not in selected:
                     selected[back_id] = strategy
-                    self.log(f"      ✅ {strategy.get('coin')} / {strategy.get('name')} ({method})")
         
         return list(selected.values())
     
@@ -1082,6 +1101,9 @@ def parse_arguments():
     parser.add_argument("--max-workers", type=int, default=10, help="并发线程数（默认10）")
     parser.add_argument("--max-qps", type=int, default=20, help="每秒最大查询数（默认20）")
     parser.add_argument("--retry-times", type=int, default=3, help="查询失败重试次数（默认3）")
+    parser.add_argument("--log-level", type=str, default="normal",
+                       choices=["quiet", "normal", "detail"],
+                       help="日志级别（quiet=静默/normal=正常/detail=详细，默认normal）")
     
     # 详情筛选条件
     parser.add_argument("--min-total-win-rate", type=float, help="最小总胜率")
@@ -1137,7 +1159,8 @@ def main():
             max_workers=args.max_workers,
             max_qps=args.max_qps,
             retry_times=args.retry_times,
-            verbose=not args.quiet
+            verbose=not args.quiet,
+            log_level="quiet" if args.quiet else args.log_level
         )
         strategies = executor.batch_query_parallel(token, combinations, base_params)
     except Exception as e:
