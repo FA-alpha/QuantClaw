@@ -393,14 +393,14 @@ def build_query_combinations(args, token: str) -> List[Dict]:
                                 # 没有版本信息，不添加 version 字段
                                 pass
                             elif isinstance(version_item, dict):
-                                if args.version_configs:
-                                    # version_configs 模式
-                                    combo['version'] = version_item.get('version')
+                                # 提取版本号
+                                combo['version'] = version_item.get('version')
+                                
+                                # 如果是完整配置对象（包含 leverage 等），直接使用
+                                if 'leverage' in version_item or 'search_extend' in version_item:
                                     combo['version_extra'] = version_item
                                 else:
-                                    # 自动提取的版本
-                                    combo['version'] = version_item.get('version')
-                                    # 调用 get_version_info 获取完整信息
+                                    # 否则调用 get_version_info 获取完整信息
                                     try:
                                         version_extra = get_version_info(token, st, str(version_item.get('version')))
                                         if version_extra:
