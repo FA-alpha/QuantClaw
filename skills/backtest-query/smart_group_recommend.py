@@ -932,8 +932,12 @@ class SmartGroupRecommender:
                 "query": query_text,
                 "group_by": group_by,
                 "groups": {str(k): len(v) for k, v in groups.items()},
+                "total_fetched": len(strategies),
+                "total_selected": len(all_selected),
                 "selected_strategies": all_selected,
-                "combinations": []
+                "combinations": [],
+                "criteria": detail_criteria,
+                "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown']
             }
         
         self.log(f"\n🎲 生成策略组合（最多 {max_combinations} 个）...")
@@ -975,15 +979,20 @@ class SmartGroupRecommender:
         print("📊 推荐结果摘要")
         print("="*70)
         
-        print(f"\n🎯 分组维度: {' → '.join(result['group_by'])}")
-        print(f"📦 分组数量: {len(result['groups'])} 组")
+        print(f"\n🎯 分组维度: {' → '.join(result.get('group_by', []))}")
+        print(f"📦 分组数量: {len(result.get('groups', {}))} 组")
         print(f"🔄 排序方式: {', '.join(result.get('sort_methods', ['sharpe']))}")
-        print(f"📊 总共获取: {result['total_fetched']} 条策略")
-        print(f"✅ 筛选出: {result['total_selected']} 条优质策略")
+        print(f"📊 总共获取: {result.get('total_fetched', 0)} 条策略")
+        print(f"✅ 筛选出: {result.get('total_selected', 0)} 条优质策略")
         
-        print(f"\n🌟 推荐组合: {len(result['combinations'])} 个")
+        combinations = result.get('combinations', [])
+        print(f"\n🌟 推荐组合: {len(combinations)} 个")
         
-        for i, combo in enumerate(result['combinations'][:5], 1):
+        if not combinations:
+            print("   （无推荐组合）")
+            return
+        
+        for i, combo in enumerate(combinations[:5], 1):
             print(f"\n--- 组合 #{i} ---")
             print(f"评分: {combo['score']:.2f}")
             print(f"预期收益: {combo['expected_return']:.2f}%")
