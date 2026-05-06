@@ -371,12 +371,13 @@ def query_backtest(
     if app_v:
         data["app_v"] = app_v
     
-    # DEBUG: 输出参数
-    import json as _json
-    _debug_data = data.copy()
-    if 'usertoken' in _debug_data:
-        _debug_data['usertoken'] = _debug_data['usertoken'][:20] + '...'
-    print(f"[DEBUG] POST 参数: {_json.dumps(_debug_data, ensure_ascii=False)}")
+    # DEBUG: 输出参数（通过环境变量 DEBUG_BACKTEST=1 启用）
+    if os.environ.get('DEBUG_BACKTEST') == '1':
+        import json as _json
+        _debug_data = data.copy()
+        if 'usertoken' in _debug_data:
+            _debug_data['usertoken'] = _debug_data['usertoken'][:20] + '...'
+        print(f"[DEBUG] POST 参数: {_json.dumps(_debug_data, ensure_ascii=False)}")
     
     try:
         resp = requests.post(url, data=data, timeout=30)

@@ -18,6 +18,18 @@ from query import query_backtest, get_backtest_detail, get_version_info
 from analysis import recommend_combinations
 
 
+# ==================== 全局日志控制 ====================
+
+def _should_print_warning() -> bool:
+    """判断是否应该输出警告信息（可通过环境变量关闭）"""
+    return os.environ.get('SUPPRESS_WARNINGS') != '1'
+
+
+def _should_print_debug() -> bool:
+    """判断是否应该输出 DEBUG 信息"""
+    return os.environ.get('DEBUG_BACKTEST') == '1'
+
+
 # ==================== 错误类 ====================
 
 class QueryError(Exception):
@@ -175,7 +187,8 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         # 查询所有币种
         result = get_coin_list(token)
         if "error" in result:
-            print(f"⚠️  获取币种列表失败: {result['error']}，使用默认值")
+            if _should_print_warning():
+                print(f"⚠️  获取币种列表失败: {result['error']}，使用默认值")
             coins = ["BTC", "ETH", "SOL"]
         else:
             coins = [c["coin"] for c in result.get("info", [])]
@@ -189,7 +202,8 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         # 查询所有策略类型
         result = get_ai_strategy_list(token)
         if "error" in result:
-            print(f"⚠️  获取策略列表失败: {result['error']}，使用默认值")
+            if _should_print_warning():
+                print(f"⚠️  获取策略列表失败: {result['error']}，使用默认值")
             strategy_types = [11, 7, 1]
         else:
             strategy_types = [s["strategy_type"] for s in result.get("info", [])]
@@ -203,7 +217,8 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         # 查询所有时间ID
         result = get_ai_time_list(token)
         if "error" in result:
-            print(f"⚠️  获取时间列表失败: {result['error']}，使用默认值")
+            if _should_print_warning():
+                print(f"⚠️  获取时间列表失败: {result['error']}，使用默认值")
             ai_time_ids = ["5"]
         else:
             ai_time_ids = [str(t["id"]) for t in result.get("info", [])]
