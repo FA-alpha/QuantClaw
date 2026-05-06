@@ -50,16 +50,37 @@ python3 skills/backtest-query/query.py \
 
 ### 查询范围
 
-| 参数 | 说明 | 示例 |
-|------|------|------|
-| `--coins` | 币种（逗号分隔） | `"BTC,ETH,SOL"` |
-| `--strategy-types` | 策略类型ID（逗号分隔） | `"1,11"` |
-| `--directions` | 方向 | `"long,short"` |
-| `--search-pcts` | 网格比例（逗号分隔） | `"80,100,120"` |
-| `--ai-time-ids` | 时间ID（逗号分隔） | `"5,6"` |
-| `--versions` | 版本号（逗号分隔） | `"4.2,4.3"` |
-| `--version-configs` | 版本配置对象数组（JSON） | 见下方说明 |
-| `--search-recommand-type` | 推荐类型 | `1`（推荐）/ `2`（交易中） |
+| 参数 | 说明 | 示例 | 依赖关系 | 未传时行为 |
+|------|------|------|---------|-----------|
+| `--coins` | 币种（逗号分隔） | `"BTC,ETH,SOL"` | 独立 | 查询所有可用币种 |
+| `--strategy-types` | 策略类型ID（逗号分隔） | `"1,11"` | 独立 | 查询所有策略类型 |
+| `--ai-time-ids` | 时间ID（逗号分隔） | `"5,6"` | 独立 | 查询所有时间ID |
+| `--versions` | 版本号（逗号分隔） | `"4.2,4.3"` | **依赖 strategy-types** | 自动提取该策略的所有版本 |
+| `--directions` | 方向 | `"long,short"` | **依赖 strategy-types** | 类型 1,7,11 轮询 long/short，其他不传 |
+| `--search-pcts` | 网格比例（逗号分隔） | `"80,100,120"` | **依赖 coins** | BTC: 10~120，其他: 60~140 |
+| `--version-configs` | 版本配置对象数组（JSON） | 见下方说明 | 优先级最高 | - |
+| `--search-recommand-type` | 推荐类型 | `1`（推荐）/ `2`（交易中） | 独立 | 默认 1 |
+
+#### 重要：参数依赖关系
+
+参数之间存在依赖关系，系统会智能处理：
+
+**1. versions 依赖 strategy-types**
+- 每个策略类型有不同的版本列表
+- 未传 `--versions` 时，自动从 `get_ai_strategy_list` 中提取该策略的所有版本
+- 如果策略没有 `versions` 字段，则不传 version 参数
+
+**2. directions 依赖 strategy-types**
+- 仅策略类型 **1, 7, 11** 需要传方向
+- 未传 `--directions` 时：
+  - 类型 1,7,11 → 自动轮询 `["long", "short"]`
+  - 其他类型 → 不传 direction 参数
+- 已传 `--directions` 时：使用指定值
+
+**3. search-pcts 依赖 coins**
+- BTC 有特殊比例配置：`['10', '20', '30', '40', '50', '60', '80', '100', '120']`
+- 其他币种通用比例：`['60', '80', '100', '120', '140']`
+- 未传 `--search-pcts` 时自动根据币种选择
 
 ### 筛选条件
 
@@ -104,14 +125,30 @@ python3 skills/backtest-query/query.py --list-ai-times
 1. 查询策略列表 → 找到包含"风霆"的策略
 2. 提取策略类型ID（如 `1, 11`）
 3. 构建参数：`--strategy-types "1,11"`
+4. ✅ **无需传 `--versions`**，系统会自动提取所有版本
+5. ✅ **无需传 `--directions`**，系统会自动轮询 long/short
 
 **示例2：用户说"所有虚拟货币"**
 1. 查询币种列表 → 筛选 `type="CRYPTO"` 的币种
 2. 提取币种代码（如 `BTC,ETH,SOL,...`）
 3. 构建参数：`--coins "BTC,ETH,SOL,..."`
+4. ✅ **无需传 `--search-pcts`**，系统会根据币种自动选择比例
 
 **示例3：用户说"主流币"**
 - 根据常识筛选：`BTC,ETH,SOL,BNB`
+- 或者直接**不传 `--coins`**，系统会查询所有币种
+
+**示例4：用户说"BTC 做多"**
+- 只需传：`--coins "BTC" --directions "long"`
+- ✅ **无需传 `--strategy-types`**，系统会查询所有策略类型
+- ✅ **无需传 `--versions`**，系统会自动提取所有版本
+
+### 🎯 推荐实践：只传用户明确指定的参数
+
+由于系统会自动处理参数依赖关系，建议：
+- **只传用户明确指定的参数**
+- 其他参数留空，让系统自动查询和组合
+- 这样可以获得更全面的推荐结果
 
 ### 版本配置对象（version-configs）
 
@@ -204,15 +241,56 @@ python3 skills/backtest-query/smart_group_recommend.py \
 ### 典型场景
 
 ```bash
-# 1. 对冲组合（多空）
---coins "BTC" --directions "long,short"
+# 1. 对冲组合（BTC 多空）
+# ✅ 只传币种和方向，其他参数自动查询
+--query "BTC 对冲组合" \
+--coins "BTC" \
+--directions "long,short"
 
-# 2. 币种分散
---coins "BTC,ETH,SOL" --directions "long"
+# 2. 币种分散（只做多）
+# ✅ 只传币种和方向
+--query "多币种分散做多" \
+--coins "BTC,ETH,SOL" \
+--directions "long"
 
-# 3. 马丁策略
+# 3. 马丁策略（所有币种）
+# ✅ 只传策略类型，coins/versions/directions 自动处理
+--query "马丁策略推荐" \
 --strategy-types "1,11"
 
-# 4. 高质量策略
---min-total-win-rate 65 --max-recent-drawdown 10 --min-trade-count 100
+# 4. 高质量策略（不限类型、不限币种）
+# ✅ 完全依赖自动查询，只设置筛选条件
+--query "高质量低回撤策略" \
+--min-total-win-rate 65 \
+--max-recent-drawdown 10 \
+--min-trade-count 100
+
+# 5. 特定策略版本（风霆 v4.3）
+# ✅ 指定策略类型和版本，其他自动
+--query "BTC 风霆 v4.3 做多" \
+--coins "BTC" \
+--strategy-types "11" \
+--versions "4.3" \
+--directions "long"
+```
+
+### ⚠️ 避免过度指定参数
+
+**❌ 不推荐**：全部手动指定
+```bash
+# 容易遗漏版本、设置错误的方向等
+--coins "BTC" \
+--strategy-types "11" \
+--versions "4.2,4.3,4.4" \
+--directions "long,short" \
+--search-pcts "80,100,120" \
+--ai-time-ids "5,6,7,8"
+```
+
+**✅ 推荐**：只传用户明确指定的
+```bash
+# 系统会自动处理依赖关系
+--coins "BTC" \
+--strategy-types "11"
+# versions/directions/pcts/time_ids 自动查询
 ```
