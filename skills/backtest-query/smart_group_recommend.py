@@ -395,18 +395,8 @@ def build_query_combinations(args, token: str) -> List[Dict]:
                             elif isinstance(version_item, dict):
                                 # 提取版本号
                                 combo['version'] = version_item.get('version')
-                                
-                                # 如果是完整配置对象（包含 leverage 等），直接使用
-                                if 'leverage' in version_item or 'search_extend' in version_item:
-                                    combo['version_extra'] = version_item
-                                else:
-                                    # 否则调用 get_version_info 获取完整信息
-                                    try:
-                                        version_extra = get_version_info(token, st, str(version_item.get('version')))
-                                        if version_extra:
-                                            combo['version_extra'] = version_extra
-                                    except Exception as e:
-                                        print(f"⚠️  获取 version_info 失败 (strategy_type={st}, version={version_item.get('version')}): {e}")
+                                # 直接使用完整的版本配置对象
+                                combo['version_extra'] = version_item
                             
                             combinations.append(combo)
     
