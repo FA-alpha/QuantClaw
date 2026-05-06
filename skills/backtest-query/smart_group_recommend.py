@@ -128,6 +128,11 @@ def build_query_combinations(args, token: str) -> List[Dict]:
     """
     根据参数生成查询组合（统一返回字典列表）
     
+    参数优先级体系：
+    1. 映射参数（最高优先级）：strategy-version-map, strategy-direction-map, coin-pct-map
+    2. 全局参数（中优先级）：versions, directions, search-pcts
+    3. 自动查询（最低优先级）：未传参数时自动获取
+    
     智能处理参数依赖关系：
     - versions 依赖 strategy_type（从策略的 versions 字段获取）
     - directions 依赖 strategy_type（仅 1, 7, 11 需要方向）
@@ -141,6 +146,29 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         [{'coin': 'BTC', 'strategy_type': 1, 'direction': 'long', 'version': '4.3', 'version_extra': {...}, ...}, ...]
     """
     from query import get_coin_list, get_ai_time_list, get_ai_strategy_list
+    
+    # ==================== 解析映射参数 ====================
+    strategy_version_map = {}
+    strategy_direction_map = {}
+    coin_pct_map = {}
+    
+    if args.strategy_version_map:
+        try:
+            strategy_version_map = json.loads(args.strategy_version_map)
+        except json.JSONDecodeError as e:
+            raise ValidationError(f"--strategy-version-map JSON 解析失败: {e}")
+    
+    if args.strategy_direction_map:
+        try:
+            strategy_direction_map = json.loads(args.strategy_direction_map)
+        except json.JSONDecodeError as e:
+            raise ValidationError(f"--strategy-direction-map JSON 解析失败: {e}")
+    
+    if args.coin_pct_map:
+        try:
+            coin_pct_map = json.loads(args.coin_pct_map)
+        except json.JSONDecodeError as e:
+            raise ValidationError(f"--coin-pct-map JSON 解析失败: {e}")
     
     # ==================== 第1步：获取独立参数 ====================
     
@@ -194,59 +222,181 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         for s in result.get("info", []):
             strategy_info_map[s["strategy_type"]] = s
     
-    # ==================== 第3步：嵌套生成组合（处理依赖关系） ====================
+    # ==================== 辅助函数 ====================
+    
+    def find_version_configs(st: int, version_str: str) -> List[Dict]:
+        """
+        根据版本号查找该策略的完整版本配置
+        
+        Args:
+            st: 策略类型
+            version_str: 版本号字符串
+        
+        Returns:
+            版本配置对象列表（可能有多个，如不同 leverage）
+        """
+        strategy_info = strategy_info_map.get(st)
+        if not strategy_info or "versions" not in strategy_info:
+            return [{'version': version_str}]
+        
+        matched = [
+            v for v in strategy_info["versions"]
+            if str(v.get("version")) == str(version_str)
+        ]
+        
+        return matched if matched else [{'version': version_str}]
+    
+    def auto_get_versions(st: int) -> List[Dict]:
+        """
+        自动获取策略的所有版本配置
+        
+        Args:
+            st: 策略类型
+        
+        Returns:
+            版本配置对象列表
+        """
+        strategy_info = strategy_info_map.get(st)
+        if strategy_info and "versions" in strategy_info:
+            return strategy_info["versions"]
+        else:
+            return [None]  # 没有版本信息
+    
+    def auto_get_directions(st: int) -> List[Optional[str]]:
+        """
+        根据策略类型自动判断方向
+        
+        Args:
+            st: 策略类型
+        
+        Returns:
+            方向列表
+        """
+        DIRECTION_REQUIRED_TYPES = {1, 7, 11}
+        if st in DIRECTION_REQUIRED_TYPES:
+            return ["long", "short"]
+        else:
+            return [None]
+    
+    def auto_get_pcts(coin: str) -> List[str]:
+        """
+        根据币种自动选择比例
+        
+        Args:
+            coin: 币种
+        
+        Returns:
+            比例列表
+        """
+        is_btc = coin and 'BTC' in coin.upper()
+        if is_btc:
+            return ['10', '20', '30', '40', '50', '60', '80', '100', '120']
+        else:
+            return ['60', '80', '100', '120', '140']
+    
+    # ==================== 第3步：向后兼容 version_configs ====================
+    
+    if args.version_configs:
+        print("⚠️  警告：--version-configs 是全局参数，建议使用 --strategy-version-map")
+        if len(strategy_types) > 1:
+            print("⚠️  检测到多个策略类型，version_configs 会对所有策略生效，可能产生无效组合")
+        
+        # 保持原有的 version_configs 逻辑（全局生效）
+        version_configs = json.loads(args.version_configs)
+        
+        # 后续逻辑会在循环中判断是否使用 version_configs
+    
+    # ==================== 第4步：嵌套生成组合（处理依赖关系） ====================
     
     combinations = []
     
-    # 需要方向的策略类型
-    DIRECTION_REQUIRED_TYPES = {1, 7, 11}
-    
     for st in strategy_types:
-        # === 获取该策略类型的 versions ===
-        if args.version_configs:
-            # 版本配置对象模式（version_configs 优先）
+        # ==================== 优先级1：strategy-version-map ====================
+        if str(st) in strategy_version_map:
+            version_spec = strategy_version_map[str(st)]
+            
+            if version_spec is None:
+                # null → 自动查询该策略所有版本
+                versions_list = auto_get_versions(st)
+            
+            elif isinstance(version_spec, list):
+                versions_list = []
+                for item in version_spec:
+                    if isinstance(item, str):
+                        # 简化格式："4.3" → 查询该版本的所有配置
+                        versions_list.extend(find_version_configs(st, item))
+                    elif isinstance(item, dict):
+                        # 完整配置：{"version": "4.3", "leverage": 3}
+                        versions_list.append(item)
+                    else:
+                        print(f"⚠️  策略 {st} 版本配置格式错误: {item}，跳过")
+                
+                if not versions_list:
+                    print(f"⚠️  策略 {st} 没有匹配的版本配置，跳过该策略")
+                    continue
+            else:
+                print(f"⚠️  策略 {st} 版本配置格式错误: {version_spec}，跳过该策略")
+                continue
+        
+        # ==================== 优先级2：version_configs（兼容旧逻辑） ====================
+        elif args.version_configs:
             version_configs = json.loads(args.version_configs)
             versions_list = version_configs
-        elif args.versions:
-            # 用户指定了版本
-            versions_list = [{'version': v} for v in parse_csv(args.versions)]
-        else:
-            # 自动从策略信息中提取版本
-            strategy_info = strategy_info_map.get(st)
-            if strategy_info and "versions" in strategy_info:
-                versions_list = strategy_info["versions"]
-            else:
-                # 没有版本信息，不传 version
-                versions_list = [None]
         
-        # === 获取该策略类型的 directions ===
-        if args.directions:
-            # 用户指定了方向
-            directions = parse_csv(args.directions)
+        # ==================== 优先级3：versions（全局参数） ====================
+        elif args.versions:
+            user_versions = parse_csv(args.versions)
+            versions_list = []
+            for v in user_versions:
+                versions_list.extend(find_version_configs(st, v))
+            
+            if not versions_list:
+                print(f"⚠️  策略 {st} 没有版本 {user_versions}，跳过该策略")
+                continue
+        
+        # ==================== 优先级4：自动查询 ====================
         else:
-            # 根据策略类型判断是否需要方向
-            if st in DIRECTION_REQUIRED_TYPES:
-                directions = ["long", "short"]  # 需要方向时轮询两个方向
+            versions_list = auto_get_versions(st)
+        
+        # ==================== 获取该策略的 directions（优先级同上） ====================
+        if str(st) in strategy_direction_map:
+            direction_spec = strategy_direction_map[str(st)]
+            
+            if direction_spec is None:
+                directions = auto_get_directions(st)
+            elif isinstance(direction_spec, list):
+                directions = direction_spec
             else:
-                directions = [None]  # 不需要方向
+                print(f"⚠️  策略 {st} 方向配置格式错误: {direction_spec}")
+                directions = auto_get_directions(st)
+        
+        elif args.directions:
+            directions = parse_csv(args.directions)
+        
+        else:
+            directions = auto_get_directions(st)
         
         # === 嵌套循环：version → direction → coin → pct → time_id ===
         for version_item in versions_list:
             for direction in directions:
                 for coin in coins:
-                    # === 获取该币种的 search_pcts ===
-                    if args.search_pcts:
-                        # 用户指定了比例
-                        search_pcts = parse_csv(args.search_pcts)
-                    else:
-                        # 根据币种自动判断（参考 defaults.py 的 get_grid_pcts 逻辑）
-                        is_btc = coin and 'BTC' in coin.upper()
-                        if is_btc:
-                            # BTC 特殊比例
-                            search_pcts = ['10', '20', '30', '40', '50', '60', '80', '100', '120']
+                    # === 获取该币种的 search_pcts（优先级同上） ===
+                    if coin in coin_pct_map:
+                        pct_spec = coin_pct_map[coin]
+                        
+                        if pct_spec is None:
+                            search_pcts = auto_get_pcts(coin)
+                        elif isinstance(pct_spec, list):
+                            search_pcts = pct_spec
                         else:
-                            # 其他币种通用比例
-                            search_pcts = ['60', '80', '100', '120', '140']
+                            print(f"⚠️  币种 {coin} 比例配置格式错误: {pct_spec}")
+                            search_pcts = auto_get_pcts(coin)
+                    
+                    elif args.search_pcts:
+                        search_pcts = parse_csv(args.search_pcts)
+                    
+                    else:
+                        search_pcts = auto_get_pcts(coin)
                     
                     for pct in search_pcts:
                         for time_id in ai_time_ids:
@@ -860,15 +1010,20 @@ def parse_arguments():
     # 查询需求
     parser.add_argument("--query", type=str, required=True, help="用户查询需求描述")
     
-    # 数据查询参数
+    # 数据查询参数（全局参数）
     parser.add_argument("--coins", type=str, help="币种列表（逗号分隔）")
     parser.add_argument("--strategy-types", type=str, help="策略类型列表（逗号分隔）")
     parser.add_argument("--directions", type=str, help="方向列表（逗号分隔）")
     parser.add_argument("--search-pcts", type=str, help="比例选择列表（逗号分隔）")
     parser.add_argument("--ai-time-ids", type=str, help="AI时间ID列表（逗号分隔）")
     parser.add_argument("--versions", type=str, help="策略版本列表（逗号分隔）")
-    parser.add_argument("--version-configs", type=str, help="版本配置对象数组（JSON格式）")
+    parser.add_argument("--version-configs", type=str, help="版本配置对象数组（JSON格式，已废弃，建议使用 --strategy-version-map）")
     parser.add_argument("--search-recommand-type", type=int, default=1, help="推荐类型（1=推荐 2=交易中，默认=1）")
+    
+    # 映射参数（按策略/币种区分，优先级高于全局参数）
+    parser.add_argument("--strategy-version-map", type=str, help='策略→版本映射（JSON格式）。格式: {"11": ["4.3", "4.4"], "7": null}')
+    parser.add_argument("--strategy-direction-map", type=str, help='策略→方向映射（JSON格式）。格式: {"11": ["long", "short"], "7": ["long"]}')
+    parser.add_argument("--coin-pct-map", type=str, help='币种→比例映射（JSON格式）。格式: {"BTC": ["80", "100"], "ETH": null}')
     
     # 分组和筛选参数
     parser.add_argument("--top-per-group", type=int, default=5, help="每种排序方式取几个策略")
