@@ -274,23 +274,50 @@ python3 skills/backtest-query/smart_group_recommend.py \
 --directions "long"
 ```
 
-### ⚠️ 避免过度指定参数
+### 📌 参数传递原则
 
-**❌ 不推荐**：全部手动指定
+**根据用户需求传参，不要自作主张添加或省略**：
+
+**场景1：用户需求明确** ✅
 ```bash
-# 容易遗漏版本、设置错误的方向等
+# 用户说："我要 BTC 风霆 v4.3 做多，80% 比例，最近 1 年"
+# → 全部传入，这是精确需求
 --coins "BTC" \
 --strategy-types "11" \
---versions "4.2,4.3,4.4" \
---directions "long,short" \
---search-pcts "80,100,120" \
---ai-time-ids "5,6,7,8"
+--versions "4.3" \
+--directions "long" \
+--search-pcts "80" \
+--ai-time-ids "5"
 ```
 
-**✅ 推荐**：只传用户明确指定的
+**场景2：用户需求部分明确** ✅
 ```bash
-# 系统会自动处理依赖关系
+# 用户说："我要 BTC 马丁策略"
+# → 只传用户明确说的，其他自动查询
 --coins "BTC" \
---strategy-types "11"
-# versions/directions/pcts/time_ids 自动查询
+--strategy-types "1,11"
+# versions/directions/pcts/time_ids 由系统自动处理
+```
+
+**场景3：用户需求宽泛** ✅
+```bash
+# 用户说："推荐一些高质量策略"
+# → 只传筛选条件，范围参数全部自动查询
+--min-total-win-rate 65 \
+--max-recent-drawdown 10
+# coins/strategy-types/versions... 全部自动查询
+```
+
+**❌ 错误做法**：AI 自作主张限制范围
+```bash
+# 用户说："推荐 BTC 策略"
+# ❌ 不要自己决定只查 v4.3、只做多、只用 80% 比例
+--coins "BTC" \
+--versions "4.3" \        # 用户没说版本，不要限制
+--directions "long" \     # 用户没说方向，不要限制
+--search-pcts "80"        # 用户没说比例，不要限制
+
+# ✅ 正确做法：只传用户明确说的
+--coins "BTC"
+# 让系统查询所有版本、所有方向、所有比例
 ```
