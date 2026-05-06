@@ -9,8 +9,11 @@ import os
 import json
 import argparse
 import itertools
+import time
 from typing import List, Dict, Optional, Tuple, Set
 from datetime import datetime
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from query import query_backtest, get_backtest_detail, get_version_info
 from analysis import recommend_combinations
 
@@ -442,70 +445,140 @@ def deduplicate_and_add(strategies: List[Dict], all_strategies: List[Dict], seen
     return new_count
 
 
-def batch_query_strategies(token: str, combinations: List[Dict], base_params: Dict, verbose: bool = True) -> List[Dict]:
-    """
-    批量查询策略并去重合并
+class ParallelQueryExecutor:
+    """并行查询执行器（专为 Agent 优化）"""
     
-    Args:
-        token: 用户 token
-        combinations: 查询参数组合列表
-        base_params: 基础查询参数
-        verbose: 是否输出详细信息
+    def __init__(self, max_workers=10, max_qps=20, retry_times=3, verbose=True):
+        """
+        Args:
+            max_workers: 并发线程数
+            max_qps: 每秒最大查询数
+            retry_times: 失败重试次数
+            verbose: 是否输出日志
+        """
+        self.max_workers = max_workers
+        self.max_qps = max_qps
+        self.retry_times = retry_times
+        self.verbose = verbose
+        self.query_lock = Lock()
+        self.last_query_time = 0
     
-    Returns:
-        合并去重后的策略列表
-    """
-    all_strategies = []
-    seen_back_ids = set()
-    
-    # 参数映射（组合参数 → API 参数）
-    param_mapping = {
-        'coin': 'search_coin',
-        'strategy_type': 'strategy_type',
-        'direction': 'search_direction',
-        'search_pct': 'search_pct',
-        'ai_time_id': 'ai_time_id',
-        'version': 'version',
-        'version_extra': 'version_extra'  # 整个版本配置对象
-    }
-    
-    if verbose:
-        print(f"📋 共需查询 {len(combinations)} 个参数组合")
-    
-    for i, params in enumerate(combinations, 1):
-        fetch_params = base_params.copy()
+    def _rate_limited_query(self, query_func, **params):
+        """限流查询"""
+        with self.query_lock:
+            # 计算需要等待的时间
+            elapsed = time.time() - self.last_query_time
+            min_interval = 1.0 / self.max_qps
+            
+            if elapsed < min_interval:
+                time.sleep(min_interval - elapsed)
+            
+            self.last_query_time = time.time()
         
-        # 应用参数映射
-        for key, value in params.items():
-            if value is not None and key in param_mapping:
-                fetch_params[param_mapping[key]] = value
-        
-        if verbose:
-            print(f"\n🔍 [{i}/{len(combinations)}] 查询: {format_params(params)}")
-        
-        try:
-            result = query_backtest(**fetch_params)
-            
-            if "error" in result:
-                if verbose:
-                    print(f"   ⚠️  查询失败: {result['error']}")
-                continue
-            
-            strategies = result.get("info", [])
-            new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids)
-            
-            if verbose:
-                print(f"   ✅ 获取 {len(strategies)} 条，新增 {new_count} 条（去重后）")
-            
-        except Exception as e:
-            if verbose:
-                print(f"   ⚠️  查询异常: {str(e)}")
-            continue
+        # 执行查询
+        return query_func(**params)
     
-    if verbose:
-        print(f"\n📊 合并后共 {len(all_strategies)} 条策略")
+    def _query_with_retry(self, query_func, params):
+        """带重试的查询"""
+        last_error = None
+        
+        for attempt in range(self.retry_times):
+            try:
+                result = self._rate_limited_query(query_func, **params)
+                return result
+            except Exception as e:
+                last_error = e
+                if attempt < self.retry_times - 1:
+                    time.sleep(0.5 * (attempt + 1))  # 指数退避
+        
+        return {"error": f"重试{self.retry_times}次失败: {last_error}"}
     
-    return all_strategies
+    def batch_query_parallel(self, token, combinations, base_params):
+        """
+        并行批量查询
+        
+        Args:
+            token: 用户 token
+            combinations: 查询组合列表
+            base_params: 基础参数
+        
+        Returns:
+            strategies: 策略列表
+        """
+        total = len(combinations)
+        all_strategies = []
+        seen_back_ids = set()
+        failed_count = 0
+        
+        if self.verbose:
+            print(f"\n🚀 开始并行查询 {total} 个组合...")
+            print(f"   并发: {self.max_workers} 线程, 限流: {self.max_qps} QPS")
+            print(f"   预计耗时: ~{total / self.max_qps:.0f} 秒\n")
+        
+        # 参数映射
+        param_mapping = {
+            'coin': 'search_coin',
+            'strategy_type': 'strategy_type',
+            'direction': 'search_direction',
+            'search_pct': 'search_pct',
+            'ai_time_id': 'ai_time_id',
+            'version': 'version',
+            'version_extra': 'version_extra'
+        }
+        
+        # 准备查询参数列表
+        query_params_list = []
+        for combo in combinations:
+            params = base_params.copy()
+            for key, value in combo.items():
+                if value is not None and key in param_mapping:
+                    params[param_mapping[key]] = value
+            query_params_list.append(params)
+        
+        # 并行执行
+        completed = 0
+        milestone_interval = max(1, total // 10)  # 每10%输出一次
+        
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # 提交所有任务
+            futures = {
+                executor.submit(self._query_with_retry, query_backtest, params): idx
+                for idx, params in enumerate(query_params_list)
+            }
+            
+            # 收集结果
+            for future in as_completed(futures):
+                idx = futures[future]
+                completed += 1
+                
+                try:
+                    result = future.result(timeout=30)
+                    
+                    if "error" in result:
+                        failed_count += 1
+                        if self.verbose:
+                            print(f"⚠️  组合 #{idx+1} 查询失败: {result['error']}")
+                    else:
+                        strategies = result.get("info", [])
+                        new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids)
+                
+                except Exception as e:
+                    failed_count += 1
+                    if self.verbose:
+                        print(f"❌ 组合 #{idx+1} 异常: {e}")
+                
+                # 里程碑输出
+                if self.verbose and completed % milestone_interval == 0:
+                    progress = completed / total * 100
+                    print(f"   进度: {progress:.0f}% ({completed}/{total})")
+        
+        if self.verbose:
+            print(f"\n✅ 查询完成:")
+            print(f"   成功: {total - failed_count}/{total}")
+            print(f"   失败: {failed_count}")
+            print(f"   策略数: {len(all_strategies)} (去重后)\n")
+        
+        return all_strategies
 
 
 # ==================== 推荐器类 ====================
@@ -1006,6 +1079,11 @@ def parse_arguments():
     parser.add_argument("--sort-methods", type=str, help="排序方式（逗号分隔）")
     parser.add_argument("--api-sort", type=int, choices=[1, 2, 3, 4], help="API排序类型（1=最新 2=收益 3=夏普 4=回撤，默认=2）")
     
+    # 并行查询参数
+    parser.add_argument("--max-workers", type=int, default=10, help="并发线程数（默认10）")
+    parser.add_argument("--max-qps", type=int, default=20, help="每秒最大查询数（默认20）")
+    parser.add_argument("--retry-times", type=int, default=3, help="查询失败重试次数（默认3）")
+    
     # 详情筛选条件
     parser.add_argument("--min-total-win-rate", type=float, help="最小总胜率")
     parser.add_argument("--min-recent-profit-rate", type=float, help="最小近期收益率")
@@ -1054,11 +1132,19 @@ def main():
         'sort_type': args.api_sort if args.api_sort else 2  # 默认按收益排序
     }
     
-    # 6. 批量查询
+    # 6. 并行批量查询
     try:
-        strategies = batch_query_strategies(token, combinations, base_params, verbose=not args.quiet)
+        executor = ParallelQueryExecutor(
+            max_workers=args.max_workers,
+            max_qps=args.max_qps,
+            retry_times=args.retry_times,
+            verbose=not args.quiet
+        )
+        strategies = executor.batch_query_parallel(token, combinations, base_params)
     except Exception as e:
         print(f"❌ 查询失败: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
     
     if not strategies:
