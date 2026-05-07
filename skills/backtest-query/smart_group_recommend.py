@@ -30,6 +30,11 @@ def _should_print_debug() -> bool:
     return os.environ.get('DEBUG_BACKTEST') == '1'
 
 
+def _should_print_verbose() -> bool:
+    """判断是否应该输出详细结果（默认简洁，节省token）"""
+    return os.environ.get('VERBOSE_OUTPUT') == '1'
+
+
 # ==================== 错误类 ====================
 
 class QueryError(Exception):
@@ -1042,52 +1047,37 @@ class SmartGroupRecommender:
         }
     
     def print_result(self, result: Dict):
-        """打印推荐结果"""
+        """打印推荐结果（简洁模式，节省token）"""
         if "error" in result:
             print(f"\n❌ 错误: {result['error']}")
             return
         
         print("\n" + "="*70)
-        print("📊 推荐结果摘要")
+        print("📊 推荐结果")
         print("="*70)
         
-        print(f"\n🎯 分组维度: {' → '.join(result.get('group_by', []))}")
-        print(f"📦 分组数量: {len(result.get('groups', {}))} 组")
-        print(f"🔄 排序方式: {', '.join(result.get('sort_methods', ['sharpe']))}")
-        print(f"📊 总共获取: {result.get('total_fetched', 0)} 条策略")
-        print(f"✅ 筛选出: {result.get('total_selected', 0)} 条优质策略")
+        # 关键统计（一行）
+        print(f"查询: {result.get('total_fetched', 0)} → 筛选: {result.get('total_selected', 0)} → 组合: {len(result.get('combinations', []))} 个")
         
         combinations = result.get('combinations', [])
-        print(f"\n🌟 推荐组合: {len(combinations)} 个")
-        
         if not combinations:
             print("   （无推荐组合）")
             return
         
-        for i, combo in enumerate(combinations[:5], 1):
-            print(f"\n--- 组合 #{i} ---")
-            print(f"评分: {combo['score']:.2f}")
-            print(f"预期收益: {combo['expected_return']:.2f}%")
-            print(f"组合回撤: {combo['portfolio_risk']['max_drawdown']:.2f}%")
-            print(f"策略数量: {len(combo['strategies'])}")
-            
-            print("策略列表:")
-            for j, s in enumerate(combo['strategies'], 1):
-                metrics = s.get('_metrics', {})
-                print(
-                    f"  {j}. {s.get('coin')} / {s.get('name')} "
-                    f"(年化{s.get('year_rate')}%, 夏普{s.get('sharp_rate'):.2f}, "
-                    f"总胜率{metrics.get('total_win_rate', 0):.1f}%, "
-                    f"近期收益{metrics.get('recent_profit_rate', 0):.1f}%)"
-                )
-            
-            # 生成创建命令
-            cmd = self.get_create_group_command(i, combo['strategies'])
-            if cmd:
-                print(f"\n🔧 创建命令:")
-                print(cmd)
-            else:
-                print(f"\n⚠️  无法生成创建命令（缺少 strategy_token）")
+        # 只输出组合摘要，不输出详细策略列表（节省token）
+        print(f"\n🌟 推荐组合（前3个）:")
+        for i, combo in enumerate(combinations[:3], 1):
+            style = combo.get('style', '')
+            print(
+                f"  #{i} [{style}] "
+                f"评分{combo['score']:.1f} | "
+                f"收益{combo['expected_return']:.1f}% | "
+                f"回撤{combo['portfolio_risk']['max_drawdown']:.1f}% | "
+                f"{len(combo['strategies'])}策略"
+            )
+        
+        # 提示：完整数据在 JSON 输出中
+        print(f"\n💡 提示: 完整策略详情和创建命令见 JSON 输出或使用 --output 保存")
     
     def save_result(self, result: Dict, output_file: str):
         """保存结果到文件"""
@@ -1250,11 +1240,17 @@ def main():
         sys.exit(1)
     
     # 9. 输出结果
-    recommender.print_result(result)
+    if not args.quiet:
+        recommender.print_result(result)
+    
+    # 保存到文件（JSON 完整输出）
     if args.output:
         recommender.save_result(result, args.output)
+        if not args.quiet:
+            print(f"\n💾 完整结果已保存: {args.output}")
     
-    print("\n✅ 推荐完成")
+    if not args.quiet:
+        print("\n✅ 推荐完成")
 
 
 if __name__ == "__main__":
