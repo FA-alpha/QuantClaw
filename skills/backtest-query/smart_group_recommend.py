@@ -983,12 +983,50 @@ class SmartGroupRecommender:
                 preferences['max_drawdown'] = detail_criteria['max_recent_drawdown']
             # 可以根据其他筛选条件动态调整偏好
         
-        combinations = recommend_combinations(
-            strategies=all_selected,
-            group_size=min(len(all_selected), 5),  # 组合大小默认5个策略
-            top_n=max_combinations,
-            preferences=preferences if preferences else None
-        )
+        # 生成多种大小的组合（避免只有1个组合的情况）
+        all_combinations = []
+        n_strategies = len(all_selected)
+        
+        # 根据策略数量决定组合大小
+        if n_strategies >= 7:
+            # 策略充足：生成3种大小（保守、稳健、激进）
+            sizes = [3, 5, 7]
+        elif n_strategies >= 5:
+            # 策略中等：生成2种大小
+            sizes = [3, 5]
+        elif n_strategies >= 3:
+            # 策略较少：生成1-2种大小
+            sizes = [max(3, n_strategies - 1), n_strategies - 2] if n_strategies > 4 else [3]
+        else:
+            # 策略太少，无法生成多个组合
+            sizes = [n_strategies]
+        
+        # 每种大小生成部分组合
+        per_size = max(2, max_combinations // len(sizes))
+        
+        for size in sizes:
+            if size <= n_strategies:
+                combos = recommend_combinations(
+                    strategies=all_selected,
+                    group_size=size,
+                    top_n=per_size,
+                    preferences=preferences if preferences else None
+                )
+                # 添加组合大小标签
+                for combo in combos:
+                    if size == 3:
+                        combo['style'] = '保守型'
+                    elif size == 5:
+                        combo['style'] = '稳健型'
+                    elif size >= 7:
+                        combo['style'] = '激进型'
+                    else:
+                        combo['style'] = f'{size}策略组合'
+                all_combinations.extend(combos)
+        
+        # 按评分排序，取前 N 个
+        all_combinations.sort(key=lambda x: x.get('score', 0), reverse=True)
+        combinations = all_combinations[:max_combinations]
         
         # 6. 返回结果
         return {
