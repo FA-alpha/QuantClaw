@@ -78,10 +78,14 @@ export class TokenValidator {
       const isHttps = url.protocol === 'https:';
       const lib = isHttps ? https : http;
 
-      const postData = JSON.stringify({
-        show_type: this.config.showType,
-        token: token,
+      // 使用 form-urlencoded 格式（正确的 API 格式）
+      const params = new URLSearchParams({
+        show_type: String(this.config.showType || 2),
+        usertoken: token,  // 注意：参数名是 usertoken 不是 token
+        app_v: '1.0.1',
+        lang: '1',
       });
+      const postData = params.toString();
 
       const options = {
         hostname: url.hostname,
@@ -89,7 +93,7 @@ export class TokenValidator {
         path: url.pathname + url.search,
         method: this.config.apiMethod,
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           'Content-Length': Buffer.byteLength(postData),
           ...this.config.apiHeaders,
         },
