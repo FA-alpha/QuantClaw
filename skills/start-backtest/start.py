@@ -27,17 +27,18 @@ COIN_CACHE_FILE = os.path.join(CACHE_DIR, "coins.json")
 CACHE_TTL = 86400  # 24 小时
 
 
-def get_fixed_token() -> str:
+def auto_get_token():
     """
-    从固定路径获取 usertoken
+    从固定路径获取 usertoken - 与 query.py 保持一致
     优先级：
     1. ~/.quantclaw/users.json (运行时数据)
-    2. templates/users.json (配置模板)
+    2. templates/users.json (配置模板) 
+    3. 原有的Agent ID匹配逻辑（兼容性保留）
     
     Returns:
         str: usertoken 或 None
     """
-    # 方法1：从运行时数据获取
+    # 方法1：从运行时数据获取（推荐）
     try:
         users_file = os.path.expanduser('~/.quantclaw/users.json')
         if os.path.exists(users_file):
@@ -57,9 +58,50 @@ def get_fixed_token() -> str:
             with open(template_file, 'r') as f:
                 data = json.load(f)
             # 获取 fourieralpha.usertoken
-            return data.get('fourieralpha', {}).get('usertoken')
+            token = data.get('fourieralpha', {}).get('usertoken')
+            if token:
+                return token
     except Exception as e:
         print(f"[DEBUG] 从配置模板获取token失败: {e}")
+    
+    # 方法3：原有逻辑（兼容性保留）
+    agent_id = None
+    
+    def find_agent_id_in_path(start_path):
+        """向上遍历路径查找 clawd-* 目录"""
+        current = start_path
+        
+        while current != '/':
+            basename = os.path.basename(current)
+            
+            if basename.startswith('clawd-'):
+                return basename.replace('clawd-', '')
+            
+            current = os.path.dirname(current)
+        
+        return None
+    
+    # 从 PWD 环境变量获取（保留软链接路径）
+    pwd = os.environ.get('PWD')
+    if pwd:
+        agent_id = find_agent_id_in_path(pwd)
+    
+    # 从物理路径查找（回退方案）
+    if not agent_id:
+        agent_id = find_agent_id_in_path(os.path.abspath(os.getcwd()))
+    
+    if agent_id:
+        users_file = os.path.expanduser('~/.quantclaw/users.json')
+        if os.path.exists(users_file):
+            try:
+                with open(users_file, 'r') as f:
+                    data = json.load(f)
+                users = data.get('users', [])
+                for user in users:
+                    if user.get('agentId') == agent_id:
+                        return user.get('token')
+            except:
+                pass
     
     return None
 
@@ -372,7 +414,7 @@ def main():
     
     # 自动获取 token（如果未提供）
     if not args.token:
-        args.token = get_fixed_token()
+        args.token = auto_get_token()
         if not args.token:
             print("错误: 无法自动获取 token，请手动提供 --token 参数")
             print("检查路径：")

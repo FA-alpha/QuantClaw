@@ -374,7 +374,7 @@ def main():
     
     # 自动获取 token（如果未提供）
     if not args.token:
-        args.token = get_fixed_token()
+        args.token = auto_get_token()
         if not args.token:
             print("错误: 无法自动获取 token，请手动提供 --token 参数")
             print("检查路径：")
