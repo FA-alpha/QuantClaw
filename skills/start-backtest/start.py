@@ -27,6 +27,43 @@ COIN_CACHE_FILE = os.path.join(CACHE_DIR, "coins.json")
 CACHE_TTL = 86400  # 24 小时
 
 
+def get_fixed_token() -> str:
+    """
+    从固定路径获取 usertoken
+    优先级：
+    1. ~/.quantclaw/users.json (运行时数据)
+    2. templates/users.json (配置模板)
+    
+    Returns:
+        str: usertoken 或 None
+    """
+    # 方法1：从运行时数据获取
+    try:
+        users_file = os.path.expanduser('~/.quantclaw/users.json')
+        if os.path.exists(users_file):
+            with open(users_file, 'r') as f:
+                data = json.load(f)
+            users = data.get('users', [])
+            if users:
+                # 返回第一个用户的token（通常只有一个）
+                return users[0].get('token')
+    except Exception as e:
+        print(f"[DEBUG] 从运行时数据获取token失败: {e}")
+    
+    # 方法2：从配置模板获取
+    try:
+        template_file = os.path.join(os.path.dirname(__file__), '../../templates/users.json')
+        if os.path.exists(template_file):
+            with open(template_file, 'r') as f:
+                data = json.load(f)
+            # 获取 fourieralpha.usertoken
+            return data.get('fourieralpha', {}).get('usertoken')
+    except Exception as e:
+        print(f"[DEBUG] 从配置模板获取token失败: {e}")
+    
+    return None
+
+
 def check_auth(response: dict) -> tuple[bool, str]:
     """
     检查 API 响应状态
@@ -294,7 +331,7 @@ def format_strategies(data: dict) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="启动回测")
-    parser.add_argument("--token", required=True, help="用户 token（必填）")
+    parser.add_argument("--token", help="用户 token（可选，未提供时自动获取）")
     
     # 功能选项
     parser.add_argument("--list-groups", action="store_true", help="查看策略组列表")
@@ -332,6 +369,17 @@ def main():
                         help="数据类型（默认1）")
     
     args = parser.parse_args()
+    
+    # 自动获取 token（如果未提供）
+    if not args.token:
+        args.token = get_fixed_token()
+        if not args.token:
+            print("错误: 无法自动获取 token，请手动提供 --token 参数")
+            print("检查路径：")
+            print("  1. ~/.quantclaw/users.json")
+            print("  2. templates/users.json")
+            sys.exit(1)
+        print(f"[INFO] 自动获取到token: {args.token[:20]}...")
     
     # 列出币种
     if args.list_coins:

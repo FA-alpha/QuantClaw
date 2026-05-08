@@ -361,7 +361,7 @@ def main():
         """
     )
     
-    parser.add_argument("--token", required=True, help="用户认证Token")
+    parser.add_argument("--token", help="用户认证Token（可选，未提供时自动获取）")
     parser.add_argument("--back-id", help="单个回测ID")
     parser.add_argument("--back-ids", help="多个回测ID，逗号分隔")
     parser.add_argument("--daemon", action="store_true", help="后台守护模式")
@@ -369,6 +369,17 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="详细日志")
     
     args = parser.parse_args()
+    
+    # 自动获取 token（如果未提供）
+    if not args.token:
+        args.token = get_fixed_token()
+        if not args.token:
+            print("错误: 无法自动获取 token，请手动提供 --token 参数")
+            print("检查路径：")
+            print("  1. ~/.quantclaw/users.json")
+            print("  2. templates/users.json")
+            sys.exit(1)
+        print(f"[INFO] 自动获取到token: {args.token[:20]}...")
     
     # 配置日志级别
     if args.verbose:
