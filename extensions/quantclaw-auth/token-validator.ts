@@ -45,8 +45,11 @@ export class TokenValidator {
     try {
       const result = await this.callApi(token);
       
-      // 根据返回的 status 判断
-      if (result.status === 1) {
+      // 根据返回的 status 和 user_type 判断
+      // status === 1 且 user_type 非空才认为有效
+      const userType = result.info?.user_type || result.user_type || '';
+      
+      if (result.status === 1 && userType && userType.trim() !== '') {
         return {
           valid: true,
           status: result.status,
@@ -56,7 +59,7 @@ export class TokenValidator {
         return {
           valid: false,
           status: result.status,
-          message: result.message || 'Invalid token',
+          message: userType ? (result.message || 'Invalid token') : 'Empty user_type (token not recognized)',
         };
       }
     } catch (error: any) {
