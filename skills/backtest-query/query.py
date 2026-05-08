@@ -461,20 +461,7 @@ def auto_get_token():
     Returns:
         str: usertoken 或 None
     """
-    # 方法1：从配置模板获取（主要来源）
-    try:
-        template_file = os.path.join(os.path.dirname(__file__), '../../templates/users.json')
-        if os.path.exists(template_file):
-            with open(template_file, 'r') as f:
-                data = json.load(f)
-            # 获取 fourieralpha.usertoken
-            token = data.get('fourieralpha', {}).get('usertoken')
-            if token:
-                return token
-    except Exception as e:
-        print(f"[DEBUG] 从配置模板获取token失败: {e}")
-    
-    # 方法2：从运行时数据获取（备选）
+    # 方法1：从运行时数据获取（推荐）
     try:
         users_file = os.path.expanduser('~/.quantclaw/users.json')
         if os.path.exists(users_file):
@@ -486,6 +473,19 @@ def auto_get_token():
                 return users[0].get('token')
     except Exception as e:
         print(f"[DEBUG] 从运行时数据获取token失败: {e}")
+    
+    # 方法2：从配置模板获取
+    try:
+        template_file = os.path.join(os.path.dirname(__file__), '../../templates/users.json')
+        if os.path.exists(template_file):
+            with open(template_file, 'r') as f:
+                data = json.load(f)
+            # 获取 fourieralpha.usertoken
+            token = data.get('fourieralpha', {}).get('usertoken')
+            if token:
+                return token
+    except Exception as e:
+        print(f"[DEBUG] 从配置模板获取token失败: {e}")
     
     # 方法3：原有逻辑（兼容性保留）
     agent_id = None
