@@ -575,7 +575,7 @@ curl -X POST http://localhost:18789${config.webhookPath} \\
 
   }, { commands: ['quantclaw'] });
 
-  api.logger.info(`[quantclaw-auth] Loaded (webhook: ${config.webhookPath}, autoRegister: ${config.autoRegister.enabled})`);
+  api.logger.info(`[quantclaw-auth] Loaded (webhook: ${config.webhookPath}, autoRegister: ${config.autoRegister}, tokenValidation: ${config.tokenValidation?.enabled || false})`);
 }
 
 export const id = 'quantclaw-auth';
