@@ -10,6 +10,9 @@ import asyncio
 import logging
 import uuid
 import aiohttp
+import subprocess
+import threading
+import re
 from aiohttp import web, WSMsgType
 from pathlib import Path
 from datetime import datetime
@@ -33,6 +36,128 @@ DATA_DIR = Path(__file__).parent / 'data'
 DATA_DIR.mkdir(exist_ok=True)
 CHAT_DIR = DATA_DIR / 'chats'
 CHAT_DIR.mkdir(exist_ok=True, parents=True)
+
+# ============ 回测监控管理 ============
+
+class BacktestMonitorManager:
+    """回测监控管理器"""
+    
+    def __init__(self):
+        self.active_monitors = {}  # {back_id: process}
+        self.skills_dir = Path(__file__).parent.parent / 'skills'
+    
+    def extract_backtest_ids(self, text: str) -> list:
+        """从文本中提取回测ID"""
+        # 匹配回测ID模式：数字
+        pattern = r'回测.*?ID[：:\s]*(\d+)|回测[：:\s]*#?(\d+)|back_id[：:\s]*(\d+)'
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        
+        # 提取所有非空匹配
+        ids = []
+        for match in matches:
+            for group in match:
+                if group and group.isdigit():
+                    ids.append(int(group))
+        
+        return list(set(ids))  # 去重
+    
+    def start_monitor(self, back_id: int, user_id: str, user_token: str):
+        """启动回测监控"""
+        if back_id in self.active_monitors:
+            logger.info(f"回测 {back_id} 已在监控中")
+            return False
+        
+        try:
+            monitor_script = self.skills_dir / 'start-backtest' / 'backtest_monitor.py'
+            
+            # 构建命令
+            cmd = [
+                'python3', str(monitor_script),
+                '--back-id', str(back_id),
+                '--token', user_token,
+                '--daemon'
+            ]
+            
+            # 启动后台监控进程
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=self.skills_dir / 'start-backtest'
+            )
+            
+            self.active_monitors[back_id] = {
+                'process': process,
+                'user_id': user_id,
+                'start_time': datetime.now()
+            }
+            
+            logger.info(f"✅ 启动回测 {back_id} 监控，PID: {process.pid}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"启动监控失败: {e}")
+            return False
+    
+    def check_notification_files(self):
+        """检查通知文件并发送消息"""
+        notification_dir = Path('/tmp')
+        pattern = 'quantclaw_notification_*.json'
+        
+        for file_path in notification_dir.glob(pattern):
+            try:
+                # 读取通知内容
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                
+                back_id = data.get('back_id')
+                user_id = data.get('user_id') 
+                message = data.get('message')
+                
+                if back_id and user_id and message:
+                    # 发送通知消息到聊天
+                    asyncio.create_task(self.send_notification(user_id, message))
+                    logger.info(f"📨 发送回测 {back_id} 完成通知")
+                
+                # 删除已处理的通知文件
+                file_path.unlink()
+                
+                # 清理监控记录
+                if back_id in self.active_monitors:
+                    del self.active_monitors[back_id]
+                    
+            except Exception as e:
+                logger.error(f"处理通知文件 {file_path} 失败: {e}")
+                # 删除损坏的文件
+                try:
+                    file_path.unlink()
+                except:
+                    pass
+    
+    async def send_notification(self, user_id: str, message: str):
+        """发送通知消息到用户聊天"""
+        try:
+            # 保存系统消息到聊天记录
+            chat_store.append(user_id, 'assistant', message)
+            logger.info(f"💬 回测完成通知已保存到用户 {user_id} 聊天记录")
+            
+        except Exception as e:
+            logger.error(f"发送通知失败: {e}")
+
+# 创建全局监控管理器
+monitor_manager = BacktestMonitorManager()
+
+# ============ 后台任务 ============
+
+async def notification_checker():
+    """定期检查回测完成通知"""
+    while True:
+        try:
+            monitor_manager.check_notification_files()
+            await asyncio.sleep(5)  # 每5秒检查一次
+        except Exception as e:
+            logger.error(f"通知检查器错误: {e}")
+            await asyncio.sleep(10)  # 出错后延长间隔
 
 
 # ============ 聊天记录存储 ============
@@ -287,6 +412,7 @@ async def handle_websocket(request):
 
     session_key = request.query.get('sessionKey')
     user_id = request.query.get('userId')
+    user_token = request.query.get('token')  # 获取用户token
     
     if not session_key:
         await ws_client.send_json({'type': 'error', 'error': 'Missing sessionKey'})
@@ -294,6 +420,11 @@ async def handle_websocket(request):
         return ws_client
 
     logger.info(f'WS connect: {session_key} (user: {user_id})')
+    
+    # 存储用户token供监控使用
+    if user_id and user_token:
+        monitor_manager.user_tokens = getattr(monitor_manager, 'user_tokens', {})
+        monitor_manager.user_tokens[user_id] = user_token
 
     try:
         async with aiohttp.ClientSession() as http_session:
@@ -475,8 +606,23 @@ async def handle_websocket(request):
                                             if phase == 'end':
                                                 # 保存完整回复到本地
                                                 if user_id and current_response[0]:
-                                                    chat_store.append(user_id, 'assistant', current_response[0])
+                                                    response_text = current_response[0]
+                                                    chat_store.append(user_id, 'assistant', response_text)
                                                     logger.info(f'Saved response for {user_id}')
+                                                    
+                                                    # 检测回测ID并启动监控
+                                                    back_ids = monitor_manager.extract_backtest_ids(response_text)
+                                                    if back_ids:
+                                                        # 获取用户token
+                                                        user_tokens = getattr(monitor_manager, 'user_tokens', {})
+                                                        user_token = user_tokens.get(user_id)
+                                                        if user_token:
+                                                            for back_id in back_ids:
+                                                                if monitor_manager.start_monitor(back_id, user_id, user_token):
+                                                                    logger.info(f"🚀 自动启动回测 {back_id} 监控")
+                                                        else:
+                                                            logger.warning(f"无法获取用户 {user_id} 的token，跳过监控")
+                                                
                                                 await ws_client.send_json({
                                                     'type': 'done',
                                                 })
@@ -568,6 +714,16 @@ async def cors_middleware(request, handler):
     return response
 
 
+async def init_background_tasks(app):
+    """启动后台任务"""
+    app['notification_task'] = asyncio.create_task(notification_checker())
+    logger.info("🔍 回测通知检查器已启动")
+
+async def cleanup_background_tasks(app):
+    """清理后台任务"""
+    app['notification_task'].cancel()
+    await app['notification_task']
+
 def create_app():
     # 添加 CORS 中间件
     middlewares = []
@@ -576,6 +732,10 @@ def create_app():
         logger.info(f'CORS enabled. Allowed origins: {ALLOWED_ORIGINS}')
     
     app = web.Application(middlewares=middlewares)
+    
+    # 添加启动和清理事件
+    app.on_startup.append(init_background_tasks)
+    app.on_cleanup.append(cleanup_background_tasks)
     
     app.router.add_get('/', handle_index)
     app.router.add_get('/health', handle_health)

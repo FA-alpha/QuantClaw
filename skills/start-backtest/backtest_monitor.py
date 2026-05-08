@@ -63,9 +63,10 @@ class BacktestInfo:
 class BacktestMonitor:
     """单个回测监控器"""
     
-    def __init__(self, token: str, back_id: str, logger: logging.Logger):
+    def __init__(self, token: str, back_id: str, logger: logging.Logger, user_id: str = None):
         self.token = token
         self.back_id = back_id
+        self.user_id = user_id  # 添加user_id支持
         self.logger = logger
         self.stop_flag = threading.Event()
         self.thread = None
@@ -197,6 +198,7 @@ class BacktestMonitor:
             notification_file = f"/tmp/quantclaw_notification_{self.back_id}.json"
             notification_data = {
                 "back_id": self.back_id,
+                "user_id": self.user_id,  # 添加user_id
                 "message": message,
                 "timestamp": datetime.now().isoformat(),
                 "status": "pending"
@@ -290,13 +292,13 @@ class BacktestMonitorManager:
         self.stop_all()
         sys.exit(0)
         
-    def add_monitor(self, back_id: str) -> bool:
+    def add_monitor(self, back_id: str, user_id: str = None) -> bool:
         """添加回测监控"""
         if back_id in self.monitors:
             self.logger.warning(f"回测 #{back_id} 已在监控中")
             return False
             
-        monitor = BacktestMonitor(self.token, back_id, self.logger)
+        monitor = BacktestMonitor(self.token, back_id, self.logger, user_id)
         if monitor.start():
             self.monitors[back_id] = monitor
             return True
