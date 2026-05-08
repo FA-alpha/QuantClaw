@@ -106,6 +106,42 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 ---
 
+### 参数识别规则
+
+**时间识别**：
+```
+"最近30天"  → --ai-time-ids 1
+"最近7天"   → --ai-time-ids 2
+"最近90天"  → --ai-time-ids 3
+"最近180天" → --ai-time-ids 4
+```
+
+**版本号处理**：
+```
+❌ 错误：用户说 "V4.3" → 传 --versions "4.3,4.31,4.32,4.33"
+✅ 正确：用户说 "V4.3" → 传 --versions "4.3"
+
+规则：不要自动扩展版本号！用户说什么就传什么。
+```
+
+**方向映射使用**：
+```
+用户说："2个BTC做多, 2个BTC做空, 2个SOL做多"
+
+✅ 正确方案（使用映射）：
+--strategy-direction-map '{"11": {"BTC": ["long", "short"], "SOL": ["long"]}}'
+--top-per-group 2  （每个方向取2个）
+
+❌ 错误方案（全局方向）：
+--directions "long,short"  （无法精确控制每个币种）
+```
+
+**数量控制**：
+- `--top-per-group N` - 每个"币种+方向"组合取 N 个策略
+- `--max-combinations 1` - 只返回1个最优组合
+
+---
+
 ### 参数选择
 
 **参数选择**：
@@ -146,6 +182,25 @@ python3 skills/backtest-query/smart_group_recommend.py \
 # 6. 大规模查询
 --query "主流币马丁" --coins "BTC,ETH,SOL,BNB" --strategy-types "1,11" \
 --max-workers 20 --max-qps 50
+
+# 7. 精确方向+数量控制（用户案例）
+# 用户说："创建回测组，风霆V4.3，最近30天收益最高，2个BTC做多+2个BTC做空+2个SOL做多+2个SOL做空+2个ETH做多"
+--query "风霆V4.3策略组，最近30天高收益" \
+--coins "BTC,SOL,ETH" \
+--strategy-types "11" \
+--versions "4.3" \
+--ai-time-ids "1" \
+--strategy-direction-map '{"11": {"BTC": ["long", "short"], "SOL": ["long", "short"], "ETH": ["long"]}}' \
+--top-per-group 2 \
+--max-combinations 1 \
+--api-sort 2
+
+# 说明：
+# - versions "4.3" 不扩展（用户说4.3就只查4.3）
+# - ai-time-ids "1" = 最近30天
+# - strategy-direction-map 明确每个币的方向
+# - top-per-group 2 = 每个"币种+方向"取2个
+# - api-sort 2 = 按收益排序
 ```
 
 ---
