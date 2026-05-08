@@ -95,3 +95,37 @@ read memory/strategy_types.md
 - 回测结果需要记录参数和时间范围
 - 风险警示必须明确说明
 - 使用技能前先检查参数是否完整
+
+## Git 工作流程规范 🚨
+
+**⚠️ 重要：推送前必须拉取最新代码，此流程不能出错！**
+
+### 标准推送流程
+
+```bash
+# 1. 【必须】先拉取最新代码
+git fetch origin
+git pull origin main
+
+# 2. 添加文件
+git add -A
+
+# 3. 提交
+git commit -m "feat: 描述修改内容"
+
+# 4. 推送
+git push origin main
+```
+
+### 冲突处理
+
+**如果推送被拒绝：**
+```bash
+# 使用 rebase 解决冲突
+git pull --rebase origin main
+
+# 解决冲突后继续推送
+git push origin main
+```
+
+**🔥 牢记：git pull → git push，永远先拉再推！**
