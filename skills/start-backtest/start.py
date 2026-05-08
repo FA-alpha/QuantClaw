@@ -31,13 +31,26 @@ def get_fixed_token() -> str:
     """
     从固定路径获取 usertoken
     优先级：
-    1. ~/.quantclaw/users.json (运行时数据)
-    2. templates/users.json (配置模板)
+    1. templates/users.json (主要配置)  
+    2. ~/.quantclaw/users.json (运行时数据，如有)
     
     Returns:
         str: usertoken 或 None
     """
-    # 方法1：从运行时数据获取
+    # 方法1：从配置模板获取（主要来源）
+    try:
+        template_file = os.path.join(os.path.dirname(__file__), '../../templates/users.json')
+        if os.path.exists(template_file):
+            with open(template_file, 'r') as f:
+                data = json.load(f)
+            # 获取 fourieralpha.usertoken
+            token = data.get('fourieralpha', {}).get('usertoken')
+            if token:
+                return token
+    except Exception as e:
+        print(f"[DEBUG] 从配置模板获取token失败: {e}")
+    
+    # 方法2：从运行时数据获取（备选）
     try:
         users_file = os.path.expanduser('~/.quantclaw/users.json')
         if os.path.exists(users_file):
@@ -49,17 +62,6 @@ def get_fixed_token() -> str:
                 return users[0].get('token')
     except Exception as e:
         print(f"[DEBUG] 从运行时数据获取token失败: {e}")
-    
-    # 方法2：从配置模板获取
-    try:
-        template_file = os.path.join(os.path.dirname(__file__), '../../templates/users.json')
-        if os.path.exists(template_file):
-            with open(template_file, 'r') as f:
-                data = json.load(f)
-            # 获取 fourieralpha.usertoken
-            return data.get('fourieralpha', {}).get('usertoken')
-    except Exception as e:
-        print(f"[DEBUG] 从配置模板获取token失败: {e}")
     
     return None
 
