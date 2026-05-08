@@ -88,16 +88,26 @@ python3 skills/backtest-query/query.py --list-ai-times
 
 ```json
 {
-  "11": ["4.3"],              // 只查4.3，不扩展
-  "7": null,                  // 查所有版本
-  "1": [{"version": "2.1", "leverage": 5}]  // 带杠杆
+  "11": ["4.3"],    // 简化格式：查询 4.3 的所有配置（不同杠杆/复投）
+  "7": null,        // 查所有版本
+  "1": [完整版本对象]  // 完整格式：必须包含策略版本的全部字段
 }
 ```
 
+**两种格式**：
+1. **简化格式（推荐）**：`["4.3", "4.4"]`
+   - 自动查询该版本号的所有配置（不同杠杆、复投等）
+   - 用户只说版本号时用这个
+
+2. **完整格式（精确控制）**：`[完整版本对象]`
+   - 必须传入策略版本的完整对象（包含所有字段）
+   - 从 `--list-strategies` 的返回中获取
+   - 不要只传 `{"version": "4.3", "leverage": 3}`（不完整）
+
 **规则**：
-- 用户说 "V4.3" → 传 `["4.3"]`，不扩展为 4.31、4.32
-- 用户未指定 → 传 `null`
-- 需要杠杆 → 用完整格式 `[{"version": "4.3", "leverage": 3}]`
+- 用户说 "V4.3" → 传 `["4.3"]`（简化格式）
+- 用户未指定 → 传 `null`（查所有）
+- 用户说 "V4.3 3倍杠杆" → 传 `["4.3"]`，不要试图构造完整对象
 
 ### 4. 方向控制
 ```json
@@ -138,13 +148,13 @@ python3 skills/backtest-query/query.py --list-ai-times
 
 ### 案例3：指定版本+时间
 ```bash
-# 用户："风霆V4.3，最近30天，2个BTC做多+2个做空"
+# 用户："风霆V4.3 3倍杠杆，最近30天，2个BTC做多+2个做空"
 
 # 步骤1：查时间ID
 python3 skills/backtest-query/query.py --list-ai-times  # 得到 id=3
 
 # 步骤2：推荐
---query "风霆V4.3，最近30天高收益" \
+--query "风霆V4.3 3倍杠杆，最近30天高收益" \
 --coins "BTC" \
 --strategy-types "11" \
 --strategy-version-map '{"11": ["4.3"]}' \
@@ -152,14 +162,19 @@ python3 skills/backtest-query/query.py --list-ai-times  # 得到 id=3
 --strategy-direction-map '{"11": ["long", "short"]}' \
 --top-per-group 2 \
 --max-combinations 1
+
+# 注意：
+# - 用简化格式 ["4.3"]，会自动查询所有 4.3 版本（3倍、1.5倍等）
+# - 不要试图构造 {"version": "4.3", "leverage": 3}（不完整）
+# - 系统会自动过滤出 3 倍杠杆的配置
 ```
 
 ### 案例4：多币种多策略
 ```bash
---query "BTC风霆v4.3 + ETH网格v3.2" \
+--query "BTC风霆v4.3 + ETH网格v1.0" \
 --coins "BTC,ETH" \
 --strategy-types "11,7" \
---strategy-version-map '{"11": ["4.3"], "7": ["3.2"]}'
+--strategy-version-map '{"11": ["4.3"], "7": ["1"]}'
 ```
 
 ---
