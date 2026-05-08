@@ -41,16 +41,30 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 | 参数 | 格式 | 说明 |
 |------|------|------|
-| `--strategy-version-map` | JSON 对象 | 按策略指定版本 |
-| `--strategy-direction-map` | JSON 对象 | 按策略指定方向 |
+| `--strategy-version-map` | JSON 对象 | 按策略类型指定版本 |
+| `--strategy-direction-map` | JSON 对象 | 按策略类型指定方向 |
 | `--coin-pct-map` | JSON 对象 | 按币种指定比例 |
 
 **映射格式**：
 ```json
+// strategy-version-map: 策略类型 → 版本列表
 {
-  "11": ["4.3", "4.4"],                          // 简化格式：版本号
+  "11": ["4.3", "4.4"],                          // 简化格式：版本号数组
   "7": [{"version": "3.2", "leverage": 10}],     // 完整格式：包含杠杆
-  "1": null                                       // null：自动查询
+  "1": null                                       // null：自动查询所有版本
+}
+
+// strategy-direction-map: 策略类型 → 方向列表
+{
+  "11": ["long", "short"],  // 风霆多空都要
+  "7": ["long"],            // 网格只要做多
+  "1": null                 // 马丁自动判断
+}
+
+// coin-pct-map: 币种 → 比例列表
+{
+  "BTC": ["80", "100"],
+  "ETH": null  // 自动选择
 }
 ```
 
@@ -134,16 +148,21 @@ python3 skills/backtest-query/query.py --list-ai-times
 规则：不要自动扩展版本号！用户说什么就传什么。
 ```
 
-**方向映射使用**：
+**方向控制限制**：
 ```
+⚠️ strategy-direction-map 格式限制：
+  格式：{"strategy_type": ["long", "short"]}
+  不支持：{"strategy_type": {"coin": ["long"]}}  # ❌ 不支持按币种细分
+
 用户说："2个BTC做多, 2个BTC做空, 2个SOL做多"
 
-✅ 正确方案（使用映射）：
---strategy-direction-map '{"11": {"BTC": ["long", "short"], "SOL": ["long"]}}'
---top-per-group 2  （每个方向取2个）
-
-❌ 错误方案（全局方向）：
---directions "long,short"  （无法精确控制每个币种）
+❌ 无法一次实现（不支持按币种指定方向）
+✅ 解决方案：
+  1. 如果所有币种方向相同 → 一次调用
+     --strategy-direction-map '{"11": ["long", "short"]}'
+  
+  2. 如果不同币种不同方向 → 告知用户当前限制
+     "系统暂不支持不同币种指定不同方向，建议统一方向或分批查询"
 ```
 
 **数量控制**：
@@ -230,7 +249,7 @@ python3 skills/backtest-query/query.py --list-ai-times
 --strategy-types "11" \
 --strategy-version-map '{"11": ["4.3"]}' \
 --ai-time-ids "3" \
---strategy-direction-map '{"11": {"BTC": ["long", "short"], "SOL": ["long", "short"], "ETH": ["long"]}}' \
+--strategy-direction-map '{"11": ["long", "short"]}' \
 --top-per-group 2 \
 --max-combinations 1 \
 --api-sort 2
@@ -238,9 +257,12 @@ python3 skills/backtest-query/query.py --list-ai-times
 # 说明：
 # - strategy-version-map '{"11": ["4.3"]}' 不扩展（用户说4.3就只传4.3）
 # - ai-time-ids "3" = 最近30天（从 --list-ai-times 查询得到）
-# - strategy-direction-map 明确每个币的方向
+# - strategy-direction-map '{"11": ["long", "short"]}' 所有币种都做多做空
 # - top-per-group 2 = 每个"币种+方向"取2个
 # - api-sort 2 = 按收益排序
+# 
+# ⚠️ 注意：strategy-direction-map 不支持按币种细分方向！
+#    所有币种会使用相同的方向设置
 ```
 
 ---
