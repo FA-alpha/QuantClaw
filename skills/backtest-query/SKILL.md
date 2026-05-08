@@ -108,12 +108,23 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 ### 参数识别规则
 
-**时间识别**：
-```
-"最近30天"  → --ai-time-ids 1
-"最近7天"   → --ai-time-ids 2
-"最近90天"  → --ai-time-ids 3
-"最近180天" → --ai-time-ids 4
+**时间识别（动态查询）**：
+```bash
+# ⚠️ 不要硬编码！先查询可用的时间ID
+python3 skills/backtest-query/query.py --list-ai-times
+
+# 常见映射（仅供参考，以实际查询为准）：
+"最近7天"   → id=2
+"最近30天"  → id=3
+"最近90天"  → id=1
+"最近180天" → id=4
+"最近1年"   → id=5
+"最近2年"   → id=6
+
+# Agent 流程：
+1. 用户提到时间范围 → 先执行 --list-ai-times
+2. 从返回结果中匹配对应的 id
+3. 传入 --ai-time-ids "id"
 ```
 
 **版本号处理**：
@@ -185,11 +196,17 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 # 7. 精确方向+数量控制（用户案例）
 # 用户说："创建回测组，风霆V4.3，最近30天收益最高，2个BTC做多+2个BTC做空+2个SOL做多+2个SOL做空+2个ETH做多"
+
+# 步骤1: 查询时间ID
+python3 skills/backtest-query/query.py --list-ai-times
+# 找到 "3 - 最近30天"
+
+# 步骤2: 执行推荐
 --query "风霆V4.3策略组，最近30天高收益" \
 --coins "BTC,SOL,ETH" \
 --strategy-types "11" \
 --versions "4.3" \
---ai-time-ids "1" \
+--ai-time-ids "3" \
 --strategy-direction-map '{"11": {"BTC": ["long", "short"], "SOL": ["long", "short"], "ETH": ["long"]}}' \
 --top-per-group 2 \
 --max-combinations 1 \
@@ -197,7 +214,7 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 # 说明：
 # - versions "4.3" 不扩展（用户说4.3就只查4.3）
-# - ai-time-ids "1" = 最近30天
+# - ai-time-ids "3" = 最近30天（从 --list-ai-times 查询得到）
 # - strategy-direction-map 明确每个币的方向
 # - top-per-group 2 = 每个"币种+方向"取2个
 # - api-sort 2 = 按收益排序
@@ -243,10 +260,28 @@ python3 skills/backtest-query/query.py \
 
 ## 查询可用参数
 
+**⚠️ 重要：涉及以下参数时必须先查询，不要硬编码！**
+
 ```bash
-python3 skills/backtest-query/query.py --list-coins       # 币种
-python3 skills/backtest-query/query.py --list-strategies  # 策略类型（返回 id, name, versions）
-python3 skills/backtest-query/query.py --list-ai-times    # 时间ID
+# 1. 币种列表
+python3 skills/backtest-query/query.py --list-coins
+
+# 2. 策略类型（返回 id, name, versions）
+python3 skills/backtest-query/query.py --list-strategies
+
+# 3. 时间ID（AI 回测时间范围）
+python3 skills/backtest-query/query.py --list-ai-times
+```
+
+**Agent 工作流：**
+```
+用户提到 "最近30天"
+    ↓
+1. 执行 --list-ai-times
+2. 找到 "3 - 最近30天"
+3. 传参 --ai-time-ids "3"
+
+❌ 不要直接硬编码 --ai-time-ids "3"
 ```
 
 ---
