@@ -62,13 +62,20 @@ python3 skills/backtest-query/smart_group_recommend.py \
 ```
 
 **建议最少提供**：
+- **策略类型（1-3个）** - 影响最大，必须限制
 - 币种（1-5个）
-- 策略类型（1-3个）
 - 时间范围（1个）
 
+**策略类型不限的后果**：
+```
+不指定策略类型 = 查询所有策略（可能5-10种）
+→ 组合数爆炸：5策略 × 3币 × 2方向 × 5版本 = 150+组合
+→ 查询时间：1-3分钟
+```
+
 **允许不限的场景**：
-- 用户明确说"查所有"、"不限"
-- 已提供其他足够的筛选条件
+- 用户明确说"查所有策略"
+- 已提供严格的其他筛选条件（如：单币种+单时间+指定版本）
 
 ### 1. 触发关键词
 **组合类**：策略组、回测组、组合、投资组合  
@@ -77,11 +84,30 @@ python3 skills/backtest-query/smart_group_recommend.py \
 
 ### 2. 参数动态查询
 ```bash
-# 币种、策略类型、时间ID 必须先查询，不要硬编码
-python3 skills/backtest-query/query.py --list-coins
-python3 skills/backtest-query/query.py --list-strategies
-python3 skills/backtest-query/query.py --list-ai-times
+# 必须先查询，不要硬编码
+python3 skills/backtest-query/query.py --list-coins       # 币种列表
+python3 skills/backtest-query/query.py --list-strategies  # 策略类型（重要：返回 id）
+python3 skills/backtest-query/query.py --list-ai-times    # 时间ID
 ```
+
+**策略类型说明**（重要）：
+```
+常见策略类型 ID：
+  11 - 风霆V4
+  7  - 星辰（网格）
+  1  - 风霆V1（马丁）
+  8  - 鲲鹏V4
+  3  - 鲲鹏V1
+
+用户说               → 查询后映射
+───────────────────────────────
+"风霆"/"风霆V4"     → id=11
+"网格"/"星辰"       → id=7
+"马丁"              → id=1
+"鲲鹏"              → id=8 或 3（需确认版本）
+```
+
+⚠️ **必须先执行 `--list-strategies` 查询 ID，不要硬编码！**
 
 ### 3. 版本控制（重要）
 **统一用 `--strategy-version-map`，不用 `--versions`**
@@ -225,6 +251,7 @@ python3 skills/backtest-query/query.py \
 | 5币 × 3策略 × 3时间 | ~2000+ | 2-5分钟 |
 
 **优化建议**：
-- 优先限制 `--ai-time-ids`（减少时间维度）
-- 指定 `--strategy-version-map`（避免查所有版本）
+- **优先限制 `--strategy-types`**（策略类型影响最大）
+- 限制 `--ai-time-ids`（减少时间维度）
+- 限制 `--coins`（减少币种数量）
 - 使用 `--max-workers 15-20`（提高并发）
