@@ -45,23 +45,28 @@ export class TokenValidator {
     try {
       const result = await this.callApi(token);
       
-      // 根据返回的 status 和 user_type 判断
-      // status === 1 且 user_type 非空才认为有效
-      const userType = result.info?.user_type || result.user_type || '';
-      
-      if (result.status === 1 && userType && userType.trim() !== '') {
-        return {
-          valid: true,
-          status: result.status,
-          userId: result.info?.user_id || result.userId || result.user_id,
-        };
-      } else {
-        return {
-          valid: false,
-          status: result.status,
-          message: userType ? (result.message || 'Invalid token') : 'Empty user_type (token not recognized)',
-        };
+      // 根据返回的 status 和 info 判断
+      // status === 1 且 info 不是 "nologin" 才认为有效
+      if (result.status === 1) {
+        // 检查 info 是否为对象（有效登录）还是字符串 "nologin"
+        if (typeof result.info === 'object' && result.info !== null) {
+          const userType = result.info.user_type || '';
+          if (userType && userType.trim() !== '') {
+            return {
+              valid: true,
+              status: result.status,
+              userId: result.info.user_id || result.info.email,
+            };
+          }
+        }
       }
+      
+      // 无效 token
+      return {
+        valid: false,
+        status: result.status,
+        message: result.info === 'nologin' ? 'Token not logged in' : (result.message || 'Invalid token'),
+      };
     } catch (error: any) {
       // 网络错误或超时，记录日志但不阻止（可配置）
       console.error('[TokenValidator] Validation failed:', error.message);
