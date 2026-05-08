@@ -34,7 +34,6 @@ python3 skills/backtest-query/smart_group_recommend.py \
 | `--coins` | 币种（逗号分隔） | 查询所有 |
 | `--strategy-types` | 策略类型ID（逗号分隔） | 查询所有 |
 | `--ai-time-ids` | 时间ID（逗号分隔） | 查询所有 |
-| `--versions` | 版本号（逗号分隔） | 查询所有 |
 | `--directions` | 方向 | 类型1,7,11自动轮询long/short |
 | `--search-pcts` | 比例（逗号分隔） | BTC:10-120, 其他:60-140 |
 
@@ -155,17 +154,36 @@ python3 skills/backtest-query/query.py --list-ai-times
 
 ### 参数选择
 
-**参数选择**：
-- 不同策略不同参数 → 用 `--strategy-version-map`
-- 需要指定 leverage → 用完整格式 `{"version": "4.3", "leverage": 3}`
-- 只指定版本号 → 用简化格式 `["4.3", "4.4"]`（自动获取所有配置）
-- 所有策略相同参数 → 用全局参数 `--versions`
+**版本控制（统一使用 strategy-version-map）**：
+
+⚠️ **不要使用全局 `--versions` 参数！** 统一用 `--strategy-version-map`
+
+```bash
+# ✅ 正确：用映射控制版本
+--strategy-version-map '{"11": ["4.3"], "7": ["3.2"]}'
+
+# ❌ 错误：不要用全局 versions
+--versions "4.3,4.4"  # 容易误扩展版本号
+```
+
+**格式选择**：
+- 只指定版本号 → 简化格式 `["4.3"]`（自动获取所有配置）
+- 需要指定 leverage → 完整格式 `[{"version": "4.3", "leverage": 3}]`
+- 不指定版本 → 传 `null`（自动查询所有版本）
 
 **传参原则**：
-- 用户明确说的 → 传入
-- 用户没说的 → 不传（自动查询）
+- 用户明确说的 → 精确传入
+- 用户没说的 → 传 `null`（自动查询）
+- **版本号不扩展**：用户说 "V4.3" 就传 `["4.3"]`，不要自动加 4.31、4.32
 
-**优先级**：映射参数 > 全局参数 > 自动查询
+**示例**：
+```json
+{
+  "11": ["4.3"],              // 风霆只查 4.3 版本
+  "7": null,                  // 网格查所有版本
+  "1": [{"version": "2.1", "leverage": 5}]  // 马丁 2.1 版本 5 倍杠杆
+}
+```
 
 ---
 
@@ -187,11 +205,16 @@ python3 skills/backtest-query/query.py --list-ai-times
 --strategy-version-map '{"11": ["4.3","4.4"], "7": ["3.2"]}'
 
 # 5. 精确控制杠杆
---query "BTC风霆v4.3 3倍杠杆" --coins "BTC" --strategy-types "11" \
+--query "BTC风霆v4.3 3倍杠杆" \
+--coins "BTC" \
+--strategy-types "11" \
 --strategy-version-map '{"11": [{"version":"4.3","leverage":3}]}'
 
-# 6. 大规模查询
---query "主流币马丁" --coins "BTC,ETH,SOL,BNB" --strategy-types "1,11" \
+# 6. 大规模查询（不限版本）
+--query "主流币马丁" \
+--coins "BTC,ETH,SOL,BNB" \
+--strategy-types "1,11" \
+--strategy-version-map '{"1": null, "11": null}' \
 --max-workers 20 --max-qps 50
 
 # 7. 精确方向+数量控制（用户案例）
@@ -205,7 +228,7 @@ python3 skills/backtest-query/query.py --list-ai-times
 --query "风霆V4.3策略组，最近30天高收益" \
 --coins "BTC,SOL,ETH" \
 --strategy-types "11" \
---versions "4.3" \
+--strategy-version-map '{"11": ["4.3"]}' \
 --ai-time-ids "3" \
 --strategy-direction-map '{"11": {"BTC": ["long", "short"], "SOL": ["long", "short"], "ETH": ["long"]}}' \
 --top-per-group 2 \
@@ -213,7 +236,7 @@ python3 skills/backtest-query/query.py --list-ai-times
 --api-sort 2
 
 # 说明：
-# - versions "4.3" 不扩展（用户说4.3就只查4.3）
+# - strategy-version-map '{"11": ["4.3"]}' 不扩展（用户说4.3就只传4.3）
 # - ai-time-ids "3" = 最近30天（从 --list-ai-times 查询得到）
 # - strategy-direction-map 明确每个币的方向
 # - top-per-group 2 = 每个"币种+方向"取2个
