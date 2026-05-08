@@ -343,7 +343,7 @@
                 return;
             }
 
-            ws = new WebSocket(WS_URL + '?sessionKey=' + encodeURIComponent(sessionKey) + '&userId=' + encodeURIComponent(userId));
+            ws = new WebSocket(WS_URL + '?sessionKey=' + encodeURIComponent(sessionKey) + '&userId=' + encodeURIComponent(userId) + '&token=' + encodeURIComponent(token));
             
             ws.onopen = () => {
                 onWebSocketOpen();
