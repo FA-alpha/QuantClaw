@@ -402,6 +402,83 @@ async def handle_clear_history(request):
         return web.json_response({'success': False, 'error': str(e)}, status=500)
 
 
+async def handle_new_conversation(request):
+    """新建对话：清除聊天记录并删除 session 文件"""
+    try:
+        data = await request.json()
+        token = data.get('token')
+
+        if not token:
+            return web.json_response({'success': False, 'error': 'Missing token'}, status=400)
+
+        # 步骤1：认证获取用户信息
+        webhook_data = {'token': token, 'message': '__auth_check__'}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{GATEWAY_URL}{WEBHOOK_PATH}',
+                json=webhook_data,
+                headers={'Content-Type': 'application/json'}
+            ) as resp:
+                auth_result = await resp.json()
+
+        if not auth_result.get('success'):
+            return web.json_response(auth_result, status=401)
+
+        user_id = auth_result.get('userId')
+        agent_id = auth_result.get('agentId')
+        
+        # 步骤2：清除本地聊天记录
+        chat_store.clear(user_id)
+        logger.info(f'Cleared chat history for user: {user_id}')
+
+        # 步骤3：删除 Clawdbot session 文件，强制创建新 session
+        session_key = f'agent:{agent_id}:main'
+        session_dir = Path(f'/home/ubuntu/.clawdbot/agents/{agent_id}/sessions')
+        
+        if session_dir.exists():
+            # 删除当前 session 的 JSONL 文件
+            sessions_json = session_dir / 'sessions.json'
+            if sessions_json.exists():
+                try:
+                    import json as _json
+                    with open(sessions_json, 'r') as f:
+                        sessions_data = _json.load(f)
+                    
+                    # 获取当前 session 的文件路径
+                    session_info = sessions_data.get(session_key, {})
+                    session_file = session_info.get('sessionFile')
+                    
+                    if session_file and Path(session_file).exists():
+                        Path(session_file).unlink()
+                        logger.info(f'Deleted session file: {session_file}')
+                    
+                    # 从 sessions.json 中删除这个 session
+                    if session_key in sessions_data:
+                        del sessions_data[session_key]
+                        with open(sessions_json, 'w') as f:
+                            _json.dump(sessions_data, f, indent=2)
+                        logger.info(f'Removed session key from sessions.json: {session_key}')
+                    
+                except Exception as e:
+                    logger.error(f'Failed to delete session files: {e}')
+        
+        logger.info(f'Session reset for user: {user_id}, agent: {agent_id}')
+
+        return web.json_response({
+            'success': True,
+            'cleared': True,
+            'sessionReset': True,
+            'userId': user_id,
+            'agentId': agent_id,
+            'sessionKey': session_key,
+        })
+
+    except Exception as e:
+        logger.error(f'New conversation error: {e}')
+        return web.json_response({'success': False, 'error': str(e)}, status=500)
+
+
 # ============ WebSocket 处理器 ============
 
 async def handle_websocket(request):
@@ -752,6 +829,7 @@ def create_app():
     app.router.add_post('/api/chat', handle_chat)
     app.router.add_post('/api/history', handle_history)
     app.router.add_post('/api/clear-history', handle_clear_history)
+    app.router.add_post('/api/new-conversation', handle_new_conversation)
     app.router.add_get('/ws', handle_websocket)
     
     if STATIC_DIR.exists():
