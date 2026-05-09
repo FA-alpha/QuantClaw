@@ -180,6 +180,38 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
         return {"error": str(e)}
 
 
+def add_strategy(token: str, strategy_token: str) -> dict:
+    """
+    保存单个策略到策略库（收藏策略）
+    
+    Args:
+        token: 用户登录 token
+        strategy_token: 策略 token
+    
+    Returns:
+        dict: API 响应数据，包含策略ID
+    """
+    url = f"{API_BASE}/Strategy/adds_do"
+    data = {
+        "usertoken": token,
+        "strategy_token": strategy_token
+    }
+    
+    try:
+        resp = requests.post(url, data=data, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
+        
+        return result
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
 def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
     """
     创建策略组
@@ -524,9 +556,11 @@ def main():
     parser = argparse.ArgumentParser(description="查询回测数据")
     parser.add_argument("--token", help="用户 token（可选，未提供时自动获取）")
     parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
+    parser.add_argument("--add-strategy", action="store_true", help="保存策略到策略库")
+    parser.add_argument("--strategy-token", help="策略 token（用于保存单个策略）")
     parser.add_argument("--create-group", action="store_true", help="创建策略组")
     parser.add_argument("--group-name", help="策略组名称")
-    parser.add_argument("--strategy-tokens", help="策略 token（多个逗号分隔）")
+    parser.add_argument("--strategy-tokens", help="策略 token（多个逗号分隔，用于创建策略组）")
     parser.add_argument("--list-coins", action="store_true", help="列出可用币种")
     parser.add_argument("--list-ai-times", action="store_true", help="列出 AI 回测时间")
     parser.add_argument("--list-strategies", action="store_true", help="列出 AI 回测策略")
@@ -586,6 +620,22 @@ def main():
         except Exception as e:
             print(f"⚠️  刷新缓存失败: {e}")
             print()
+    
+    # 保存策略到策略库
+    if args.add_strategy:
+        if not args.token:
+            print("错误: 保存策略需要 --token")
+            return
+        if not args.strategy_token:
+            print("错误: 需要 --strategy-token")
+            return
+        result = add_strategy(args.token, args.strategy_token)
+        if "error" in result:
+            print(f"错误: {result['error']}")
+        else:
+            strategy_id = result.get("info", {}).get("id")
+            print(f"✅ 策略保存成功 (ID: {strategy_id})")
+        return
     
     # 列出币种
     if args.list_coins:
