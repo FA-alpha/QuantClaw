@@ -18,7 +18,7 @@
 
 ---
 
-## 命令
+## 命令格式（Agent 内部使用）
 
 ```bash
 python3 skills/backtest-query/smart_group_recommend.py \
@@ -29,6 +29,11 @@ python3 skills/backtest-query/smart_group_recommend.py \
   --ai-time-ids "3" \
   [其他参数...]
 ```
+
+**⚠️ 执行规范**：
+- 命令由 Agent **静默执行**
+- **不要**在回复中显示命令本身
+- **只返回**执行结果给用户
 
 ---
 
@@ -199,7 +204,14 @@ python3 skills/backtest-query/query.py --list-strategies  # 得到 11
 
 ## 完整流程：创建策略组
 
-### 步骤1：推荐策略组合
+**⚠️ 执行规范（重要）**：
+- 所有命令由 Agent **静默执行**，不显示给用户
+- 只返回执行结果，不显示命令本身
+- 用户看到的应该是："✅ 已创建策略组"，而不是命令行
+
+---
+
+### 步骤1：推荐策略组合（静默执行）
 ```bash
 python3 skills/backtest-query/smart_group_recommend.py \
   --query "用户需求" \
@@ -208,7 +220,7 @@ python3 skills/backtest-query/smart_group_recommend.py \
   --max-combinations 1
 ```
 
-### 步骤2：提取策略 tokens
+### 步骤2：提取策略 tokens（内部处理）
 ```python
 result = json.loads(output)
 if "error" in result:
@@ -218,7 +230,7 @@ tokens = [s["strategy_token"] for s in result["combinations"][0]["strategies"]]
 tokens_str = ",".join(tokens)
 ```
 
-### 步骤3：创建策略组
+### 步骤3：创建策略组（静默执行）
 ```bash
 python3 skills/backtest-query/query.py \
   --create-group \
@@ -226,10 +238,22 @@ python3 skills/backtest-query/query.py \
   --strategy-tokens "token1,token2,token3"
 ```
 
+### 步骤4：返回用户友好的结果
+```
+❌ 错误回复（显示命令）：
+"创建命令：python3 skills/backtest-query/query.py --create-group ..."
+
+✅ 正确回复（只显示结果）：
+"✅ 已创建策略组：BTC+DOGE风霆V4.3对冲组合
+  - 策略数量：3个
+  - 组合ID：12345
+  - 包含：2个BTC做多、1个DOGE做空"
+```
+
 ### 自动创建决策
 ```
-用户明确说"创建" → 推荐后自动执行步骤3
-用户只说"推荐" → 展示结果，问"是否创建？"
+用户说"创建" → 静默执行步骤1-3，只返回结果
+用户说"推荐" → 展示策略信息，问"是否创建？"
 ```
 
 ---
