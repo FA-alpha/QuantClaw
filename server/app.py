@@ -278,8 +278,7 @@ async def handle_chat(request):
 
         user_id = auth_result.get('userId')
         
-        # 保存用户消息到本地
-        chat_store.append(user_id, 'user', message)
+        # 注意：消息将在WebSocket中保存，这里不重复保存
 
         return web.json_response({
             'success': True,
@@ -486,6 +485,7 @@ async def handle_websocket(request):
                 
                 msg_counter = [0]
                 current_response = ['']  # 当前响应文本
+                response_saved = [False]  # 防止重复保存标志
                 
                 def next_id():
                     msg_counter[0] += 1
@@ -517,6 +517,7 @@ async def handle_websocket(request):
                                     text = data.get('text') or data.get('message', '')
                                     if text:
                                         current_response[0] = ''  # 重置
+                                        response_saved[0] = False  # 重置保存标志
                                         rpc_msg = {
                                             'type': 'req',
                                             'id': next_id(),
@@ -528,7 +529,7 @@ async def handle_websocket(request):
                                             }
                                         }
                                         await gateway_ws.send_json(rpc_msg)
-                                        # 保存用户消息到本地
+                                        # 保存用户消息到本地（只在WebSocket中保存一次）
                                         if user_id:
                                             chat_store.append(user_id, 'user', text)
                                         logger.info(f'Sent to gateway: {text[:50]}...')
@@ -604,11 +605,15 @@ async def handle_websocket(request):
                                                     'content': f'⚠️ Agent 错误: {error}',
                                                 })
                                             if phase == 'end':
-                                                # 保存完整回复到本地
-                                                if user_id and current_response[0]:
+                                                # 保存完整回复到本地（防重复保存）
+                                                if user_id and current_response[0] and not response_saved[0]:
                                                     response_text = current_response[0]
+                                                    logger.info(f'📝 About to save assistant response for {user_id}: {len(response_text)} chars')
                                                     chat_store.append(user_id, 'assistant', response_text)
-                                                    logger.info(f'Saved response for {user_id}')
+                                                    response_saved[0] = True  # 标记已保存
+                                                    logger.info(f'✅ Saved assistant response for {user_id}')
+                                                elif response_saved[0]:
+                                                    logger.info(f'⚠️ Skipped duplicate save for {user_id} (already saved)')
                                                     
                                                     # 检测回测ID并启动监控
                                                     back_ids = monitor_manager.extract_backtest_ids(response_text)
@@ -628,6 +633,10 @@ async def handle_websocket(request):
                                                 })
                                     
                                     # chat 事件可以忽略，我们用 agent 事件
+                                    elif event_type == 'chat':
+                                        # 明确忽略 chat 事件，避免重复处理
+                                        logger.debug(f'Ignoring chat event: {payload}')
+                                        continue
                                     
                             except json.JSONDecodeError:
                                 pass
