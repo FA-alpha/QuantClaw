@@ -488,7 +488,7 @@ def auto_get_token():
     
     优先级：
     1. 根据当前 agent_id 从 users.json 匹配用户
-    2. 回退：返回第一个用户的 token（仅单用户场景）
+    2. 如果找不到匹配用户，直接报错（不再回退到第一个用户）
     
     Returns:
         str: usertoken 或 None
