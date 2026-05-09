@@ -1,6 +1,20 @@
 # 回测数据查询与策略组合
 
-智能推荐策略组合。
+智能推荐策略组合并创建策略组。
+
+---
+
+## 🚨 关键区分
+
+| 用户意图 | 关键词 | 使用技能 | 输出 |
+|---------|--------|---------|------|
+| 创建策略组 | 创建/建立/生成 + 策略组/回测组 | **本技能** | 策略组ID |
+| 启动回测 | 启动/开始/运行 + 回测 | `start-backtest/` | 回测任务ID |
+
+**判断规则**：
+1. 包含"创建/建立/生成" → 本技能（创建策略组）
+2. 包含"启动/开始/运行" → start-backtest 技能
+3. 不确定 → 询问用户
 
 ---
 
@@ -19,6 +33,29 @@ python3 skills/backtest-query/smart_group_recommend.py \
 ---
 
 ## Agent 核心规则
+
+### 0. 意图识别（优先判断）
+
+**创建策略组 vs 启动回测**：
+```
+✅ 创建策略组：
+- "创建策略组"、"创建回测组"、"建立组合"、"生成策略组"
+- 关键词：创建/建立/生成 + 策略组/回测组/组合
+
+✅ 启动回测：
+- "启动回测"、"开始回测"、"运行策略"
+- 关键词：启动/开始/运行 + 回测
+
+⚠️ 易混淆场景：
+用户："创建一个回测组"
+→ 正确理解：创建策略组（组合多个已有回测）
+→ 错误理解：启动新的回测任务
+
+判断规则：
+1. 包含"创建/建立/生成" → 优先判断为创建策略组
+2. 包含"启动/开始/运行" → 判断为启动回测
+3. 不确定 → 询问用户："您是要创建策略组，还是启动新的回测？"
+```
 
 ### 1. 触发关键词
 策略组、回测组、组合、推荐、对冲
@@ -126,19 +163,39 @@ python3 skills/backtest-query/query.py --list-ai-times  # 得到 id=3
 
 ---
 
-## 结果处理
+## 完整流程：创建策略组
 
-**提取 tokens**：
-```python
-tokens = [s["strategy_token"] for s in result["combinations"][0]["strategies"]]
+### 步骤1：推荐策略组合
+```bash
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "用户需求" \
+  --coins "BTC,ETH" \
+  --strategy-types "11" \
+  --max-combinations 1
 ```
 
-**创建策略组**：
+### 步骤2：提取策略 tokens
+```python
+result = json.loads(output)
+if "error" in result:
+    return f"推荐失败：{result['error']}"
+
+tokens = [s["strategy_token"] for s in result["combinations"][0]["strategies"]]
+tokens_str = ",".join(tokens)
+```
+
+### 步骤3：创建策略组
 ```bash
 python3 skills/backtest-query/query.py \
   --create-group \
-  --group-name "组合名" \
+  --group-name "策略组名称" \
   --strategy-tokens "token1,token2,token3"
+```
+
+### 自动创建决策
+```
+用户明确说"创建" → 推荐后自动执行步骤3
+用户只说"推荐" → 展示结果，问"是否创建？"
 ```
 
 ---
