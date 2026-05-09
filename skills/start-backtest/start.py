@@ -217,9 +217,7 @@ def get_strategy_lists(
 
 def apply_backtest(
     token: str,
-    strategy_token: str = None,
     strategy_id: str = None,
-    strategy_tokens: str = None,
     bgn_date: str = None,
     end_date: str = None,
     init_balance: float = None,
@@ -234,9 +232,7 @@ def apply_backtest(
     API: POST /Backtrack/apply_do
     
     参数说明:
-    - strategy_token: 单策略的 token
-    - strategy_id: 多策略 ID（逗号分隔）
-    - strategy_tokens: 多策略 tokens（逗号分隔）
+    - strategy_id: 策略 ID（单个或多个逗号分隔）
     - margin_mode: 保证金模式（exclusive=独占, shared=共享）
     - margin_allocation: 共享模式分配比例（逗号分隔，总和100）
     - data_type: 数据类型（默认1）
@@ -247,13 +243,9 @@ def apply_backtest(
         "data_type": str(data_type),
     }
 
-    # 策略参数：支持 strategy_token 或 strategy_id
-    if strategy_tokens:
-        data["strategy_token"] = strategy_tokens
-    elif strategy_id:
+    # 策略参数：使用 strategy_id
+    if strategy_id:
         data["strategy_id"] = strategy_id
-    elif strategy_token:
-        data["strategy_token"] = strategy_token
     
     # 日期参数 - 使用 date_lists 格式
     if bgn_date and end_date:
@@ -344,7 +336,7 @@ def format_strategies(data: dict) -> str:
         return "暂无策略"
     
     lines = [f"共 {len(info)} 个策略:\n"]
-    lines.append("| ID | 策略Token | 名称 | 币种 | 类型 | 方向 |")
+    lines.append("| ID | 策略ID | 名称 | 币种 | 类型 | 方向 |")
     lines.append("|---|---|---|---|---|---|")
     
     amt_type_map = {1: "现货", 2: "合约"}
@@ -352,7 +344,7 @@ def format_strategies(data: dict) -> str:
     for item in info:
         lines.append(
             f"| {item.get('id', '')} "
-            f"| {item.get('strategy_token', '')[:15]}... "
+            f"| {item.get('strategy_id', '')[:15]}... "
             f"| {item.get('name', '')[:20]} "
             f"| {item.get('coin', '')} "
             f"| {amt_type_map.get(item.get('amt_type'), '')} "
@@ -387,9 +379,8 @@ def main():
     parser.add_argument("--status", dest="search_status", type=int, help="状态筛选")
     
     # 回测参数
-    parser.add_argument("--strategy-token", help="策略 token（单策略）")
-    parser.add_argument("--strategy-id", help="策略 ID（多策略，逗号分隔）")
-    parser.add_argument("--strategy-tokens", help="策略 tokens（多策略，逗号分隔）")
+    parser.add_argument("--strategy-id", help="策略 ID（单策略）")
+    parser.add_argument("--strategy-ids", help="策略 IDs（多策略，逗号分隔）")
     parser.add_argument("--bgn-date", help="开始日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--end-date", help="结束日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--init-balance", type=float, help="初始资金（默认10000）")
@@ -456,8 +447,8 @@ def main():
     if args.apply:
         # 验证必填参数
         missing = []
-        if not args.strategy_token and not args.strategy_id and not args.strategy_tokens:
-            missing.append("--strategy-token / --strategy-id / --strategy-tokens（至少一个）")
+        if not args.strategy_id and not args.strategy_ids:
+            missing.append("--strategy-id / --strategy-ids（至少一个）")
         if not args.bgn_date:
             missing.append("--bgn-date")
         if not args.end_date:
@@ -482,9 +473,7 @@ def main():
         
         result = apply_backtest(
             token=args.token,
-            strategy_token=args.strategy_token,
-            strategy_id=args.strategy_id,
-            strategy_tokens=args.strategy_tokens,
+            strategy_id=args.strategy_id or args.strategy_ids,
             bgn_date=args.bgn_date,
             end_date=args.end_date,
             init_balance=args.init_balance,
@@ -502,7 +491,7 @@ def main():
             print(json.dumps(result, indent=2, ensure_ascii=False))
         else:
             back_id = result.get("info", {}).get("back_id") or result.get("info", {}).get("id")
-            strategy_display = args.strategy_token or args.strategy_id or args.strategy_tokens
+            strategy_display = args.strategy_id or args.strategy_ids
             print(f"✅ 回测任务已提交")
             print(f"   任务 ID: {back_id}")
             print(f"   策略: {strategy_display[:50]}...")
