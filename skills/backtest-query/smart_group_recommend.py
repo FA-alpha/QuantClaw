@@ -527,9 +527,9 @@ class ParallelQueryExecutor:
         failed_details = []  # 记录失败详情
         
         if self.verbose and self.log_level != "quiet":
-            print(f"\n🚀 开始并行查询 {total} 个组合...")
-            print(f"   并发: {self.max_workers} 线程, 限流: {self.max_qps} QPS")
-            print(f"   预计耗时: ~{total / self.max_qps:.0f} 秒\n")
+            print(f"\n🚀 开始并行查询 {total} 个组合...", flush=True)
+            print(f"   并发: {self.max_workers} 线程, 限流: {self.max_qps} QPS", flush=True)
+            print(f"   预计耗时: ~{total / self.max_qps:.0f} 秒\n", flush=True)
         
         # 参数映射
         param_mapping = {
@@ -553,10 +553,13 @@ class ParallelQueryExecutor:
         
         # 并行执行
         completed = 0
-        milestone_interval = max(1, total // 10)  # 每10%输出一次
+        milestone_interval = max(1, min(10, total // 10))  # 每10%或至少每10个，避免长时间无输出
         
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # 提交所有任务
+            if self.verbose and self.log_level != "quiet":
+                print(f"   任务已提交，开始查询...", flush=True)
+            
             futures = {
                 executor.submit(self._query_with_retry, query_backtest, params): idx
                 for idx, params in enumerate(query_params_list)
@@ -590,24 +593,24 @@ class ParallelQueryExecutor:
                 # 里程碑输出
                 if self.verbose and self.log_level == "normal" and completed % milestone_interval == 0:
                     progress = completed / total * 100
-                    print(f"   进度: {progress:.0f}% ({completed}/{total})")
+                    print(f"   进度: {progress:.0f}% ({completed}/{total})", flush=True)
         
         if self.verbose and self.log_level != "quiet":
-            print(f"\n✅ 查询完成:")
-            print(f"   成功: {total - failed_count}/{total}")
-            print(f"   失败: {failed_count}")
-            print(f"   策略数: {len(all_strategies)} (去重后)")
+            print(f"\n✅ 查询完成:", flush=True)
+            print(f"   成功: {total - failed_count}/{total}", flush=True)
+            print(f"   失败: {failed_count}", flush=True)
+            print(f"   策略数: {len(all_strategies)} (去重后)", flush=True)
             
             # 失败率过高时给出提示
             if failed_count > total * 0.3:
-                print(f"\n⚠️  失败率过高 ({failed_count}/{total} = {failed_count/total*100:.1f}%)")
-                print(f"   建议: 降低 --max-qps 或检查网络连接")
+                print(f"\n⚠️  失败率过高 ({failed_count}/{total} = {failed_count/total*100:.1f}%)", flush=True)
+                print(f"   建议: 降低 --max-qps 或检查网络连接", flush=True)
                 # detail 模式才显示前几个失败原因
                 if self.log_level == "detail" and failed_details:
-                    print(f"   前5个失败原因:")
+                    print(f"   前5个失败原因:", flush=True)
                     for detail in failed_details[:5]:
-                        print(f"     - {detail}")
-            print()
+                        print(f"     - {detail}", flush=True)
+            print(flush=True)
         
         return all_strategies
 
