@@ -498,19 +498,25 @@ def auto_get_token():
         users = data.get('users', [])
         
         if not users:
+            print("[ERROR] ~/.quantclaw/users.json 中没有用户")
             return None
         
-        # 优先：根据 agent_id 匹配
-        if agent_id:
-            for user in users:
-                if user.get('agentId') == agent_id:
-                    return user.get('token')
+        # 必须根据 agent_id 匹配用户
+        if not agent_id:
+            print("[ERROR] 无法识别当前 agent_id，请确认在正确的 workspace 中执行")
+            return None
         
-        # 回退：返回第一个用户（仅单用户场景）
-        return users[0].get('token')
+        for user in users:
+            if user.get('agentId') == agent_id:
+                return user.get('token')
+        
+        # 找不到匹配的用户
+        print(f"[ERROR] 未找到 agent_id={agent_id} 对应的用户")
+        print(f"[DEBUG] 可用的 agent_id: {[u.get('agentId') for u in users]}")
+        return None
         
     except Exception as e:
-        print(f"[DEBUG] 获取 token 失败: {e}")
+        print(f"[ERROR] 读取用户配置失败: {e}")
         return None
 
 
