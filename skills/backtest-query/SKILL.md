@@ -34,7 +34,11 @@
 2. **参数铁律**：用户说的才传，没说的不传
 3. **动态查询**：先查ID（`--list-coins/strategies/ai-times`）
 4. **Agent ID 传递**：使用 `--agent-id` 参数显式指定（避免路径依赖）
-5. **数据不足处理**：
+5. **一次性执行**：
+   - ✅ **推荐时总是加 `--output`**，避免二次运行获取 tokens
+   - ✅ **合理设置 `--max-combinations`**（推荐3个，创建取1个）
+   - ❌ **禁止"先看结果再重新运行"** 的模式
+6. **数据不足处理**：
    - ❌ **禁止自行修改查询条件**
    - ✅ **引导用户调整参数**
    - 场景：数据太少、无数据、无法生成组合、无法保存到策略库
@@ -59,19 +63,21 @@ exec(command=f"python3 skills/backtest-query/query.py --agent-id {agent_id} --li
 
 ## 典型案例
 
-### ✅ 案例1：创建策略组
+### ✅ 案例1：创建策略组（正确：一次性执行）
 
 **用户**："帮我建个 DOGE/BCH 对冲策略组"
 
 ```bash
-# 步骤1：推荐
+# 步骤1：推荐（必须加 --output）
 python3 smart_group_recommend.py \
   --query "帮我建个 DOGE/BCH 对冲策略组" \
   --coins "DOGE,BCH" \
-  --strategy-direction-map '{"11": ["long", "short"]}'
+  --strategy-direction-map '{"11": ["long", "short"]}' \
+  --max-combinations 3 \
+  --output /tmp/combo.json  # ⚠️ 必须加，用于提取 tokens
 
-# 步骤2：提取 tokens（解析 JSON）
-tokens = [s["strategy_token"] for s in result["combinations"][0]["strategies"]]
+# 步骤2：提取 tokens（从 JSON 文件）
+tokens = [s["strategy_token"] for s in json_data["combinations"][0]["strategies"]]
 
 # 步骤3：创建
 python3 query.py --create-group \
@@ -82,21 +88,26 @@ python3 query.py --create-group \
 "✅ 已创建策略组：DOGE/BCH 对冲策略组"
 ```
 
-**❌ 错误**：直接用 `query.py --create-group`（没有 tokens）
+**❌ 错误做法**：
+- 先运行不带 `--output` → 再重新运行加 `--output`（浪费时间）
+- 直接用 `query.py --create-group`（没有 tokens）
 
 ---
 
-### ✅ 案例2：推荐
+### ✅ 案例2：推荐（也要加 --output）
 
 **用户**："推荐 BTC 策略"
 
 ```bash
-# 只推荐，不创建
+# 推荐（加 --output，防止用户后续想创建）
 python3 smart_group_recommend.py \
   --query "推荐 BTC 策略" \
-  --coins "BTC"
+  --coins "BTC" \
+  --max-combinations 3 \
+  --output /tmp/btc_combo.json  # ⚠️ 即使只推荐也要加
 
 # 展示结果，询问："是否创建策略组？"
+# 如果用户说"是"，直接从 /tmp/btc_combo.json 提取 tokens，不需要重新运行
 ```
 
 ---
