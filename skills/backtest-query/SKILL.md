@@ -33,6 +33,23 @@
 1. **静默执行**：不显示命令，只返回结果
 2. **参数铁律**：用户说的才传，没说的不传
 3. **动态查询**：先查ID（`--list-coins/strategies/ai-times`）
+4. **Agent ID 传递**：使用 `--agent-id` 参数显式指定（避免路径依赖）
+
+### Agent ID 获取方式
+
+```python
+# 从运行时上下文获取当前 agent_id
+agent_id = os.environ.get("CLAWDBOT_AGENT_ID")  # 如果 Gateway 提供
+# 或从配置读取当前 session 的 agent_id
+
+# 调用时传递
+exec(command=f"python3 skills/backtest-query/query.py --agent-id {agent_id} --list-coins")
+```
+
+**为什么需要？**
+- 脚本通过 agent_id 从 `~/.quantclaw/users.json` 匹配用户 token
+- 避免依赖 PWD 路径识别（软链接导致的路径歧义）
+- 更明确、更可靠
 
 ---
 
