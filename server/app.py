@@ -188,8 +188,14 @@ class ChatStore:
         file.write_text(json.dumps(messages, ensure_ascii=False, indent=2))
     
     def append(self, user_id: str, role: str, content: str):
-        """添加一条消息"""
+        """添加一条消息（防止重复）"""
         messages = self.load(user_id)
+        
+        # 检查最后一条消息是否重复（防止同一 role 的连续重复消息）
+        if messages and messages[-1]['role'] == role and messages[-1]['content'] == content:
+            logger.warning(f'⚠️ Duplicate message detected for {user_id}, skipping')
+            return messages
+        
         messages.append({
             'role': role,
             'content': content,
@@ -689,10 +695,8 @@ async def handle_websocket(request):
                                                     chat_store.append(user_id, 'assistant', response_text)
                                                     response_saved[0] = True  # 标记已保存
                                                     logger.info(f'✅ Saved assistant response for {user_id}')
-                                                elif response_saved[0]:
-                                                    logger.info(f'⚠️ Skipped duplicate save for {user_id} (already saved)')
                                                     
-                                                    # 检测回测ID并启动监控
+                                                    # 检测回测ID并启动监控（保存后立即检测）
                                                     back_ids = monitor_manager.extract_backtest_ids(response_text)
                                                     if back_ids:
                                                         # 获取用户token
@@ -704,6 +708,8 @@ async def handle_websocket(request):
                                                                     logger.info(f"🚀 自动启动回测 {back_id} 监控")
                                                         else:
                                                             logger.warning(f"无法获取用户 {user_id} 的token，跳过监控")
+                                                elif response_saved[0]:
+                                                    logger.info(f'⚠️ Skipped duplicate save for {user_id} (already saved)')
                                                 
                                                 await ws_client.send_json({
                                                     'type': 'done',
