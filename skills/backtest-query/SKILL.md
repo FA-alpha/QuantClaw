@@ -4,17 +4,6 @@
 
 ---
 
-## 📖 术语说明
-
-**网格比例** (`--search-pcts`, `--coin-pct-map`)  
-平台称为"网格比例"，对应参数 `search_pct`。表示策略的网格密度配置。
-
-取值范围：
-- BTC: 10, 20, 30, 40, 50, 60, 80, 100, 120
-- 其他币种: 60, 80, 100, 120, 140
-
----
-
 ## 🚨 脚本选择（核心规则）
 
 ```
@@ -152,6 +141,9 @@ python3 query.py --add-strategy --strategy-token "xxx"
 --strategy-types "11,7"           # 策略ID（11=风霆，7=网格）
 --strategy-version-map '{"11": ["4.3"]}'  # 版本控制
 --strategy-direction-map '{"11": ["long", "short"]}'  # 方向
+--coin-pct-map '{"BTC": ["80", "100"]}'   # 网格比例（平台称"网格比例"）
+                                           # BTC: 10,20,30,40,50,60,80,100,120
+                                           # 其他: 60,80,100,120,140
 --ai-time-ids "1,3"              # 时间ID
 --top-per-group 3                # 每组取几个
 --max-combinations 1             # 返回几个组合
