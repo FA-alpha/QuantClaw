@@ -74,40 +74,44 @@ def format_params(params: Dict) -> str:
 
 # ==================== Token 管理 ====================
 
-def get_user_token() -> Optional[str]:
+def get_user_token(agent_id: Optional[str] = None) -> Optional[str]:
     """
     从当前 workspace 自动获取 token
     
+    Args:
+        agent_id: 可选，显式指定 agent_id（推荐）
+    
     支持两种情况：
-    1. 直接在 workspace 内执行：/home/ubuntu/clawd-qc-xxx/skills/...
-    2. 通过软链接执行：workspace/skills -> /home/ubuntu/work/QuantClaw/skills
+    1. 显式传入 agent_id（最可靠）
+    2. 从 PWD 路径中识别（软链接兼容）
     
-    解决方案：优先使用 PWD 环境变量（保留软链接路径），回退到物理路径
+    Returns:
+        str: usertoken 或 None
     """
-    agent_id = None
-    
-    def find_agent_id_in_path(start_path: str) -> Optional[str]:
-        """向上遍历路径查找 clawd-* 目录"""
-        current = start_path
-        
-        while current != '/':
-            basename = os.path.basename(current)
-            
-            if basename.startswith('clawd-'):
-                return basename.replace('clawd-', '')
-            
-            current = os.path.dirname(current)
-        
-        return None
-    
-    # 方法1：从 PWD 环境变量获取（保留软链接路径）
-    pwd = os.environ.get('PWD')
-    if pwd:
-        agent_id = find_agent_id_in_path(pwd)
-    
-    # 方法2：从物理路径查找（回退方案）
+    # 如果未显式传入，尝试从路径识别
     if not agent_id:
-        agent_id = find_agent_id_in_path(os.path.abspath(os.getcwd()))
+        def find_agent_id_in_path(start_path: str) -> Optional[str]:
+            """向上遍历路径查找 clawd-* 目录"""
+            current = start_path
+            
+            while current != '/':
+                basename = os.path.basename(current)
+                
+                if basename.startswith('clawd-'):
+                    return basename.replace('clawd-', '')
+                
+                current = os.path.dirname(current)
+            
+            return None
+        
+        # 方法1：从 PWD 环境变量获取（保留软链接路径）
+        pwd = os.environ.get('PWD')
+        if pwd:
+            agent_id = find_agent_id_in_path(pwd)
+        
+        # 方法2：从物理路径查找（回退方案）
+        if not agent_id:
+            agent_id = find_agent_id_in_path(os.path.abspath(os.getcwd()))
     
     if not agent_id:
         return None
@@ -1120,6 +1124,9 @@ def parse_arguments():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="智能分组推荐系统")
     
+    # Agent 认证
+    parser.add_argument("--agent-id", type=str, help="Agent ID（可选，用于 token 自动获取）")
+    
     # 查询需求
     parser.add_argument("--query", type=str, required=True, help="用户查询需求描述")
     
@@ -1178,9 +1185,9 @@ def main():
         sys.exit(1)
     
     # 3. 获取 token
-    token = get_user_token()
+    token = get_user_token(agent_id=args.agent_id)
     if not token:
-        print("❌ 无法自动获取 token（当前 workspace 未关联用户）")
+        print("❌ 无法自动获取 token，请使用 --agent-id 参数或在正确的 workspace 中执行")
         sys.exit(1)
     
     # 4. 生成查询组合
