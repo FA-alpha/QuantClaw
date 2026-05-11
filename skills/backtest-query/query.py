@@ -482,42 +482,45 @@ def format_result(data: dict, output_format: str = "table") -> str:
     return "\n".join(lines)
 
 
-def auto_get_token():
+def auto_get_token(agent_id: str = None):
     """
     从当前 Agent workspace 自动获取 token
     
     优先级：
-    1. 根据当前 agent_id 从 users.json 匹配用户
-    2. 如果找不到匹配用户，直接报错（不再回退到第一个用户）
+    1. 如果传入 agent_id，直接使用
+    2. 否则从 PWD 路径中查找 clawd-* 目录
+    3. 从 users.json 匹配用户
+    
+    Args:
+        agent_id: 可选，显式指定 agent_id（推荐）
     
     Returns:
         str: usertoken 或 None
     """
-    def find_agent_id_in_path(start_path):
-        """向上遍历路径查找 clawd-* 目录"""
-        current = start_path
-        
-        while current != '/':
-            basename = os.path.basename(current)
-            
-            if basename.startswith('clawd-'):
-                return basename.replace('clawd-', '')
-            
-            current = os.path.dirname(current)
-        
-        return None
-    
-    # 步骤1：查找当前 agent_id
-    agent_id = None
-    
-    # 从 PWD 环境变量获取（保留软链接路径）
-    pwd = os.environ.get('PWD')
-    if pwd:
-        agent_id = find_agent_id_in_path(pwd)
-    
-    # 从物理路径查找（回退方案）
+    # 如果未显式传入 agent_id，尝试从路径识别
     if not agent_id:
-        agent_id = find_agent_id_in_path(os.path.abspath(os.getcwd()))
+        def find_agent_id_in_path(start_path):
+            """向上遍历路径查找 clawd-* 目录"""
+            current = start_path
+            
+            while current != '/':
+                basename = os.path.basename(current)
+                
+                if basename.startswith('clawd-'):
+                    return basename.replace('clawd-', '')
+                
+                current = os.path.dirname(current)
+            
+            return None
+        
+        # 从 PWD 环境变量获取（保留软链接路径）
+        pwd = os.environ.get('PWD')
+        if pwd:
+            agent_id = find_agent_id_in_path(pwd)
+        
+        # 从物理路径查找（回退方案）
+        if not agent_id:
+            agent_id = find_agent_id_in_path(os.path.abspath(os.getcwd()))
     
     # 步骤2：从 users.json 获取 token
     users_file = os.path.expanduser('~/.quantclaw/users.json')
@@ -535,7 +538,7 @@ def auto_get_token():
         
         # 必须根据 agent_id 匹配用户
         if not agent_id:
-            print("[ERROR] 无法识别当前 agent_id，请确认在正确的 workspace 中执行")
+            print("[ERROR] 无法识别当前 agent_id，请使用 --agent-id 参数或在正确的 workspace 中执行")
             return None
         
         for user in users:
@@ -555,6 +558,7 @@ def auto_get_token():
 def main():
     parser = argparse.ArgumentParser(description="查询回测数据")
     parser.add_argument("--token", help="用户 token（可选，未提供时自动获取）")
+    parser.add_argument("--agent-id", dest="agent_id", help="Agent ID（可选，用于 token 自动获取）")
     parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
     parser.add_argument("--add-strategy", action="store_true", help="保存策略到策略库")
     parser.add_argument("--strategy-token", help="策略 token（用于保存单个策略）")
@@ -605,9 +609,9 @@ def main():
     
     # 自动获取 token（如果未提供）
     if not args.token:
-        args.token = auto_get_token()
+        args.token = auto_get_token(agent_id=args.agent_id)
         if not args.token:
-            print("错误: 无法自动获取 token，请手动提供 --token 参数")
+            print("错误: 无法自动获取 token，请手动提供 --token 或 --agent-id 参数")
             sys.exit(1)
     
     # 强制刷新缓存（清除并重新获取 defaults 模块的全局缓存）
