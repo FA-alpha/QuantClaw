@@ -141,7 +141,7 @@ python3 query.py --add-strategy --strategy-token "xxx"
 --strategy-types "11,7"           # 策略ID（11=风霆，7=网格）
 --strategy-version-map '{"11": ["4.3"]}'  # 版本控制
 --strategy-direction-map '{"11": ["long", "short"]}'  # 方向
---coin-pct-map '{"BTC": ["80", "100"]}'   # 网格比例（平台称"网格比例"）
+--coin-pct-map '{"BTC": ["80", "100"]}'   # 比例/网格比例（策略网格密度）
                                            # BTC: 10,20,30,40,50,60,80,100,120
                                            # 其他: 60,80,100,120,140
 --ai-time-ids "1,3"              # 时间ID
