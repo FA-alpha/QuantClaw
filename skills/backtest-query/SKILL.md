@@ -4,17 +4,56 @@
 
 ---
 
-## 🚨 意图识别
+## 🚨 脚本选择决策树（必读）
 
-| 用户意图 | 关键词 | 使用技能 | 说明 |
-|---------|--------|---------|------|
-| **保存策略到策略库** | 保存/收藏/添加 + 策略 | **本技能** | 单个策略收藏 |
-| **创建策略组** | 创建/建立 + 策略组/回测组 | **本技能** | 多策略组合 |
-| 启动回测 | 启动/开始 + 回测 | start-backtest | 执行回测 |
+**关键原则**：根据用户意图选择正确的脚本
 
-**易混淆**：
-- "保存策略" → 策略库（单个策略）⚠️ 不是策略组
-- "创建策略组" → 策略组（多个策略组合）
+```
+用户输入
+    │
+    ├─ 包含"推荐"/"建议"/"帮我选" + 策略组相关
+    │  → smart_group_recommend.py（智能推荐）
+    │  → 展示推荐结果，询问是否创建
+    │
+    ├─ 包含"创建"/"新建"/"建立" + 策略组相关
+    │  → smart_group_recommend.py（先推荐）
+    │  → query.py --create-group（再创建）
+    │  → 静默执行，只返回结果
+    │
+    ├─ 包含"保存"/"收藏"/"添加" + 单个策略
+    │  → query.py --add-strategy
+    │  → 需要 strategy_token 参数
+    │
+    └─ 其他查询需求（查币种/策略/时间列表等）
+       → query.py --list-xxx
+```
+
+### ⚠️ 常见错误判断
+
+| 用户说的 | ❌ 错误 | ✅ 正确 |
+|---------|--------|--------|
+| "帮我建个 DOGE/BCH 对冲策略组" | query.py | smart_group_recommend.py → query.py --create-group |
+| "推荐 BTC 策略" | query.py | smart_group_recommend.py |
+| "创建策略组：BTC+ETH" | query.py | smart_group_recommend.py → query.py --create-group |
+| "保存这个策略" | smart_group_recommend.py | query.py --add-strategy |
+| "查看有哪些币种" | smart_group_recommend.py | query.py --list-coins |
+
+---
+
+## 📋 意图识别表
+
+| 用户意图 | 关键词 | 第一步脚本 | 第二步脚本 | 说明 |
+|---------|--------|-----------|-----------|------|
+| **智能推荐** | 推荐/建议/帮我选 + 策略组 | smart_group_recommend.py | - | 展示结果 |
+| **创建策略组** | 创建/新建/建立 + 策略组 | smart_group_recommend.py | query.py --create-group | 静默执行 |
+| **保存单策略** | 保存/收藏/添加 + 策略 | query.py --add-strategy | - | 需要 token |
+| **查询列表** | 查看/列出/有哪些 | query.py --list-xxx | - | 查币种/策略/时间 |
+| 启动回测 | 启动/开始 + 回测 | start-backtest | - | 其他技能 |
+
+**关键判断规则**：
+1. 看到"策略组" + "创建/建/推荐" → **必须先用 smart_group_recommend.py**
+2. 看到"策略" (单数) + "保存/收藏" → 用 query.py --add-strategy
+3. 看到"查询/列出/有哪些" → 用 query.py --list-xxx
 
 ---
 
@@ -84,12 +123,99 @@ python3 skills/backtest-query/query.py --list-ai-times    # 时间ID
 
 ## 完整流程
 
-### 保存单个策略到策略库（静默执行）
-```bash
-# 收藏/保存策略
-python3 query.py --add-strategy --strategy-token "xxx"
+### 🎯 流程1：智能推荐（仅展示，不创建）
 
-# 返回结果
+**触发词**：推荐、建议、帮我选、看看
+
+```bash
+# 步骤1：调用推荐脚本
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "用户的完整输入" \
+  --coins "BTC,ETH" \
+  --strategy-types "11" \
+  --ai-time-ids "3"
+  # 其他参数按需添加
+
+# 步骤2：解析结果并展示
+展示前 3 个推荐组合的：
+- 策略列表
+- 收益率
+- 胜率
+- 回撤
+
+# 步骤3：询问用户
+"以上是推荐结果，是否创建策略组？"
+```
+
+**示例**：
+```
+用户："推荐 BTC 和 ETH 的对冲策略"
+Agent：调用 smart_group_recommend.py → 展示结果 → 等待用户确认
+```
+
+---
+
+### 🏗️ 流程2：创建策略组（推荐 + 创建，静默执行）
+
+**触发词**：创建、新建、建立、帮我建
+
+**⚠️ 关键**：必须先推荐，再创建（两步流程）
+
+```bash
+# 步骤1：智能推荐（与流程1相同）
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "用户的完整输入" \
+  --coins "DOGE,BCH" \
+  --strategy-types "11" \
+  --strategy-version-map '{"11": ["4.3"]}' \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
+  --ai-time-ids "3"
+
+# 步骤2：提取最优组合的 tokens（解析 JSON）
+result = json.loads(output)
+tokens = [s["strategy_token"] for s in result["combinations"][0]["strategies"]]
+
+# 步骤3：创建策略组
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "DOGE/BCH 风霆V4.3 对冲组合" \
+  --strategy-tokens "token1,token2,token3"
+
+# 步骤4：返回结果
+"✅ 已创建策略组：DOGE/BCH 风霆V4.3 对冲组合
+  - 包含 3 个策略
+  - 组合ID：12345
+  - 预期年化收益率：45.2%"
+```
+
+**示例**：
+```
+用户："帮我建个 DOGE 和 BCH 的对冲策略组"
+Agent：
+  1. 调用 smart_group_recommend.py（获取最优组合）
+  2. 调用 query.py --create-group（创建）
+  3. 返回 "✅ 已创建策略组：xxx"
+```
+
+**❌ 错误示例**（避免）：
+```
+用户："帮我建个 DOGE 和 BCH 的对冲策略组"
+Agent：直接调用 query.py --create-group  ← 错误！缺少推荐步骤
+```
+
+---
+
+### 💾 流程3：保存单个策略到策略库（静默执行）
+
+**触发词**：保存、收藏、添加 + 策略（单数）
+
+```bash
+# 步骤1：保存策略
+python3 skills/backtest-query/query.py \
+  --add-strategy \
+  --strategy-token "xxx"
+
+# 步骤2：返回结果
 "✅ 策略保存成功 (ID: 12345)"
 ```
 
@@ -102,71 +228,185 @@ python3 query.py --add-strategy --strategy-token "xxx"
 - 策略库：单个策略收藏
 - 策略组：多个策略组合
 
-### 创建策略组（静默执行）
+---
+
+### 📋 流程4：查询元数据（列表查询）
+
+**触发词**：查看、列出、有哪些
+
 ```bash
-# 步骤1：推荐
-python3 smart_group_recommend.py --query "..." --coins "BTC,ETH"
+# 查币种列表
+python3 skills/backtest-query/query.py --list-coins
 
-# 步骤2：提取 tokens
-tokens = [s["strategy_token"] for s in result["combinations"][0]["strategies"]]
+# 查策略列表
+python3 skills/backtest-query/query.py --list-strategies
 
-# 步骤3：创建
-python3 query.py --create-group --group-name "..." --strategy-tokens "..."
-
-# 步骤4：返回结果
-"✅ 已创建策略组：xxx
-  - 包含3个策略
-  - 组合ID：12345"
+# 查时间配置
+python3 skills/backtest-query/query.py --list-ai-times
 ```
 
-**决策**：
-- 用户说"创建" → 自动执行完整流程
-- 用户说"推荐" → 展示结果，问是否创建
+**使用场景**：
+- 用户说："有哪些币种可以回测？"
+- 用户说："查看所有策略类型"
+- 用户说："支持哪些时间范围？"
 
 ---
 
-## 典型案例
+## 📚 典型案例（正确 vs 错误对比）
 
-### 案例1：简单推荐
-```bash
-# 用户："推荐BTC策略"（未说时间）
---query "BTC策略" --coins "BTC"
-# ✅ 不传 --ai-time-ids
+### 案例1：创建对冲策略组 ⭐
+
+**用户输入**：
+```
+"帮我建个 DOGE 和 BCH 的对冲策略组"
 ```
 
-### 案例2：指定版本+时间
+**✅ 正确流程**：
 ```bash
-# 用户："风霆V4.3，最近30天，2个BTC多空"
+# 步骤1：智能推荐（必须先执行）
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "帮我建个 DOGE 和 BCH 的对冲策略组" \
+  --coins "DOGE,BCH" \
+  --strategy-direction-map '{"11": ["long", "short"]}'
+  # 用户未说时间、策略，不传参数
 
-# 1. 查时间ID
-python3 query.py --list-ai-times  # 得到 id=3
+# 步骤2：提取 tokens
+tokens = extract_tokens_from_result(result)
 
-# 2. 推荐
---query "风霆V4.3，最近30天" \
---coins "BTC" \
---strategy-types "11" \
---strategy-version-map '{"11": ["4.3"]}' \
---ai-time-ids "3" \
---strategy-direction-map '{"11": ["long", "short"]}' \
---top-per-group 2 \
---max-combinations 1
+# 步骤3：创建策略组
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "DOGE/BCH 对冲策略组" \
+  --strategy-tokens "token1,token2,token3"
+
+# 步骤4：返回结果
+"✅ 已创建策略组：DOGE/BCH 对冲策略组"
 ```
 
-### 案例3：对冲策略
+**❌ 错误流程（避免）**：
 ```bash
-# 用户："SOL和BTC的风霆V4.3对冲策略组"（未说时间）
-
-# 1. 查策略ID
-python3 query.py --list-strategies  # 得到 11
-
-# 2. 推荐
---query "SOL和BTC对冲" \
---coins "SOL,BTC" \
---strategy-types "11" \
---strategy-version-map '{"11": ["4.3"]}' \
---strategy-direction-map '{"11": ["long", "short"]}'
-# ✅ 不传 --ai-time-ids（用户没说）
+# 直接调用 query.py 创建（缺少推荐步骤）
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "DOGE/BCH 对冲策略组"
+  # ❌ 没有 strategy-tokens，无法创建
 ```
+
+---
+
+### 案例2：简单推荐（仅展示）
+
+**用户输入**：
+```
+"推荐 BTC 策略"
+```
+
+**✅ 正确流程**：
+```bash
+# 步骤1：智能推荐
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "推荐 BTC 策略" \
+  --coins "BTC"
+  # ✅ 用户未说时间、策略类型，不传参数
+
+# 步骤2：展示结果（不创建）
+展示前 3 个推荐组合
+
+# 步骤3：询问
+"以上是推荐结果，是否创建策略组？"
+```
+
+**❌ 错误流程**：
+```bash
+# 使用 query.py 查询数据（不是推荐）
+python3 skills/backtest-query/query.py --list-strategies
+# ❌ 这只能列出策略类型，无法智能推荐组合
+```
+
+---
+
+### 案例3：指定版本+时间创建
+
+**用户输入**：
+```
+"创建风霆 V4.3 BTC 多空策略组，用最近 30 天数据"
+```
+
+**✅ 正确流程**：
+```bash
+# 步骤1：查时间ID（如果缓存没有）
+python3 skills/backtest-query/query.py --list-ai-times
+# 得到：最近30天 → id=3
+
+# 步骤2：智能推荐
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "创建风霆 V4.3 BTC 多空策略组" \
+  --coins "BTC" \
+  --strategy-types "11" \
+  --strategy-version-map '{"11": ["4.3"]}' \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
+  --ai-time-ids "3"
+
+# 步骤3：提取 tokens 并创建
+python3 skills/backtest-query/query.py \
+  --create-group \
+  --group-name "BTC 风霆 V4.3 多空组合" \
+  --strategy-tokens "token1,token2"
+
+# 步骤4：返回
+"✅ 已创建策略组：BTC 风霆 V4.3 多空组合"
+```
+
+---
+
+### 案例4：对冲策略（未说时间）
+
+**用户输入**：
+```
+"SOL 和 BTC 的风霆 V4.3 对冲策略组"
+```
+
+**✅ 正确流程**：
+```bash
+# 步骤1：查策略ID（如果需要）
+python3 skills/backtest-query/query.py --list-strategies
+# 得到：风霆 → 11
+
+# 步骤2：智能推荐
+python3 skills/backtest-query/smart_group_recommend.py \
+  --query "SOL 和 BTC 的风霆 V4.3 对冲策略组" \
+  --coins "SOL,BTC" \
+  --strategy-types "11" \
+  --strategy-version-map '{"11": ["4.3"]}' \
+  --strategy-direction-map '{"11": ["long", "short"]}'
+  # ✅ 用户未说时间，不传 --ai-time-ids
+
+# 步骤3-4：创建策略组（同案例1）
+```
+
+---
+
+### 案例5：保存单个策略（区别于策略组）
+
+**用户输入**：
+```
+"保存这个策略"（假设上下文有 strategy_token）
+```
+
+**✅ 正确流程**：
+```bash
+# 直接使用 query.py 保存
+python3 skills/backtest-query/query.py \
+  --add-strategy \
+  --strategy-token "abc123..."
+
+# 返回
+"✅ 策略保存成功 (ID: 12345)"
+```
+
+**⚠️ 注意**：
+- 这是"保存策略"，不是"创建策略组"
+- 不需要调用 smart_group_recommend.py
 
 ---
 
