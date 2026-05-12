@@ -50,51 +50,7 @@
 | `--max-combinations` | `1` | 返回几个组合 |
 | `--top-per-group` | `3` | 每组取几个策略 |
 
-7. **意图分析流程**（推荐组合时使用）：
-   
-   ```python
-   # A. 数据验证（先查询列表，过滤无效参数）
-   if 多币种场景:
-       coins_result = exec("query.py --agent-id {aid} --list-coins")
-       valid_coins = [验证并过滤用户提到的币种]
-       if invalid: 提示用户
-   
-   if 用户说了时间:
-       time_result = exec("query.py --agent-id {aid} --list-ai-times")
-       time_id = [根据用户说的"30天"查找对应ID]
-   
-   if 用户说了策略类型:
-       strategies_result = exec("query.py --agent-id {aid} --list-strategies")
-       strategy_ids = [查找对应ID，如"风霆"=11]
-   
-   # B. 读取意图分析规则
-   read('skills/backtest-query/INTENT_ANALYSIS.md')
-   
-   # C. 生成 intent JSON
-   intent = {
-     "strategy_goal": "hedging",
-     "constraints": {"coins": valid_coins, "directions": ["long","short"]},
-     "preferences": {"diversity_priority": "direction"}
-   }
-   
-   # D. 调用脚本（只传用户说了的参数）
-   exec(f"python3 smart_group_recommend.py \
-     --agent-id {aid} \
-     --coins '{','.join(valid_coins)}' \
-     --ai-time-ids '{time_id}' \  # 用户说了才传
-     --intent-json '{json.dumps(intent)}' \
-     --output /tmp/result.json")
-   ```
-   
-   **关键点**：
-   - 用户说了时间 → 先查 ID，再传参数
-   - 用户说了策略类型 → 先查 ID，再传参数
-   - 用户未说 → 不传参数，让脚本自动推荐
-
-8. **数据不足处理**：
-   - ❌ 禁止自行修改查询条件
-   - ✅ 引导用户调整参数
-   - 场景：币种不存在、策略类型无数据、无法生成组合
+7. **意图分析**：推荐组合时读取 `INTENT_ANALYSIS.md`，生成 intent JSON 传递
 
 ---
 
@@ -102,173 +58,49 @@
 
 ## 典型案例
 
-### ✅ 案例1：创建策略组
+### 创建策略组（4步）
+1. 推荐（smart_group_recommend.py）
+2. 提取 tokens
+3. 创建（query.py --create-group）
+4. 返回结果
 
-**用户**："帮我建个 DOGE/BCH 对冲策略组"
+### 指定参数
+用户说 "最近30天" → 先 `--list-ai-times` 查ID → 传 `--ai-time-ids "16"`
 
-```bash
-# 步骤1：推荐
-python3 smart_group_recommend.py \
-  --agent-id {aid} \
-  --query "帮我建个 DOGE/BCH 对冲策略组" \
-  --coins "DOGE,BCH" \
-  --strategy-direction-map '{"11": ["long", "short"]}' \
-  --max-combinations 1 \
-  --top-per-group 3 \
-  --output /tmp/result.json
-
-# 步骤2：提取 tokens（解析 JSON）
-tokens = [s["strategy_token"] for s in result["combinations"][0]["strategies"]]
-
-# 步骤3：创建
-python3 query.py --agent-id {aid} --create-group \
-  --group-name "DOGE/BCH 对冲策略组" \
-  --strategy-tokens "token1,token2,token3"
-
-# 步骤4：返回
-"✅ 已创建策略组：DOGE/BCH 对冲策略组"
-```
-
-**❌ 错误**：直接用 `query.py --create-group`（没有 tokens）
-
----
-
-### ✅ 案例2：推荐
-
-**用户**："推荐 BTC 策略"
-
-```bash
-# 只推荐，不创建
-python3 smart_group_recommend.py \
-  --agent-id {aid} \
-  --query "推荐 BTC 策略" \
-  --coins "BTC" \
-  --max-combinations 1 \
-  --top-per-group 3 \
-  --output /tmp/result.json
-
-# 展示结果，询问："是否创建策略组？"
-```
-
----
-
-### ✅ 案例3：指定参数
-
-**用户**："创建风霆 V4.3 BTC 多空，最近 30 天"
-
-```bash
-# 步骤1：查时间ID
-python3 query.py --agent-id {aid} --list-ai-times  # → 30天=id:16
-
-# 步骤2：推荐
-python3 smart_group_recommend.py \
-  --agent-id {aid} \
-  --query "风霆 V4.3 BTC 多空" \
-  --coins "BTC" \
-  --strategy-types "11" \
-  --strategy-version-map '{"11": ["4.3"]}' \
-  --strategy-direction-map '{"11": ["long", "short"]}' \
-  --ai-time-ids "16" \
-  --max-combinations 1 \
-  --top-per-group 3 \
-  --output /tmp/result.json
-
-# 步骤3-4：创建（同案例1）
-```
-
----
-
-### ✅ 案例4：保存单策略
-
-**用户**："保存这个策略"
-
-```bash
-python3 query.py --agent-id {aid} --add-strategy --strategy-token "xxx"
-# 返回："✅ 策略保存成功"
-```
-
-**⚠️ 注意**：策略库 ≠ 策略组
+### 保存单策略
+`query.py --add-strategy --strategy-token "xxx"`（策略库 ≠ 策略组）
 
 ---
 
 ## 参数说明
 
-### smart_group_recommend.py 核心参数
+### smart_group_recommend.py
 ```bash
---agent-id "qc-xxx"              # [必需] 用于获取 token
---query "用户原话"               # [必需] 用户需求
---coins "BTC,ETH"                # [条件必需] 币种（先验证）
---strategy-types "11,7"          # [可选] 策略类型（11=风霆, 7=网格，不传=所有）
---strategy-version-map '{"11": ["4.3"]}'  # [可选] 版本过滤（不传=所有版本）
---strategy-direction-map '{"11": ["long", "short"]}'  # [可选] 方向/合约方向
---coin-pct-map '{"BTC": ["80"]}'    # [可选] 比例/网格比例（BTC: 10~120, 其他: 60~140）
---ai-time-ids "16"               # [可选] 时间ID（用户明确说时才传）
---intent-json '{...}'            # [推荐] 意图分析JSON
---max-combinations 1             # [默认=1] 返回几个组合
---top-per-group 3                # [默认=3] 每组取几个策略
---output /tmp/result.json        # [必需] 保存完整结果
+--agent-id "qc-xxx"              # 必需
+--query "用户原话"               # 必需
+--coins "BTC,ETH"                # 币种（先验证）
+--strategy-types "11,7"          # 策略类型（11=风霆, 7=网格）
+--strategy-version-map '{"11": ["4.3"]}'  # 版本过滤
+--strategy-direction-map '{"11": ["long", "short"]}'  # 方向
+--coin-pct-map '{"BTC": ["80"]}'    # 比例（BTC: 10~120, 其他: 60~140）
+--ai-time-ids "16"               # 时间ID（用户说了才传）
+--intent-json '{...}'            # 意图JSON（推荐传）
+--max-combinations 1             # 总是传
+--top-per-group 3                # 总是传
+--output /tmp/result.json        # 必需
 ```
 
-**参数传递原则**：
-1. 用户明确指定的参数（如"风霆 V4.3" → 传 `--strategy-version-map '{"11": ["4.3"]}'`）
-2. 总是传递的参数（`--max-combinations 1`, `--top-per-group 3`）
-3. 用户未说的参数 → **不传**（如用户未说时间 → 不传 `--ai-time-ids`）
-
-### query.py 常用命令
+### query.py
 ```bash
-# 查询
---list-coins           # 币种列表
---list-strategies      # 策略ID映射
---list-ai-times        # 时间配置
-
-# 创建
---create-group --group-name "xxx" --strategy-tokens "t1,t2,t3"
-
-# 保存
---add-strategy --strategy-token "xxx"
+--list-coins / --list-strategies / --list-ai-times  # 查询列表
+--create-group --group-name "xxx" --strategy-tokens "t1,t2,t3"  # 创建组
+--add-strategy --strategy-token "xxx"  # 保存单策略
 ```
 
----
+### 参数规则
+- 版本：用户说 "V4.3" → `{"11": ["4.3"]}`；未说 → 不传
+- 方向：`{"11": ["long", "short"]}`（所有币种统一）
+- 时间：用户说了才查ID再传，未说不传
 
-## 参数规则
-
-### 版本控制
-```json
-{
-  "11": ["4.3"],   // 只查 4.3
-  "11": null       // 查所有版本（用户未说）
-}
-```
-
-**规则**：
-- 用户说 "V4.3" → `["4.3"]`
-- 用户说 "V4.3 3倍杠杆" → `["4.3"]`（系统过滤）
-- 用户未说 → 不传参数
-
-### 方向控制
-```json
-{"11": ["long", "short"]}  // 所有币种统一
-```
-
-**限制**：不支持按币种细分
-
----
-
-## 性能参考
-
-| 条件 | 组合数 | 耗时 |
-|------|--------|------|
-| 1币×1策略×1时间 | ~50 | 3-5秒 |
-| 3币×2策略×1时间 | ~300 | 15-30秒 |
-| 30币×2策略×1时间 | ~3000 | 3-5分钟 |
-
----
-
-## 快速对比
-
-| 用户说的 | ❌ 错误 | ✅ 正确 |
-|---------|--------|--------|
-| 建DOGE/BCH对冲策略组 | query.py | smart→query |
-| 推荐BTC策略 | query.py | smart_group_recommend.py |
-| 保存策略 | smart | query.py --add-strategy |
-| 查币种 | smart | query.py --list-coins |
+### 性能参考
+1币×1策略×1时间 ~50组合 3-5秒 | 3币×2策略×1时间 ~300组合 15-30秒
