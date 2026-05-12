@@ -33,9 +33,9 @@
 | `unknown` | 无明确意图 | 交给算法自动推荐 |
 
 **diversity_priority 细分**：
-- `coin`: 多币种分散（相同策略类型，不同币种）
-- `direction`: 多空平衡（同币种，不同方向） - 通常用于 hedging
-- `strategy_type`: 多策略类型分散（相同币种，不同策略算法）
+- `coin`: 多币种分散（不同币种） - **对冲多币种时使用**
+- `direction`: 多空平衡（同币种，不同方向） - **对冲单币种时使用**
+- `strategy_type`: 多策略类型分散（不同策略算法）
 
 ---
 
@@ -50,8 +50,8 @@
 
 ## 📚 示例
 
-### 对冲型
-**输入**：`"BTC和SOL的对冲策略组"`
+### 对冲型（跨币种）
+**输入**：`"BTC和SOL的对冲策略组"` 或 `"DOGE与BCH对冲"`
 ```json
 {
   "strategy_goal": "hedging",
@@ -59,6 +59,24 @@
     "coins": ["BTC", "SOL"],
     "directions": ["long", "short"],
     "min_strategies": 4
+  },
+  "preferences": {
+    "risk_level": "balanced",
+    "diversity_priority": "coin"
+  }
+}
+```
+**⚠️ 关键**：多币种对冲时，`diversity_priority` 必须是 `"coin"`，确保不同币种对冲
+
+### 对冲型（同币种）
+**输入**：`"BTC多空对冲策略"`
+```json
+{
+  "strategy_goal": "hedging",
+  "constraints": {
+    "coins": ["BTC"],
+    "directions": ["long", "short"],
+    "min_strategies": 2
   },
   "preferences": {
     "risk_level": "balanced",

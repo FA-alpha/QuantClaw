@@ -1119,9 +1119,14 @@ class SmartGroupRecommender:
             strategy_goal = intent.get('strategy_goal')
             diversity_priority = intent.get('preferences', {}).get('diversity_priority')
             
+            # 将 diversity_priority 传递给 preferences
+            if diversity_priority:
+                preferences['diversity_priority'] = diversity_priority
+            
             if strategy_goal == 'hedging':
                 # 对冲模式：强制多空平衡
-                self.log(f"🎯 对冲模式：生成多空平衡组合")
+                hedge_type = "跨币种对冲" if diversity_priority == 'coin' else "同币种多空"
+                self.log(f"🎯 对冲模式：生成{hedge_type}组合")
                 all_combinations = self._generate_hedging_combinations(
                     all_selected, groups, group_by, max_combinations, preferences
                 )
@@ -1221,7 +1226,7 @@ class SmartGroupRecommender:
             groups: 分组结果
             group_by: 分组维度
             max_combinations: 最多生成几个组合
-            preferences: 偏好参数
+            preferences: 偏好参数（包含 diversity_priority）
         
         Returns:
             对冲组合列表
@@ -1248,12 +1253,29 @@ class SmartGroupRecommender:
             self.log(f"⚠️  缺少多空策略，降级为默认模式")
             return self._generate_default_combinations(all_selected, max_combinations, preferences)
         
+        # 检查是否需要跨币种对冲
+        diversity_priority = preferences.get('diversity_priority', 'direction')
+        require_different_coins = (diversity_priority == 'coin')
+        
+        if require_different_coins:
+            # 统计涉及的币种数量
+            all_coins = set(s['coin'] for s in all_selected)
+            if len(all_coins) > 1:
+                self.log(f"   跨币种对冲模式：强制不同币种 ({', '.join(all_coins)})")
+            else:
+                self.log(f"   ⚠️  只有单个币种，无法跨币种对冲，降级为同币种多空")
+                require_different_coins = False
+        
         # 生成对冲组合：从 long 和 short 中各取部分
         all_combinations = []
         
         # 策略1：简单对冲（1 long + 1 short）
         for l_strat in long_strategies[:3]:  # 取前3个 long
             for s_strat in short_strategies[:3]:  # 取前3个 short
+                # 跨币种对冲检查
+                if require_different_coins and l_strat['coin'] == s_strat['coin']:
+                    continue  # 跳过同币种组合
+                
                 combo_strategies = [l_strat, s_strat]
                 combos = recommend_combinations(
                     strategies=combo_strategies,
@@ -1262,7 +1284,7 @@ class SmartGroupRecommender:
                     preferences=preferences
                 )
                 for combo in combos:
-                    combo['style'] = '对冲型'
+                    combo['style'] = '跨币种对冲' if require_different_coins else '对冲型'
                     combo['hedging_type'] = 'simple'
                 all_combinations.extend(combos)
         
@@ -1271,6 +1293,12 @@ class SmartGroupRecommender:
             import itertools
             for long_pair in itertools.combinations(long_strategies[:5], 2):
                 for short_pair in itertools.combinations(short_strategies[:5], 2):
+                    # 跨币种对冲检查（至少有一个不同币种）
+                    if require_different_coins:
+                        all_coins_in_combo = set(s['coin'] for s in list(long_pair) + list(short_pair))
+                        if len(all_coins_in_combo) == 1:
+                            continue  # 跳过全部同币种的组合
+                    
                     combo_strategies = list(long_pair) + list(short_pair)
                     combos = recommend_combinations(
                         strategies=combo_strategies,
