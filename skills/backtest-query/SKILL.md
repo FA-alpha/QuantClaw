@@ -38,28 +38,45 @@
    
    **何时使用**：
    - 用户要求推荐或创建策略组合
-   - 涉及多币种、多空、对冲等复杂场景
+   - 涉及多币种、多空、对冲、多策略类型等复杂场景
    
    **如何使用**：
    ```python
-   # 步骤1：读取规则
+   # 步骤1：识别需要查询的列表
+   if 用户要求"多种策略类型" or "风霆和鲲鹏":
+       # 先查询可用策略类型
+       exec("python3 skills/backtest-query/query.py --agent-id {agent_id} --list-strategies")
+       # 从结果中提取策略类型ID
+   
+   # 步骤2：读取意图分析规则
    read('skills/backtest-query/INTENT_ANALYSIS.md')
    
-   # 步骤2：根据规则分析用户输入，生成 JSON
+   # 步骤3：根据规则分析用户输入，生成 JSON
    intent_json = {
-     "strategy_goal": "hedging",
-     "constraints": {"coins": ["BTC", "SOL"], "directions": ["long", "short"], "min_strategies": 4},
-     "preferences": {"risk_level": "balanced", "diversity_priority": "direction"}
+     "strategy_goal": "diversification",
+     "constraints": {
+       "coins": ["BTC"],
+       "strategy_types": ["11", "3"],  # 从查询结果获取
+       "min_strategies": 2
+     },
+     "preferences": {
+       "diversity_priority": "strategy_type"
+     }
    }
    
-   # 步骤3：调用脚本，传递 --intent-json
+   # 步骤4：调用脚本，传递策略类型和 intent
    exec(command=f"python3 skills/backtest-query/smart_group_recommend.py \
      --agent-id {agent_id} \
      --query '{user_query}' \
-     --coins 'BTC,SOL' \
+     --coins 'BTC' \
+     --strategy-types '11,3' \
      --intent-json '{json.dumps(intent_json)}' \
      --output /tmp/combo.json")
    ```
+   
+   **关键**：
+   - 如果 intent 中 `diversity_priority = "strategy_type"`，必须查询多个策略类型
+   - 否则只有1种类型，会自动降级为默认模式
    
    **降级**：如果分析不出来，省略 `--intent-json`，脚本会用默认逻辑
 
