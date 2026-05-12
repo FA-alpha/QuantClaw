@@ -102,37 +102,92 @@
 
 ## 典型案例
 
-### 案例：用户指定时间和版本
+### ✅ 案例1：创建策略组
 
-**用户**：`"创建风霆 V4.3 BTC 多空，最近 30 天"`
+**用户**："帮我建个 DOGE/BCH 对冲策略组"
 
-```python
-# 步骤1：查询时间ID（因为用户说了"最近30天"）
-time_result = exec("query.py --agent-id {aid} --list-ai-times")
-# 从结果中找到：30天 → id:16
-
-# 步骤2：推荐
-exec(f"smart_group_recommend.py \
+```bash
+# 步骤1：推荐
+python3 smart_group_recommend.py \
   --agent-id {aid} \
-  --query '创建风霆 V4.3 BTC 多空，最近 30 天' \
-  --coins 'BTC' \
-  --strategy-types '11' \
-  --strategy-version-map '{{\"11\": [\"4.3\"]}}' \
-  --strategy-direction-map '{{\"11\": [\"long\", \"short\"]}}' \
-  --ai-time-ids '16' \
+  --query "帮我建个 DOGE/BCH 对冲策略组" \
+  --coins "DOGE,BCH" \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
   --max-combinations 1 \
   --top-per-group 3 \
-  --output /tmp/result.json")
+  --output /tmp/result.json
 
-# 步骤3：提取 tokens → 创建策略组
-tokens = [从JSON提取]
-exec(f"query.py --agent-id {aid} --create-group ...")
+# 步骤2：提取 tokens（解析 JSON）
+tokens = [s["strategy_token"] for s in result["combinations"][0]["strategies"]]
+
+# 步骤3：创建
+python3 query.py --agent-id {aid} --create-group \
+  --group-name "DOGE/BCH 对冲策略组" \
+  --strategy-tokens "token1,token2,token3"
+
+# 步骤4：返回
+"✅ 已创建策略组：DOGE/BCH 对冲策略组"
 ```
 
-**关键点**：
-- 用户说了 "最近30天" → **必须先查 ID**，然后传 `--ai-time-ids "16"`
-- 用户说了 "V4.3" → 传 `--strategy-version-map`
-- 用户说了 "多空" → 传 `--strategy-direction-map`
+**❌ 错误**：直接用 `query.py --create-group`（没有 tokens）
+
+---
+
+### ✅ 案例2：推荐
+
+**用户**："推荐 BTC 策略"
+
+```bash
+# 只推荐，不创建
+python3 smart_group_recommend.py \
+  --agent-id {aid} \
+  --query "推荐 BTC 策略" \
+  --coins "BTC" \
+  --max-combinations 1 \
+  --top-per-group 3 \
+  --output /tmp/result.json
+
+# 展示结果，询问："是否创建策略组？"
+```
+
+---
+
+### ✅ 案例3：指定参数
+
+**用户**："创建风霆 V4.3 BTC 多空，最近 30 天"
+
+```bash
+# 步骤1：查时间ID
+python3 query.py --agent-id {aid} --list-ai-times  # → 30天=id:16
+
+# 步骤2：推荐
+python3 smart_group_recommend.py \
+  --agent-id {aid} \
+  --query "风霆 V4.3 BTC 多空" \
+  --coins "BTC" \
+  --strategy-types "11" \
+  --strategy-version-map '{"11": ["4.3"]}' \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
+  --ai-time-ids "16" \
+  --max-combinations 1 \
+  --top-per-group 3 \
+  --output /tmp/result.json
+
+# 步骤3-4：创建（同案例1）
+```
+
+---
+
+### ✅ 案例4：保存单策略
+
+**用户**："保存这个策略"
+
+```bash
+python3 query.py --agent-id {aid} --add-strategy --strategy-token "xxx"
+# 返回："✅ 策略保存成功"
+```
+
+**⚠️ 注意**：策略库 ≠ 策略组
 
 ---
 
@@ -161,12 +216,59 @@ exec(f"query.py --agent-id {aid} --create-group ...")
 
 ### query.py 常用命令
 ```bash
-# 查询列表
---list-coins                     # 可用币种
---list-strategies                # 策略类型
---list-ai-times                  # 时间范围
+# 查询
+--list-coins           # 币种列表
+--list-strategies      # 策略ID映射
+--list-ai-times        # 时间配置
 
-# 创建/保存
---create-group --group-name "..." --strategy-tokens "t1,t2,t3"
+# 创建
+--create-group --group-name "xxx" --strategy-tokens "t1,t2,t3"
+
+# 保存
 --add-strategy --strategy-token "xxx"
 ```
+
+---
+
+## 参数规则
+
+### 版本控制
+```json
+{
+  "11": ["4.3"],   // 只查 4.3
+  "11": null       // 查所有版本（用户未说）
+}
+```
+
+**规则**：
+- 用户说 "V4.3" → `["4.3"]`
+- 用户说 "V4.3 3倍杠杆" → `["4.3"]`（系统过滤）
+- 用户未说 → 不传参数
+
+### 方向控制
+```json
+{"11": ["long", "short"]}  // 所有币种统一
+```
+
+**限制**：不支持按币种细分
+
+---
+
+## 性能参考
+
+| 条件 | 组合数 | 耗时 |
+|------|--------|------|
+| 1币×1策略×1时间 | ~50 | 3-5秒 |
+| 3币×2策略×1时间 | ~300 | 15-30秒 |
+| 30币×2策略×1时间 | ~3000 | 3-5分钟 |
+
+---
+
+## 快速对比
+
+| 用户说的 | ❌ 错误 | ✅ 正确 |
+|---------|--------|--------|
+| 建DOGE/BCH对冲策略组 | query.py | smart→query |
+| 推荐BTC策略 | query.py | smart_group_recommend.py |
+| 保存策略 | smart | query.py --add-strategy |
+| 查币种 | smart | query.py --list-coins |
