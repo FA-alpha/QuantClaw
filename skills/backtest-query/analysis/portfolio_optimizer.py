@@ -190,6 +190,7 @@ def recommend_combinations(
                 {
                     'name': s.get('name'),
                     'coin': s.get('coin') or (s.get('strategy', [{}])[0].get('coin') if isinstance(s.get('strategy'), list) else None),
+                    'direction': s.get('direction'),  # 保留 direction 字段
                     'year_rate': float(s.get('year_rate', 0)),
                     'sharp_rate': float(s.get('sharp_rate', 0)),
                     'max_loss': float(s.get('max_loss', 0)),
