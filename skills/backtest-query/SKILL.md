@@ -22,14 +22,30 @@
 ## 执行规范
 
 1. **静默执行**：不显示命令，只返回结果
-2. **参数铁律**：用户说的才传，没说的不传
+2. **参数规则**：
+   - **用户明确说的**：严格按用户输入传递（币种、策略类型、版本、方向等）
+   - **用户未说但必需的**：传递合理默认值（见下方默认值表）
+   - **用户未说且可选的**：不传参数
 3. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
 4. **一次性执行**：推荐时总是加 `--output`，避免二次运行
 5. **数据验证优先**：
    - 多币种 → 先 `--list-coins` 验证币种存在
    - 多策略类型 → 先 `--list-strategies` 验证类型存在
    - 无效的参数不要传递，提示用户修改
-7. **意图分析流程**（推荐组合时使用）：
+
+### 默认值规则
+
+| 参数 | 默认值 | 触发条件 |
+|------|-------|---------|
+| `--ai-time-ids` | `"16"` | 用户未指定时间范围时（16 = 最近 30 天） |
+| `--strategy-types` | `"11"` | 用户未指定策略类型时（11 = 风霆 V4.3） |
+| `--max-combinations` | `1` | 总是传递（控制返回组合数） |
+| `--top-per-group` | `3` | 总是传递（每组取几个策略） |
+
+**时间 ID 映射**（通过 `query.py --list-ai-times` 查询）：
+- 7天=id:13，14天=id:14，30天=id:16，60天=id:17
+
+6. **意图分析流程**（推荐组合时使用）：
    
    ```python
    # A. 数据验证（先查询列表，过滤无效参数）
@@ -88,10 +104,15 @@ valid_coins = ["BTC", "SOL"]  # 验证通过
 read('INTENT_ANALYSIS.md')
 intent = {"strategy_goal": "hedging", "constraints": {"coins": ["BTC","SOL"], "directions": ["long","short"]}}
 
-# 3. 推荐（必须带 --output）
+# 3. 推荐（必须带 --output + 默认值）
 exec(f"smart_group_recommend.py --agent-id {aid} \
-  --query '...' --coins 'BTC,SOL' \
+  --query '建个 BTC 和 SOL 对冲策略组' \
+  --coins 'BTC,SOL' \
+  --strategy-types '11' \
   --strategy-direction-map '{{\"11\": [\"long\", \"short\"]}}' \
+  --ai-time-ids '16' \
+  --max-combinations 1 \
+  --top-per-group 3 \
   --intent-json '{json.dumps(intent)}' \
   --output /tmp/combo.json")
 
@@ -102,7 +123,52 @@ exec(f"query.py --agent-id {aid} --create-group --group-name '...' --strategy-to
 
 ---
 
-### 案例2：币种无效时
+### 案例2：用户未指定时间（应用默认值）
+
+**用户**：`"帮我构建一个适用于 2025 年震荡行情的 DOGE 与 BCH 风霆 V4.3 对冲策略组合"`
+
+```python
+# 1. 验证币种
+coins_data = exec("query.py --agent-id {aid} --list-coins")
+valid_coins = ["DOGE", "BCH"]  # 验证通过
+
+# 2. 生成 intent
+intent = {
+  "strategy_goal": "hedging",
+  "constraints": {
+    "coins": ["DOGE", "BCH"],
+    "strategy_types": ["11"],
+    "directions": ["long", "short"],
+    "min_strategies": 4
+  },
+  "preferences": {
+    "risk_level": "balanced",
+    "diversity_priority": "direction"
+  }
+}
+
+# 3. 调用（注意：用户未说时间，传默认值 ai-time-ids=16）
+exec(f"python3 smart_group_recommend.py \
+  --agent-id qc-10abf4cf5d2b \
+  --query '适用于2025年震荡行情的DOGE与BCH风霆V4.3对冲策略组合' \
+  --coins 'DOGE,BCH' \
+  --strategy-types '11' \
+  --strategy-version-map '{{\"11\": [\"4.3\"]}}' \
+  --strategy-direction-map '{{\"11\": [\"long\", \"short\"]}}' \
+  --ai-time-ids '16' \
+  --max-combinations 1 \
+  --top-per-group 3 \
+  --intent-json '{json.dumps(intent)}' \
+  --output /tmp/doge_bch_hedge.json")
+```
+
+**关键点**：
+- 用户说 "2025年震荡行情" = 暗示需要最近数据，传 `--ai-time-ids "16"`（30天）
+- 如果用户明确说 "最近 7 天"，则查询时间ID后传对应值
+
+---
+
+### 案例4：币种无效时
 
 **用户**：`"推荐 BTC 和 XYZ 策略"`
 
@@ -119,7 +185,7 @@ valid_coins = ["BTC"]
 
 ---
 
-### 案例3：查询列表
+### 案例5：查询列表
 
 **用户**：`"有哪些币种可以查"`
 
@@ -133,17 +199,24 @@ exec("query.py --agent-id {aid} --list-coins")
 
 ### smart_group_recommend.py 核心参数
 ```bash
---agent-id "qc-xxx"              # 必需，用于获取 token
---query "用户原话"               # 必需，用户需求
---coins "BTC,ETH"                # 币种（先验证）
---strategy-types "11,7"          # 策略类型（11=风霆, 7=网格）
---strategy-direction-map '{"11": ["long", "short"]}'  # 方向/合约方向
---coin-pct-map '{"BTC": ["80"]}'    # 比例/网格比例（BTC: 10~120, 其他: 60~140）
---ai-time-ids "16"               # 时间ID
---intent-json '{...}'            # 意图分析JSON（可选）
---max-combinations 3             # 返回几个组合
---output /tmp/result.json        # 必需，保存完整结果
+--agent-id "qc-xxx"              # [必需] 用于获取 token
+--query "用户原话"               # [必需] 用户需求
+--coins "BTC,ETH"                # [条件必需] 币种（先验证）
+--strategy-types "11,7"          # [默认=11] 策略类型（11=风霆, 7=网格）
+--strategy-version-map '{"11": ["4.3"]}'  # [可选] 版本过滤（不传=所有版本）
+--strategy-direction-map '{"11": ["long", "short"]}'  # [可选] 方向/合约方向
+--coin-pct-map '{"BTC": ["80"]}'    # [可选] 比例/网格比例（BTC: 10~120, 其他: 60~140）
+--ai-time-ids "16"               # [默认=16] 时间ID（16=30天）
+--intent-json '{...}'            # [推荐] 意图分析JSON
+--max-combinations 1             # [默认=1] 返回几个组合
+--top-per-group 3                # [默认=3] 每组取几个策略
+--output /tmp/result.json        # [必需] 保存完整结果
 ```
+
+**参数优先级**：
+1. 用户明确指定的参数（如"风霆 V4.3" → `--strategy-version-map '{"11": ["4.3"]}'`）
+2. 默认值（如用户未说时间 → `--ai-time-ids "16"`）
+3. 不传（如用户未说方向 → 不传 `--strategy-direction-map`）
 
 ### query.py 常用命令
 ```bash
