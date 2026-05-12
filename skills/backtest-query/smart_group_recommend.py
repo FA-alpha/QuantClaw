@@ -1175,18 +1175,26 @@ class SmartGroupRecommender:
         all_combinations = []
         n_strategies = len(all_selected)
         
-        # 根据策略数量决定组合大小
+        # 获取最少策略数量要求
+        min_strategies = preferences.get('min_strategies', 3)
+        
+        # 根据策略数量决定组合大小（尊重 min_strategies）
         if n_strategies >= 7:
             # 策略充足：生成3种大小（保守、稳健、激进）
-            sizes = [3, 5, 7]
+            sizes = [max(3, min_strategies), 5, 7]
         elif n_strategies >= 5:
             # 策略中等：生成2种大小
-            sizes = [3, 5]
+            sizes = [max(3, min_strategies), 5]
         elif n_strategies >= 3:
             # 策略较少：生成1-2种大小
-            sizes = [max(3, n_strategies - 1), n_strategies - 2] if n_strategies > 4 else [3]
+            sizes = [max(3, min_strategies, n_strategies - 1), n_strategies - 2] if n_strategies > 4 else [max(3, min_strategies)]
         else:
-            # 策略太少，无法生成多个组合
+            # 策略太少，使用全部
+            sizes = [n_strategies]
+        
+        # 过滤掉超出可用策略数的大小
+        sizes = [s for s in sizes if s <= n_strategies]
+        if not sizes:
             sizes = [n_strategies]
         
         # 每种大小生成部分组合
@@ -1396,7 +1404,10 @@ class SmartGroupRecommender:
                 type_groups[st] = []
             type_groups[st].append(strategy)
         
-        self.log(f"   策略类型数: {len(type_groups)}")
+        # 获取最少策略数量要求
+        min_strategies = preferences.get('min_strategies', 2)
+        
+        self.log(f"   策略类型数: {len(type_groups)}，最少策略数: {min_strategies}")
         for st, strategies in type_groups.items():
             self.log(f"   - 类型 {st}: {len(strategies)} 个策略")
         
@@ -1408,12 +1419,23 @@ class SmartGroupRecommender:
         all_combinations = []
         import itertools
         
-        # 策略1：每个类型取1个（最简单）
+        # 计算每个类型取几个策略
+        num_types = len(type_groups)
+        strategies_per_type = max(1, min_strategies // num_types)
+        
+        # 策略1：每个类型取 strategies_per_type 个
         type_list = list(type_groups.keys())
-        for combo_types in itertools.combinations(type_list, min(len(type_list), 3)):
-            # 从每个类型的 top 3 中选择
-            for type_strategies in itertools.product(*[type_groups[t][:3] for t in combo_types]):
+        for combo_types in itertools.combinations(type_list, min(len(type_list), max(2, num_types))):
+            # 从每个类型中取策略
+            type_strategy_lists = [type_groups[t][:3] for t in combo_types]
+            
+            for type_strategies in itertools.product(*type_strategy_lists):
                 combo_strategies = list(type_strategies)
+                
+                # 检查是否满足最少策略数量
+                if len(combo_strategies) < min_strategies:
+                    continue
+                
                 combos = recommend_combinations(
                     strategies=combo_strategies,
                     group_size=len(combo_strategies),
