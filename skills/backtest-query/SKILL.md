@@ -23,27 +23,36 @@
 
 1. **静默执行**：不显示命令，只返回结果
 2. **参数铁律**：用户说的才传，没说的不传
-3. **动态查询**（关键步骤）：
-   - 用户说了时间 → 必须先 `query.py --list-ai-times` 获取完整列表 → 从列表中匹配描述 → 提取 ID
-   - 用户说了策略名 → 必须先 `query.py --list-strategies` 获取完整列表 → 从列表中匹配名称 → 提取 ID
-   - ⚠️ 禁止猜测或硬编码 ID
+3. **动态查询**（关键步骤，三类数据都必须查询）：
+   
+   **币种**：
+   - 用户提到币种 → `query.py --list-coins` 获取列表 → 验证币种是否存在 → 传递有效币种
+   - 无效币种 → 提示用户，不要自行替换
+   
+   **策略类型**：
+   - 用户说了策略名（如"风霆"/"网格"）→ `query.py --list-strategies` 获取列表 → 匹配名称 → 提取 ID
+   - 用户说了策略ID（如"11"/"7"）→ 仍需查询列表验证ID有效
+   
+   **时间范围**：
+   - 用户说了时间（如"最近1年"）→ `query.py --list-ai-times` 获取列表 → 匹配描述 → 提取 ID
+   - 用户未说时间 → 不传参数
+   
+   **⚠️ 禁止猜测或硬编码任何 ID/币种**
+
 4. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
 5. **一次性执行**：推荐时总是加 `--output`，避免二次运行
 6. **意图分析必做**：每次调用 `smart_group_recommend.py` 前，必须先读取 `INTENT_ANALYSIS.md` 生成 intent JSON
-7. **数据验证优先**：
-   - 多币种 → 先 `--list-coins` 验证币种存在
-   - 多策略类型 → 先 `--list-strategies` 验证类型存在
-   - 无效的参数不要传递，提示用户修改
 
-### 参数传递规则
+### 参数传递规则（所有涉及列表的都必须先查询）
 
 | 用户说了 | 操作步骤 | 传递参数 |
 |---------|---------|---------|
-| "最近7天/30天/1年" 等时间 | 1. `query.py --list-ai-times` 获取列表<br>2. 从列表中查找匹配的描述<br>3. 提取对应的 ID | `--ai-time-ids "找到的ID"` |
-| "风霆" / "网格" 等策略名 | 1. `query.py --list-strategies` 获取列表<br>2. 从列表中匹配策略名<br>3. 提取对应的 ID | `--strategy-types "找到的ID"` |
-| "风霆 V4.3" | 直接传递 | `--strategy-types "11"` + `--strategy-version-map '{"11": ["4.3"]}'` |
-| "多空" / "对冲" | 直接传递 | `--strategy-direction-map '{"11": ["long", "short"]}'` |
-| "比例80" / "网格比例100" | 直接传递 | `--coin-pct-map '{"BTC": ["80"]}'` |
+| **币种**（如"BTC"/"狗狗币"） | 1. `query.py --list-coins` 获取列表<br>2. 验证币种在列表中<br>3. 提取有效币种 | `--coins "BTC,ETH"` |
+| **时间**（如"最近1年"） | 1. `query.py --list-ai-times` 获取列表<br>2. 匹配描述<br>3. 提取 ID | `--ai-time-ids "5"` |
+| **策略名**（如"风霆"） | 1. `query.py --list-strategies` 获取列表<br>2. 匹配名称<br>3. 提取 ID | `--strategy-types "11"` |
+| **策略版本**（如"V4.3"） | 直接传递（需要配合策略类型） | `--strategy-version-map '{"11": ["4.3"]}'` |
+| **方向**（如"多空"） | 直接传递 | `--strategy-direction-map '{"11": ["long", "short"]}'` |
+| **比例**（如"比例80"） | 直接传递 | `--coin-pct-map '{"BTC": ["80"]}'` |
 | 未说时间 | 无需操作 | **不传** `--ai-time-ids` |
 | 未说版本 | 无需操作 | **不传** `--strategy-version-map` |
 | 未说方向 | 无需操作 | **不传** `--strategy-direction-map` |
@@ -87,21 +96,40 @@ tokens = [从JSON提取]
 exec("query.py --agent-id {aid} --create-group --group-name '...' --strategy-tokens '{tokens}'")
 ```
 
-### 指定时间参数（重要）
+### 动态查询示例
+
+#### 1. 币种查询（必做）
+```python
+# 用户说："推荐 BTC 和狗狗币策略"
+coins_result = exec("query.py --agent-id {aid} --list-coins")
+# 返回：["BTC", "ETH", "DOGE", "SOL", ...]
+
+# 验证：BTC ✓, "狗狗币" → 匹配到 "DOGE" ✓
+valid_coins = ["BTC", "DOGE"]
+exec("smart_group_recommend.py --coins 'BTC,DOGE' ...")
+```
+
+#### 2. 策略类型查询
+```python
+# 用户说："推荐风霆策略"
+strategies_result = exec("query.py --agent-id {aid} --list-strategies")
+# 返回：[{"id": 11, "name": "风霆"}, {"id": 7, "name": "网格"}, ...]
+
+# 匹配 "风霆" → id: 11
+exec("smart_group_recommend.py --strategy-types '11' ...")
+```
+
+#### 3. 时间范围查询
 ```python
 # 用户说："最近1年"
-# 步骤1：获取时间列表
 time_result = exec("query.py --agent-id {aid} --list-ai-times")
-# 返回示例：[{"id": 1, "description": "最近7天"}, {"id": 5, "description": "最近1年"}, ...]
+# 返回：[{"id": 1, "description": "最近7天"}, {"id": 5, "description": "最近1年"}, ...]
 
-# 步骤2：从列表中查找匹配 "最近1年" 的项
-matched = [找到 description 包含 "1年" 的项]  # {"id": 5, "description": "最近1年"}
-
-# 步骤3：提取 ID 并传递
+# 匹配 "1年" → id: 5
 exec("smart_group_recommend.py --ai-time-ids '5' ...")
 ```
 
-**⚠️ 常见错误**：不查询列表直接传 ID，导致 ID 不匹配
+**⚠️ 常见错误**：不查询列表直接硬编码，导致参数不匹配
 
 ### 保存单策略
 `query.py --add-strategy --strategy-token "xxx"`（策略库 ≠ 策略组）
