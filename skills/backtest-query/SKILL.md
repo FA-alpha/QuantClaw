@@ -65,9 +65,12 @@
 ```python
 # 1. 查币种 → 验证
 # 2. 读 INTENT_ANALYSIS.md → 生成 intent JSON
-# 3. 推荐（max-combinations=1，因为创建模式）
-# 4. 提取 tokens
+# 3. 推荐（max-combinations=1，因为创建模式）→ 保存到 /tmp/result.json
+# 4. 读取结果并提取 tokens
+result = json.load(open('/tmp/result.json'))
+tokens = [s['strategy_token'] for s in result['combinations'][0]['strategies']]
 # 5. 创建策略组（自动执行）
+exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
 # 6. 返回："✅ 已创建"
 ```
 ⚠️ 关键：看到"创建/建/构建" → 必须执行第5步
@@ -109,6 +112,19 @@
 --top-per-group 3                # 总是传
 --output /tmp/result.json        # 必需
 ```
+
+**输出 JSON 格式**（保存到 --output 文件中）：
+```json
+{
+  "combinations": [...],        # 推荐的策略组合列表（核心数据）
+  "total_fetched": 100,         # 总获取策略数
+  "total_selected": 50,         # 筛选后策略数
+  "selected_strategies": [...], # 筛选后的策略列表
+  "query": {...},               # 查询参数
+  "criteria": {...}             # 筛选条件
+}
+```
+⚠️ 读取组合数据使用 `data['combinations']`
 
 ### query.py
 ```bash
