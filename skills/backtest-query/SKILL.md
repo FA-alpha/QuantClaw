@@ -54,8 +54,11 @@
 7. **意图分析**（必需）：读取 `INTENT_ANALYSIS.md` → 生成 intent JSON → 传 `--intent-json`
 8. **数据不足处理**：
    - ❌ 禁止自行修改查询条件（如自动替换币种）
-   - ✅ 提示用户调整参数
-   - 场景：币种无数据、无推荐组合、策略类型无效
+   - ✅ 读取返回的 `error` 和 `suggestions` 字段，引导用户调整
+   - 场景：
+     - 币种无数据
+     - 候选策略 < min_strategies
+     - 无法生成组合
 
 ---
 
@@ -69,19 +72,29 @@
 ```python
 # 1. 查币种 → 验证
 # 2. 读 INTENT_ANALYSIS.md → 生成 intent JSON
-# 3. 推荐（max-combinations=1，因为创建模式）→ 保存到 /tmp/result.json
-# 4. 读取结果并提取 tokens
+# 3. 推荐（max-combinations=1）→ 保存到 /tmp/result.json
+# 4. 读取结果并检查
 result = json.load(open('/tmp/result.json'))
-if not result.get('combinations'):
-    # 数据不足处理：提示用户，不要自行修改
-    回复："抱歉，未找到符合条件的策略组合。建议：1)放宽时间范围 2)尝试其他币种 3)不限制版本"
+
+# 检查是否有错误
+if 'error' in result:
+    # 数据不足：显示建议，引导用户调整
+    suggestions = result.get('suggestions', [])
+    回复：f"抱歉，{result['message']}。建议：\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(suggestions))
     return
+
+# 检查是否有组合
+if not result.get('combinations'):
+    回复："未找到符合条件的策略组合。建议放宽条件重试。"
+    return
+
+# 5. 提取 tokens → 创建策略组
 tokens = [s['strategy_token'] for s in result['combinations'][0]['strategies']]
-# 5. 创建策略组（自动执行）
 exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
+
 # 6. 返回："✅ 已创建"
 ```
-⚠️ 关键：看到"创建/建/构建" → 必须执行第5步
+⚠️ 关键：检查 error 字段，引导用户而不是自动修改参数
 
 ### 区分推荐与创建
 - 推荐："推荐BTC策略" → 展示结果，询问是否创建
@@ -122,17 +135,32 @@ exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
 ```
 
 **输出 JSON 格式**（保存到 --output 文件中）：
+
+成功时：
 ```json
 {
   "combinations": [...],        # 推荐的策略组合列表（核心数据）
-  "total_fetched": 100,         # 总获取策略数
-  "total_selected": 50,         # 筛选后策略数
-  "selected_strategies": [...], # 筛选后的策略列表
-  "query": {...},               # 查询参数
-  "criteria": {...}             # 筛选条件
+  "total_fetched": 100,
+  "total_selected": 50,
+  "selected_strategies": [...]
 }
 ```
-⚠️ 读取组合数据使用 `data['combinations']`
+
+数据不足时：
+```json
+{
+  "error": "候选策略不足",
+  "message": "找到 2 个策略，但需要至少 4 个",
+  "suggestions": [              # 引导用户的建议列表
+    "降低 min_strategies 要求（当前=4，建议≤2）",
+    "放宽时间范围",
+    "增加币种选择"
+  ],
+  "total_fetched": 10,
+  "total_selected": 2
+}
+```
+⚠️ 必须检查 `error` 字段，有错误时显示 `suggestions` 引导用户
 
 ### query.py
 ```bash

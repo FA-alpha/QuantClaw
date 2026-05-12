@@ -1033,14 +1033,26 @@ class SmartGroupRecommender:
         # 1. 推断分组策略（考虑 intent）
         self.log(f"\n📝 用户需求: {query_text}")
         
+        # 读取 min_strategies 约束（如果有）
+        min_strategies = 3  # 默认值
         if intent:
+            min_strategies = intent.get('constraints', {}).get('min_strategies', 3)
             # 使用 AI 意图调整分组策略
             group_by = self.infer_grouping_from_intent(intent)
             self.log(f"🎯 分组策略（基于意图 {intent.get('strategy_goal')}）: {' → '.join(group_by)}")
+            self.log(f"🎯 最少策略数要求: {min_strategies}")
         else:
             # 原有逻辑
             group_by = self.infer_grouping_strategy(query_text)
             self.log(f"🎯 分组策略: {' → '.join(group_by)}")
+        
+        # 动态调整 top_per_group（确保候选池足够）
+        original_top_per_group = top_per_group
+        if min_strategies > top_per_group * 2:
+            # 如果需要的策略数超过候选池可能的大小，自动扩展
+            top_per_group = (min_strategies + 1) // 2 + 1
+            self.log(f"📈 自动调整 top_per_group: {original_top_per_group} → {top_per_group}")
+            self.log(f"   原因: min_strategies={min_strategies} 需要更大的候选池")
         
         # 2. 使用预先查询的数据
         self.log(f"\n📊 使用预先查询的 {len(strategies)} 条策略")
@@ -1087,19 +1099,41 @@ class SmartGroupRecommender:
         
         self.log(f"\n✅ 总计选出 {len(all_selected)} 个优质策略")
         
-        # 5. 形成策略组合
+        # 5. 检查候选策略数量是否足够
         if len(all_selected) < 2:
             self.log("⚠️  策略数量不足，无法形成组合")
             return {
+                "error": "候选策略不足",
+                "message": "未找到足够的策略来生成组合",
+                "suggestions": [
+                    "放宽时间范围（如从30天改为1年）",
+                    "增加币种选择",
+                    "移除版本限制",
+                    "降低筛选条件（如胜率、回撤要求）"
+                ],
                 "query": query_text,
-                "group_by": group_by,
-                "groups": {str(k): len(v) for k, v in groups.items()},
                 "total_fetched": len(strategies),
                 "total_selected": len(all_selected),
-                "selected_strategies": all_selected,
-                "combinations": [],
-                "criteria": detail_criteria,
-                "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown']
+                "selected_strategies": all_selected
+            }
+        
+        # 检查是否满足 min_strategies 要求
+        if len(all_selected) < min_strategies:
+            self.log(f"⚠️  候选策略数量（{len(all_selected)}）< 最少策略数要求（{min_strategies}）")
+            return {
+                "error": "候选策略不足以满足 min_strategies 要求",
+                "message": f"找到 {len(all_selected)} 个策略，但需要至少 {min_strategies} 个",
+                "suggestions": [
+                    f"降低 min_strategies 要求（当前={min_strategies}，建议≤{len(all_selected)}）",
+                    "放宽时间范围",
+                    "增加币种选择",
+                    "移除版本或方向限制"
+                ],
+                "query": query_text,
+                "total_fetched": len(strategies),
+                "total_selected": len(all_selected),
+                "min_strategies_required": min_strategies,
+                "selected_strategies": all_selected
             }
         
         self.log(f"\n🎲 生成策略组合（最多 {max_combinations} 个）...")
