@@ -33,9 +33,10 @@
    - 用户说了策略名（如"风霆"/"网格"）→ `query.py --list-strategies` 获取列表 → 匹配名称 → 提取 ID
    - 用户说了策略ID（如"11"/"7"）→ 仍需查询列表验证ID有效
    
-   **时间范围**：
-   - 用户说了时间（如"最近1年"）→ `query.py --list-ai-times` 获取列表 → 匹配描述 → 提取 ID
-   - 用户未说时间 → 不传参数
+   **时间范围**（包括隐含时间需求）：
+   - 明确时间：用户说"最近1年"/"30天" → `query.py --list-ai-times` → 匹配描述 → 提取 ID
+   - 隐含时间：用户说"2025年行情"/"当前震荡" → 查询列表 → **默认选择最近30天**（id:16）
+   - 未说时间：完全未提及时间概念 → 不传参数
    
    **⚠️ 禁止猜测或硬编码任何 ID/币种**
 
@@ -48,7 +49,7 @@
 | 用户说了 | 操作步骤 | 传递参数 |
 |---------|---------|---------|
 | **币种**（如"BTC"/"狗狗币"） | 1. `query.py --list-coins` 获取列表<br>2. 验证币种在列表中<br>3. 提取有效币种 | `--coins "BTC,ETH"` |
-| **时间**（如"最近1年"） | 1. `query.py --list-ai-times` 获取列表<br>2. 匹配描述<br>3. 提取 ID | `--ai-time-ids "5"` |
+| **时间**（明确/隐含） | 1. `query.py --list-ai-times` 获取列表<br>2. 明确时间（如"最近1年"）→匹配描述<br>3. 隐含时间（如"2025年"）→默认最近30天 | `--ai-time-ids "找到的ID"` |
 | **策略名**（如"风霆"） | 1. `query.py --list-strategies` 获取列表<br>2. 匹配名称<br>3. 提取 ID | `--strategy-types "11"` |
 | **策略版本**（如"V4.3"） | 直接传递（需要配合策略类型） | `--strategy-version-map '{"11": ["4.3"]}'` |
 | **方向**（如"多空"） | 直接传递 | `--strategy-direction-map '{"11": ["long", "short"]}'` |
@@ -120,14 +121,30 @@ exec("smart_group_recommend.py --strategy-types '11' ...")
 ```
 
 #### 3. 时间范围查询
+
+**场景A：明确时间**
 ```python
 # 用户说："最近1年"
 time_result = exec("query.py --agent-id {aid} --list-ai-times")
-# 返回：[{"id": 1, "description": "最近7天"}, {"id": 5, "description": "最近1年"}, ...]
+# 返回：[{"id": 1, "description": "最近7天"}, {"id": 16, "description": "最近30天"}, {"id": 5, "description": "最近1年"}, ...]
 
 # 匹配 "1年" → id: 5
 exec("smart_group_recommend.py --ai-time-ids '5' ...")
 ```
+
+**场景B：隐含时间（重要）**
+```python
+# 用户说："适用于 2025年震荡行情 的策略"
+# 分析：提到"2025年"暗示需要最近数据，但未明确时间范围
+
+time_result = exec("query.py --agent-id {aid} --list-ai-times")
+# 从列表中找到 "最近30天" → id: 16（默认选择）
+exec("smart_group_recommend.py --ai-time-ids '16' ...")
+```
+
+**判断规则**：
+- 提到具体年份（如"2025年"）或市场状态（如"震荡"/"牛市"）→ **算隐含时间，传最近30天**
+- 完全未提及时间相关概念 → 不传参数
 
 **⚠️ 常见错误**：不查询列表直接硬编码，导致参数不匹配
 
