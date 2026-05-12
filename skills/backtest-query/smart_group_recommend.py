@@ -1612,6 +1612,12 @@ class SmartGroupRecommender:
         """打印推荐结果（简洁模式，节省token）"""
         if "error" in result:
             print(f"\n❌ 错误: {result['error']}")
+            if "message" in result:
+                print(f"   {result['message']}")
+            if "suggestions" in result:
+                print(f"\n💡 建议：")
+                for i, suggestion in enumerate(result['suggestions'], 1):
+                    print(f"   {i}. {suggestion}")
             return
         
         print("\n" + "="*70)
@@ -1749,20 +1755,55 @@ def main():
     try:
         validate_args(args)
     except ValidationError as e:
-        print(f"❌ 参数错误: {e}")
+        error_result = {
+            "error": "参数验证失败",
+            "message": str(e),
+            "suggestions": ["检查参数格式是否正确", "参考 SKILL.md 中的参数说明"]
+        }
+        if args.output:
+            with open(args.output, 'w') as f:
+                json.dump(error_result, f, ensure_ascii=False, indent=2)
+        else:
+            print(json.dumps(error_result, ensure_ascii=False, indent=2))
         sys.exit(1)
     
     # 4. 获取 token
     token = get_user_token(agent_id=args.agent_id)
     if not token:
-        print("❌ 无法自动获取 token，请使用 --agent-id 参数或在正确的 workspace 中执行")
+        error_result = {
+            "error": "无法获取用户 token",
+            "message": "未找到有效的用户认证",
+            "suggestions": [
+                "确保使用 --agent-id 参数",
+                "检查 ~/.quantclaw/users.json 是否存在",
+                "确认当前 agent 已注册"
+            ]
+        }
+        if args.output:
+            with open(args.output, 'w') as f:
+                json.dump(error_result, f, ensure_ascii=False, indent=2)
+        else:
+            print(json.dumps(error_result, ensure_ascii=False, indent=2))
         sys.exit(1)
     
     # 4. 生成查询组合
     try:
         combinations = build_query_combinations(args, token)
     except Exception as e:
-        print(f"❌ 生成查询组合失败: {e}")
+        error_result = {
+            "error": "生成查询组合失败",
+            "message": str(e),
+            "suggestions": [
+                "检查币种是否有效（使用 query.py --list-coins 查询）",
+                "检查策略类型是否有效（使用 query.py --list-strategies 查询）",
+                "检查时间ID是否有效（使用 query.py --list-ai-times 查询）"
+            ]
+        }
+        if args.output:
+            with open(args.output, 'w') as f:
+                json.dump(error_result, f, ensure_ascii=False, indent=2)
+        else:
+            print(json.dumps(error_result, ensure_ascii=False, indent=2))
         sys.exit(1)
     
     # 5. 构建基础查询参数
@@ -1785,13 +1826,38 @@ def main():
         )
         strategies = executor.batch_query_parallel(token, combinations, base_params)
     except Exception as e:
-        print(f"❌ 查询失败: {e}")
-        import traceback
-        traceback.print_exc()
+        error_result = {
+            "error": "批量查询失败",
+            "message": str(e),
+            "suggestions": [
+                "检查网络连接",
+                "降低并发参数（--max-workers 或 --max-qps）",
+                "检查 API 是否可用"
+            ]
+        }
+        if args.output:
+            with open(args.output, 'w') as f:
+                json.dump(error_result, f, ensure_ascii=False, indent=2)
+        else:
+            print(json.dumps(error_result, ensure_ascii=False, indent=2))
         sys.exit(1)
     
     if not strategies:
-        print("❌ 未查询到任何策略")
+        error_result = {
+            "error": "未查询到任何策略",
+            "message": "查询参数未匹配到任何策略数据",
+            "suggestions": [
+                "放宽查询条件（如增加币种、移除版本限制）",
+                "检查时间范围是否有数据",
+                "使用 query.py --list-coins 确认币种是否存在"
+            ],
+            "total_fetched": 0
+        }
+        if args.output:
+            with open(args.output, 'w') as f:
+                json.dump(error_result, f, ensure_ascii=False, indent=2)
+        else:
+            print(json.dumps(error_result, ensure_ascii=False, indent=2))
         sys.exit(1)
     
     # 7. 构建筛选条件
@@ -1813,7 +1879,20 @@ def main():
             intent=intent  # 传递 intent
         )
     except Exception as e:
-        print(f"❌ 推荐失败: {e}")
+        error_result = {
+            "error": "推荐流程失败",
+            "message": str(e),
+            "suggestions": [
+                "检查策略数据完整性",
+                "降低 min_strategies 要求",
+                "联系技术支持"
+            ]
+        }
+        if args.output:
+            with open(args.output, 'w') as f:
+                json.dump(error_result, f, ensure_ascii=False, indent=2)
+        else:
+            print(json.dumps(error_result, ensure_ascii=False, indent=2))
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -1836,10 +1915,19 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n⚠️  用户中断")
+        error_result = {
+            "error": "用户中断",
+            "message": "执行被用户中断"
+        }
+        print(json.dumps(error_result, ensure_ascii=False, indent=2))
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ 未预期错误: {e}")
+        error_result = {
+            "error": "未预期错误",
+            "message": str(e),
+            "suggestions": ["联系技术支持", "查看完整错误日志"]
+        }
+        print(json.dumps(error_result, ensure_ascii=False, indent=2))
         import traceback
         traceback.print_exc()
         sys.exit(1)
