@@ -546,14 +546,17 @@ class ParallelQueryExecutor:
             'version_extra': 'version_extra'
         }
         
-        # 准备查询参数列表
+        # 准备查询参数列表（同时保留原始 combo 用于后续同步）
         query_params_list = []
+        combo_metadata_list = []  # 保存每个查询的元数据
+        
         for combo in combinations:
             params = base_params.copy()
             for key, value in combo.items():
                 if value is not None and key in param_mapping:
                     params[param_mapping[key]] = value
             query_params_list.append(params)
+            combo_metadata_list.append(combo)  # 保存原始 combo
         
         # 并行执行
         completed = 0
@@ -565,13 +568,13 @@ class ParallelQueryExecutor:
                 print(f"   任务已提交，开始查询...", flush=True)
             
             futures = {
-                executor.submit(self._query_with_retry, query_backtest, params): (idx, params)
+                executor.submit(self._query_with_retry, query_backtest, params): idx
                 for idx, params in enumerate(query_params_list)
             }
             
             # 收集结果
             for future in as_completed(futures):
-                idx, params = futures[future]
+                idx = futures[future]
                 completed += 1
                 
                 try:
@@ -586,12 +589,18 @@ class ParallelQueryExecutor:
                     else:
                         strategies = result.get("info", [])
                         
-                        # 将查询参数中的 direction 同步到策略数据（如果 API 没有返回）
-                        search_direction = params.get('search_direction')
-                        if search_direction:
-                            for s in strategies:
-                                if not s.get('direction'):  # 只在为空时补充
-                                    s['direction'] = search_direction
+                        # 从对应的 combo metadata 中同步字段到策略数据
+                        combo_meta = combo_metadata_list[idx]
+                        direction = combo_meta.get('direction')
+                        coin = combo_meta.get('coin')
+                        
+                        for s in strategies:
+                            # 同步 direction（如果 API 没返回）
+                            if not s.get('direction') and direction:
+                                s['direction'] = direction
+                            # 同步 coin（确保一致）
+                            if not s.get('coin') and coin:
+                                s['coin'] = coin
                         
                         new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids)
                 
