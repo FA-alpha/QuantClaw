@@ -24,60 +24,34 @@
 
 1. **静默执行**：不显示命令，只返回结果
 2. **参数铁律**：用户说的才传，没说的不传
-3. **动态查询**（关键步骤，三类数据都必须查询）：
-   
-   **币种**：
-   - 用户提到币种 → `query.py --list-coins` 获取列表 → 验证币种是否存在 → 传递有效币种
-   - 无效币种 → 提示用户，不要自行替换
-   
-   **策略类型**：
-   - 用户说了策略名（如"风霆"/"网格"）→ `query.py --list-strategies` 获取列表 → 匹配名称 → 提取 ID
-   - 用户说了策略ID（如"11"/"7"）→ 仍需查询列表验证ID有效
-   
-   **时间范围**（包括隐含时间需求）：
-   - 明确时间：用户说"最近1年"/"30天" → `query.py --list-ai-times` → 匹配描述 → 提取 ID
-   - 隐含时间：用户说"2025年行情"/"当前震荡" → 查询列表 → 根据列表描述和用户上下文选择最合适的 ID
-   - 未说时间：完全未提及时间概念 → 不传参数
-   
-   **⚠️ 禁止猜测或硬编码任何 ID/币种**
+3. **动态查询**（三类数据必须先查询列表）：
+   - **币种**：`--list-coins` → 验证存在 → 传递
+   - **策略类型**：`--list-strategies` → 匹配名称/验证ID → 传递
+   - **时间**：`--list-ai-times` → 匹配描述（含隐含时间如"2025年"） → 传递
+   - **禁止**硬编码任何 ID/币种
 
 4. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
 5. **一次性执行**：推荐时总是加 `--output`，避免二次运行
 6. **意图分析必做**：每次调用 `smart_group_recommend.py` 前，必须先读取 `INTENT_ANALYSIS.md` 生成 intent JSON
 
-### 参数传递规则（所有涉及列表的都必须先查询）
+### 参数传递规则
 
-| 用户说了 | 操作步骤 | 传递参数 |
-|---------|---------|---------|
-| **币种**（如"BTC"/"狗狗币"） | 1. `query.py --list-coins` 获取列表<br>2. 验证币种在列表中<br>3. 提取有效币种 | `--coins "BTC,ETH"` |
-| **时间**（明确/隐含） | 1. `query.py --list-ai-times` 获取列表<br>2. 明确时间（如"最近1年"）→匹配描述<br>3. 隐含时间（如"2025年"）→根据列表和用户需求选择 | `--ai-time-ids "找到的ID"` |
-| **策略名**（如"风霆"） | 1. `query.py --list-strategies` 获取列表<br>2. 匹配名称<br>3. 提取 ID | `--strategy-types "11"` |
-| **策略版本**（如"V4.3"） | 直接传递（需要配合策略类型） | `--strategy-version-map '{"11": ["4.3"]}'` |
-| **方向**（如"多空"） | 直接传递 | `--strategy-direction-map '{"11": ["long", "short"]}'` |
-| **比例**（如"比例80"） | 直接传递 | `--coin-pct-map '{"BTC": ["80"]}'` |
-| **数量**（如"推荐3个"） | 提取数字 | `--max-combinations "3"` |
-| 未说时间 | 无需操作 | **不传** `--ai-time-ids` |
-| 未说版本 | 无需操作 | **不传** `--strategy-version-map` |
-| 未说方向 | 无需操作 | **不传** `--strategy-direction-map` |
-| 未说数量 | 根据模式决定 | 创建=1, 推荐=3 |
+| 用户说了 | 操作 | 传递参数 |
+|---------|-----|---------|
+| 币种/策略名/时间 | 查询列表 → 匹配/验证 | 传递找到的值 |
+| 版本/方向/比例 | 直接提取 | 直接传递 |
+| 数量（如"推荐3个"） | 提取数字 | `--max-combinations "3"` |
+| 未说（时间/版本/方向） | 无操作 | 不传参数 |
+| 未说数量 | 根据模式 | 创建=1, 推荐=3 |
 
 ### 总是传递的参数
 
-| 参数 | 默认值 | 说明 | 取值规则 |
-|------|-------|------|---------|
-| `--max-combinations` | 见右侧规则 | 返回几个组合 | **1. 用户明确说了数量（优先级最高）→ 使用用户的数量**<br>2. 创建模式 → `1`<br>3. 推荐模式 → `3` |
-| `--top-per-group` | `3` | 每组取几个策略 | 用户未说时使用默认值 |
+| 参数 | 取值规则（优先级从高到低） |
+|------|--------------------------|
+| `--max-combinations` | 1. 用户说了数量 → 用户的数量<br>2. 创建模式 → `1`<br>3. 推荐模式 → `3` |
+| `--top-per-group` | `3`（固定） |
 
-**取值规则详解**：
-- 用户说 "推荐3个策略组" → `--max-combinations 3`（遵循用户要求）
-- 用户说 "给我5个方案" → `--max-combinations 5`（遵循用户要求）
-- 用户说 "创建策略组"（未说数量）→ `--max-combinations 1`（创建默认只要最佳）
-- 用户说 "推荐策略"（未说数量）→ `--max-combinations 3`（推荐默认多个供选择）
-
-8. **意图分析流程**（必需步骤）：
-   - 使用 `smart_group_recommend.py` 时必须传递 `--intent-json`
-   - 步骤：读取 `skills/backtest-query/INTENT_ANALYSIS.md` → 分析用户意图 → 生成 JSON → 传递参数
-   - 不传会导致推荐结果不准确
+7. **意图分析**（必需）：读取 `INTENT_ANALYSIS.md` → 生成 intent JSON → 传 `--intent-json`
 
 ---
 
@@ -85,148 +59,33 @@
 
 ## 典型案例
 
-### 案例A：创建策略组（用户说"创建/建/构建"）
+### 案例：创建策略组（完整流程）
 
-**用户说**："帮我构建一个 DOGE 与 BCH 对冲策略组"
-
+用户："帮我构建 DOGE 与 BCH 对冲策略组"
 ```python
-# 识别意图：包含"构建" → 创建模式（必须执行完整流程）
-
-# 1. 查询币种（验证存在）
-coins_result = exec("query.py --agent-id {aid} --list-coins")
-valid_coins = ["DOGE", "BCH"]  # 验证通过
-
-# 2. 读取意图规则 → 生成 intent JSON
-read('skills/backtest-query/INTENT_ANALYSIS.md')
-intent = {
-  "strategy_goal": "hedging",
-  "constraints": {"coins": ["DOGE","BCH"], "directions": ["long","short"]},
-  "preferences": {"diversity_priority": "direction"}
-}
-
-# 3. 推荐（--max-combinations 1 确保只返回一个最佳组合）
-result = exec("smart_group_recommend.py --agent-id {aid} \
-  --coins 'DOGE,BCH' \
-  --strategy-direction-map '{\"11\": [\"long\", \"short\"]}' \
-  --max-combinations 1 \
-  --top-per-group 3 \
-  --intent-json '{json.dumps(intent)}' \
-  --output /tmp/result.json")
-
-# 4. 提取 tokens（从唯一的组合中）
-tokens = result["combinations"][0]["strategies"] 提取所有 strategy_token
-
-# 5. 创建策略组（自动执行，不询问）
-exec("query.py --agent-id {aid} --create-group \
-  --group-name 'DOGE与BCH对冲策略组' \
-  --strategy-tokens '{','.join(tokens)}'")
-
-# 6. 返回："✅ 已创建策略组：DOGE与BCH对冲策略组"
+# 1. 查币种 → 验证
+# 2. 读 INTENT_ANALYSIS.md → 生成 intent JSON
+# 3. 推荐（max-combinations=1，因为创建模式）
+# 4. 提取 tokens
+# 5. 创建策略组（自动执行）
+# 6. 返回："✅ 已创建"
 ```
+⚠️ 关键：看到"创建/建/构建" → 必须执行第5步
 
-**⚠️ 关键**：看到 "创建/建/构建" → 必须执行第5步，不要只展示推荐结果
-
----
-
-### 案例B：推荐策略组（用户说"推荐/建议"）
-
-**用户说**："推荐 BTC 策略"
-
-```python
-# 识别意图：包含"推荐" → 推荐模式（只展示，不自动创建）
-# 未说数量 → max-combinations=3（推荐模式默认值）
-
-# 1-4 步骤同上（查询、生成intent、推荐），传 --max-combinations 3
-
-# 5. 展示推荐结果，询问用户
-回复："为您推荐以下3个策略组合：[展示结果]。是否创建策略组？"
-
-# 如果用户确认 → 再执行 query.py --create-group
-```
-
----
-
-### 案例C：用户指定数量（优先级最高）
-
-**用户说**："推荐5个 BTC 和 ETH 的策略组"
-
-```python
-# 识别意图：包含"推荐" + 明确数量"5个"
-# 提取数量：5
-
-# 推荐时传递用户指定的数量
-result = exec("smart_group_recommend.py --agent-id {aid} \
-  --coins 'BTC,ETH' \
-  --max-combinations 5 \
-  --top-per-group 3 \
-  --intent-json '{json.dumps(intent)}' \
-  --output /tmp/result.json")
-
-# 展示5个推荐结果
-回复："为您推荐5个策略组合：[展示结果]"
-```
-
-**⚠️ 数量提取规则**：
-- "推荐3个" / "给我5个方案" / "要10个策略组" → 提取数字
-- 未说数量 → 根据模式使用默认值（创建=1, 推荐=3）
+### 区分推荐与创建
+- 推荐："推荐BTC策略" → 展示结果，询问是否创建
+- 创建："建个策略组" → 直接创建，不询问
+- 指定数量："推荐5个" → 传 max-combinations=5
 
 ### 动态查询示例
 
-#### 1. 币种查询（必做）
 ```python
-# 用户说："推荐 BTC 和狗狗币策略"
-coins_result = exec("query.py --agent-id {aid} --list-coins")
-# 返回：["BTC", "ETH", "DOGE", "SOL", ...]
-
-# 验证：BTC ✓, "狗狗币" → 匹配到 "DOGE" ✓
-valid_coins = ["BTC", "DOGE"]
-exec("smart_group_recommend.py --coins 'BTC,DOGE' ...")
+# 币种："BTC和狗狗币" → 查列表 → 验证 → 传 "BTC,DOGE"
+# 策略："风霆" → 查列表 → 匹配名称 → 传 id:11
+# 时间："最近1年" → 查列表 → 匹配描述 → 传 id:5
+# 隐含时间："2025年震荡" → 查列表 → 根据列表和需求选择合适ID
 ```
-
-#### 2. 策略类型查询
-```python
-# 用户说："推荐风霆策略"
-strategies_result = exec("query.py --agent-id {aid} --list-strategies")
-# 返回：[{"id": 11, "name": "风霆"}, {"id": 7, "name": "网格"}, ...]
-
-# 匹配 "风霆" → id: 11
-exec("smart_group_recommend.py --strategy-types '11' ...")
-```
-
-#### 3. 时间范围查询
-
-**场景A：明确时间**
-```python
-# 用户说："最近1年"
-time_result = exec("query.py --agent-id {aid} --list-ai-times")
-# 返回：[{"id": 1, "description": "最近7天"}, {"id": 16, "description": "最近30天"}, {"id": 5, "description": "最近1年"}, ...]
-
-# 匹配 "1年" → id: 5
-exec("smart_group_recommend.py --ai-time-ids '5' ...")
-```
-
-**场景B：隐含时间（重要）**
-```python
-# 用户说："适用于 2025年震荡行情 的策略"
-# 分析：提到"2025年"暗示需要最近数据
-
-# 步骤1：获取时间列表
-time_result = exec("query.py --agent-id {aid} --list-ai-times")
-# 返回：[{"id": 1, "description": "最近7天"}, {"id": 16, "description": "最近30天"}, ...]
-
-# 步骤2：分析
-# "2025年震荡" → 需要最近的数据来分析当前行情
-# 查看列表 → 选择"最近30天"较为合适（覆盖足够周期）
-
-# 步骤3：传递选定的ID
-exec("smart_group_recommend.py --ai-time-ids '16' ...")
-```
-
-**判断规则**：
-- 提到年份/市场状态 → **算隐含时间，必须查询列表并根据列表内容选择**
-- 完全未提及时间 → 不传参数
-
-**⚠️ 常见错误**：不查询列表直接硬编码，导致参数不匹配
+⚠️ 禁止硬编码，必须查询列表
 
 ### 保存单策略
 `query.py --add-strategy --strategy-token "xxx"`（策略库 ≠ 策略组）
