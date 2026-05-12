@@ -52,6 +52,10 @@
 | `--top-per-group` | `3`（固定） |
 
 7. **意图分析**（必需）：读取 `INTENT_ANALYSIS.md` → 生成 intent JSON → 传 `--intent-json`
+8. **数据不足处理**：
+   - ❌ 禁止自行修改查询条件（如自动替换币种）
+   - ✅ 提示用户调整参数
+   - 场景：币种无数据、无推荐组合、策略类型无效
 
 ---
 
@@ -68,6 +72,10 @@
 # 3. 推荐（max-combinations=1，因为创建模式）→ 保存到 /tmp/result.json
 # 4. 读取结果并提取 tokens
 result = json.load(open('/tmp/result.json'))
+if not result.get('combinations'):
+    # 数据不足处理：提示用户，不要自行修改
+    回复："抱歉，未找到符合条件的策略组合。建议：1)放宽时间范围 2)尝试其他币种 3)不限制版本"
+    return
 tokens = [s['strategy_token'] for s in result['combinations'][0]['strategies']]
 # 5. 创建策略组（自动执行）
 exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
