@@ -23,7 +23,10 @@
 
 1. **静默执行**：不显示命令，只返回结果
 2. **参数铁律**：用户说的才传，没说的不传
-3. **动态查询**：用户说了时间/策略类型时，先查ID（`--list-ai-times` / `--list-strategies`）
+3. **动态查询**（关键步骤）：
+   - 用户说了时间 → 必须先 `query.py --list-ai-times` 获取完整列表 → 从列表中匹配描述 → 提取 ID
+   - 用户说了策略名 → 必须先 `query.py --list-strategies` 获取完整列表 → 从列表中匹配名称 → 提取 ID
+   - ⚠️ 禁止猜测或硬编码 ID
 4. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
 5. **一次性执行**：推荐时总是加 `--output`，避免二次运行
 6. **意图分析必做**：每次调用 `smart_group_recommend.py` 前，必须先读取 `INTENT_ANALYSIS.md` 生成 intent JSON
@@ -36,7 +39,8 @@
 
 | 用户说了 | 操作步骤 | 传递参数 |
 |---------|---------|---------|
-| "最近30天" / "30天" | 1. `query.py --list-ai-times` 查询ID<br>2. 找到对应ID（如 30天=id:16） | `--ai-time-ids "16"` |
+| "最近7天/30天/1年" 等时间 | 1. `query.py --list-ai-times` 获取列表<br>2. 从列表中查找匹配的描述<br>3. 提取对应的 ID | `--ai-time-ids "找到的ID"` |
+| "风霆" / "网格" 等策略名 | 1. `query.py --list-strategies` 获取列表<br>2. 从列表中匹配策略名<br>3. 提取对应的 ID | `--strategy-types "找到的ID"` |
 | "风霆 V4.3" | 直接传递 | `--strategy-types "11"` + `--strategy-version-map '{"11": ["4.3"]}'` |
 | "多空" / "对冲" | 直接传递 | `--strategy-direction-map '{"11": ["long", "short"]}'` |
 | "比例80" / "网格比例100" | 直接传递 | `--coin-pct-map '{"BTC": ["80"]}'` |
@@ -83,8 +87,21 @@ tokens = [从JSON提取]
 exec("query.py --agent-id {aid} --create-group --group-name '...' --strategy-tokens '{tokens}'")
 ```
 
-### 指定参数
-用户说 "最近30天" → 先 `--list-ai-times` 查ID → 传 `--ai-time-ids "16"`
+### 指定时间参数（重要）
+```python
+# 用户说："最近1年"
+# 步骤1：获取时间列表
+time_result = exec("query.py --agent-id {aid} --list-ai-times")
+# 返回示例：[{"id": 1, "description": "最近7天"}, {"id": 5, "description": "最近1年"}, ...]
+
+# 步骤2：从列表中查找匹配 "最近1年" 的项
+matched = [找到 description 包含 "1年" 的项]  # {"id": 5, "description": "最近1年"}
+
+# 步骤3：提取 ID 并传递
+exec("smart_group_recommend.py --ai-time-ids '5' ...")
+```
+
+**⚠️ 常见错误**：不查询列表直接传 ID，导致 ID 不匹配
 
 ### 保存单策略
 `query.py --add-strategy --strategy-token "xxx"`（策略库 ≠ 策略组）
