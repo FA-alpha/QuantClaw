@@ -154,10 +154,10 @@ exec(f"query.py --agent-id {aid} --create-group ...")
 --output /tmp/result.json        # [必需] 保存完整结果
 ```
 
-**参数优先级**：
-1. 用户明确指定的参数（如"风霆 V4.3" → `--strategy-version-map '{"11": ["4.3"]}'`）
-2. 默认值（如用户未说时间 → `--ai-time-ids "16"`）
-3. 不传（如用户未说方向 → 不传 `--strategy-direction-map`）
+**参数传递原则**：
+1. 用户明确指定的参数（如"风霆 V4.3" → 传 `--strategy-version-map '{"11": ["4.3"]}'`）
+2. 总是传递的参数（`--max-combinations 1`, `--top-per-group 3`）
+3. 用户未说的参数 → **不传**（如用户未说时间 → 不传 `--ai-time-ids`）
 
 ### query.py 常用命令
 ```bash
