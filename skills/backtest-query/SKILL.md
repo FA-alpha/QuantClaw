@@ -22,33 +22,35 @@
 ## 执行规范
 
 1. **静默执行**：不显示命令，只返回结果
-2. **参数规则**：
-   - **用户明确说的**：严格按用户输入传递（币种、策略类型、版本、方向等）
-   - **用户未说但必需的**：传递合理默认值（见下方默认值表）
-   - **用户未说且可选的**：不传参数
-3. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
-4. **一次性执行**：推荐时总是加 `--output`，避免二次运行
-5. **数据验证优先**：
+2. **参数铁律**：用户说的才传，没说的不传
+3. **动态查询**：用户说了时间/策略类型时，先查ID（`--list-ai-times` / `--list-strategies`）
+4. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
+5. **一次性执行**：推荐时总是加 `--output`，避免二次运行
+6. **数据验证优先**：
    - 多币种 → 先 `--list-coins` 验证币种存在
    - 多策略类型 → 先 `--list-strategies` 验证类型存在
    - 无效的参数不要传递，提示用户修改
 
-### 默认值规则
+### 参数传递规则
 
-| 参数 | 默认值 | 触发条件 |
-|------|-------|---------|
-| `--max-combinations` | `1` | 总是传递（控制返回组合数） |
-| `--top-per-group` | `3` | 总是传递（每组取几个策略） |
+| 用户说了 | 操作步骤 | 传递参数 |
+|---------|---------|---------|
+| "最近30天" / "30天" | 1. `query.py --list-ai-times` 查询ID<br>2. 找到对应ID（如 30天=id:16） | `--ai-time-ids "16"` |
+| "风霆 V4.3" | 直接传递 | `--strategy-types "11"` + `--strategy-version-map '{"11": ["4.3"]}'` |
+| "多空" / "对冲" | 直接传递 | `--strategy-direction-map '{"11": ["long", "short"]}'` |
+| "比例80" / "网格比例100" | 直接传递 | `--coin-pct-map '{"BTC": ["80"]}'` |
+| 未说时间 | 无需操作 | **不传** `--ai-time-ids` |
+| 未说版本 | 无需操作 | **不传** `--strategy-version-map` |
+| 未说方向 | 无需操作 | **不传** `--strategy-direction-map` |
 
-**用户未说时不传**：
-- `--ai-time-ids`：让脚本使用所有时间范围
-- `--strategy-types`：让脚本推荐所有策略类型
+### 总是传递的参数
 
-**时间 ID 映射**（通过 `query.py --list-ai-times` 查询）：
-- 用户明确说 "最近7天" → 查询后传 id:13
-- 用户明确说 "最近30天" → 查询后传 id:16
+| 参数 | 默认值 | 说明 |
+|------|-------|------|
+| `--max-combinations` | `1` | 返回几个组合 |
+| `--top-per-group` | `3` | 每组取几个策略 |
 
-6. **意图分析流程**（推荐组合时使用）：
+7. **意图分析流程**（推荐组合时使用）：
    
    ```python
    # A. 数据验证（先查询列表，过滤无效参数）
@@ -57,33 +59,37 @@
        valid_coins = [验证并过滤用户提到的币种]
        if invalid: 提示用户
    
-   if 多策略类型场景:
+   if 用户说了时间:
+       time_result = exec("query.py --agent-id {aid} --list-ai-times")
+       time_id = [根据用户说的"30天"查找对应ID]
+   
+   if 用户说了策略类型:
        strategies_result = exec("query.py --agent-id {aid} --list-strategies")
-       valid_types = [验证并过滤]
-       if invalid: 提示用户
+       strategy_ids = [查找对应ID，如"风霆"=11]
    
    # B. 读取意图分析规则
    read('skills/backtest-query/INTENT_ANALYSIS.md')
    
    # C. 生成 intent JSON
    intent = {
-     "strategy_goal": "hedging",  # 根据规则判断
+     "strategy_goal": "hedging",
      "constraints": {"coins": valid_coins, "directions": ["long","short"]},
      "preferences": {"diversity_priority": "direction"}
    }
    
-   # D. 调用脚本（传递验证后的参数 + intent）
+   # D. 调用脚本（只传用户说了的参数）
    exec(f"python3 smart_group_recommend.py \
      --agent-id {aid} \
      --coins '{','.join(valid_coins)}' \
+     --ai-time-ids '{time_id}' \  # 用户说了才传
      --intent-json '{json.dumps(intent)}' \
      --output /tmp/result.json")
    ```
    
    **关键点**：
-   - 先验证数据存在，再生成 intent
-   - intent 中的 coins/strategy_types 应该是验证后的有效值
-   - 无效参数提示用户，不要自行替换
+   - 用户说了时间 → 先查 ID，再传参数
+   - 用户说了策略类型 → 先查 ID，再传参数
+   - 用户未说 → 不传参数，让脚本自动推荐
 
 8. **数据不足处理**：
    - ❌ 禁止自行修改查询条件
@@ -91,6 +97,42 @@
    - 场景：币种不存在、策略类型无数据、无法生成组合
 
 ---
+
+---
+
+## 典型案例
+
+### 案例：用户指定时间和版本
+
+**用户**：`"创建风霆 V4.3 BTC 多空，最近 30 天"`
+
+```python
+# 步骤1：查询时间ID（因为用户说了"最近30天"）
+time_result = exec("query.py --agent-id {aid} --list-ai-times")
+# 从结果中找到：30天 → id:16
+
+# 步骤2：推荐
+exec(f"smart_group_recommend.py \
+  --agent-id {aid} \
+  --query '创建风霆 V4.3 BTC 多空，最近 30 天' \
+  --coins 'BTC' \
+  --strategy-types '11' \
+  --strategy-version-map '{{\"11\": [\"4.3\"]}}' \
+  --strategy-direction-map '{{\"11\": [\"long\", \"short\"]}}' \
+  --ai-time-ids '16' \
+  --max-combinations 1 \
+  --top-per-group 3 \
+  --output /tmp/result.json")
+
+# 步骤3：提取 tokens → 创建策略组
+tokens = [从JSON提取]
+exec(f"query.py --agent-id {aid} --create-group ...")
+```
+
+**关键点**：
+- 用户说了 "最近30天" → **必须先查 ID**，然后传 `--ai-time-ids "16"`
+- 用户说了 "V4.3" → 传 `--strategy-version-map`
+- 用户说了 "多空" → 传 `--strategy-direction-map`
 
 ---
 
