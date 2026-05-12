@@ -447,15 +447,49 @@ def build_detail_criteria(args) -> Optional[Dict]:
 
 # ==================== 批量查询 ====================
 
-def deduplicate_and_add(strategies: List[Dict], all_strategies: List[Dict], seen_ids: Set[str]) -> int:
-    """去重并添加策略"""
+def deduplicate_and_add(strategies: List[Dict], all_strategies: List[Dict], seen_ids: Set[str], seen_strategies: Dict[str, Dict] = None) -> int:
+    """
+    去重并添加策略（改进：不覆盖已有的 direction）
+    
+    Args:
+        strategies: 新策略列表
+        all_strategies: 总策略列表
+        seen_ids: 已见 back_id 集合
+        seen_strategies: 已见策略字典 {back_id: strategy}
+    
+    Returns:
+        新增数量
+    """
     new_count = 0
+    
+    if seen_strategies is None:
+        # 兼容旧调用方式
+        for strategy in strategies:
+            back_id = strategy.get('back_id')
+            if back_id and back_id not in seen_ids:
+                seen_ids.add(back_id)
+                all_strategies.append(strategy)
+                new_count += 1
+        return new_count
+    
+    # 新逻辑：检查 direction 是否已存在
     for strategy in strategies:
         back_id = strategy.get('back_id')
-        if back_id and back_id not in seen_ids:
+        if not back_id:
+            continue
+        
+        if back_id not in seen_ids:
+            # 全新策略，直接添加
             seen_ids.add(back_id)
             all_strategies.append(strategy)
+            seen_strategies[back_id] = strategy
             new_count += 1
+        else:
+            # 已存在，保留第一次的 direction（不覆盖）
+            existing = seen_strategies.get(back_id)
+            if existing and not existing.get('direction') and strategy.get('direction'):
+                existing['direction'] = strategy.get('direction')
+    
     return new_count
 
 
@@ -527,6 +561,7 @@ class ParallelQueryExecutor:
         total = len(combinations)
         all_strategies = []
         seen_back_ids = set()
+        seen_strategies = {}  # {back_id: strategy} 用于更新已存在的策略
         failed_count = 0
         failed_details = []  # 记录失败详情
         
@@ -594,6 +629,10 @@ class ParallelQueryExecutor:
                         direction = combo_meta.get('direction')
                         coin = combo_meta.get('coin')
                         
+                        # DEBUG
+                        if os.environ.get('DEBUG_SYNC') == '1':
+                            print(f"[DEBUG] Combo #{idx}: direction={direction}, coin={coin}, strategies={len(strategies)}")
+                        
                         for s in strategies:
                             # 同步 direction（如果 API 没返回）
                             if not s.get('direction') and direction:
@@ -602,7 +641,7 @@ class ParallelQueryExecutor:
                             if not s.get('coin') and coin:
                                 s['coin'] = coin
                         
-                        new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids)
+                        new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids, seen_strategies)
                 
                 except Exception as e:
                     failed_count += 1
