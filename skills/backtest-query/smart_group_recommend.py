@@ -733,7 +733,23 @@ class SmartGroupRecommender:
         for strategy in strategies:
             key_parts = []
             for dim in group_by:
-                value = strategy.get(dim, 'UNKNOWN')
+                value = strategy.get(dim)
+                
+                # 特殊处理：如果 direction 为空，从策略名称提取
+                if dim == 'direction' and not value:
+                    name = strategy.get('name', '')
+                    if '做多' in name or '-long-' in name.lower():
+                        value = 'long'
+                    elif '做空' in name or '-short-' in name.lower():
+                        value = 'short'
+                    else:
+                        value = 'UNKNOWN'
+                    # 同步更新到策略数据（方便后续使用）
+                    strategy['direction'] = value
+                
+                if value is None:
+                    value = 'UNKNOWN'
+                
                 key_parts.append(str(value))
             
             key = tuple(key_parts)
