@@ -28,9 +28,14 @@
 | strategy_goal | 触发条件 | 说明 |
 |--------------|---------|------|
 | `hedging` | 包含"对冲"/"多空" | 多空配合降低风险 |
-| `diversification` | 包含"分散"/"互补" + 单一方向 | 同方向多币种 |
+| `diversification` | 包含"分散"/"互补" + 单一方向/多币种/多策略类型 | 同类分散降低单一风险 |
 | `trend` | 只提到一个方向，无分散意图 | 单一方向 |
 | `unknown` | 无明确意图 | 交给算法自动推荐 |
+
+**diversity_priority 细分**：
+- `coin`: 多币种分散（相同策略类型，不同币种）
+- `direction`: 多空平衡（同币种，不同方向） - 通常用于 hedging
+- `strategy_type`: 多策略类型分散（相同币种，不同策略算法）
 
 ---
 
@@ -88,6 +93,24 @@
     "coins": ["BTC"],
     "directions": null,
     "min_strategies": 3
+  },
+  "preferences": {
+    "risk_level": "balanced",
+    "diversity_priority": "strategy_type"
+  }
+}
+```
+
+### 策略类型分散
+**输入**：`"推荐BTC的风霆和鲲鹏组合"`
+```json
+{
+  "strategy_goal": "diversification",
+  "constraints": {
+    "coins": ["BTC"],
+    "strategy_types": ["11", "3"],
+    "directions": null,
+    "min_strategies": 2
   },
   "preferences": {
     "risk_level": "balanced",

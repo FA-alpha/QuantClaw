@@ -1115,22 +1115,33 @@ class SmartGroupRecommender:
         all_combinations = []
         n_strategies = len(all_selected)
         
-        if intent and intent.get('strategy_goal') == 'hedging':
-            # 对冲模式：强制多空平衡
-            self.log(f"🎯 对冲模式：生成多空平衡组合")
-            all_combinations = self._generate_hedging_combinations(
-                all_selected, 
-                groups, 
-                group_by,
-                max_combinations,
-                preferences
-            )
+        if intent:
+            strategy_goal = intent.get('strategy_goal')
+            diversity_priority = intent.get('preferences', {}).get('diversity_priority')
+            
+            if strategy_goal == 'hedging':
+                # 对冲模式：强制多空平衡
+                self.log(f"🎯 对冲模式：生成多空平衡组合")
+                all_combinations = self._generate_hedging_combinations(
+                    all_selected, groups, group_by, max_combinations, preferences
+                )
+            
+            elif strategy_goal == 'diversification' and diversity_priority == 'strategy_type':
+                # 策略类型分散模式
+                self.log(f"🎯 策略类型分散模式：生成多策略组合")
+                all_combinations = self._generate_strategy_type_combinations(
+                    all_selected, groups, group_by, max_combinations, preferences
+                )
+            
+            else:
+                # 其他意图：使用默认模式
+                all_combinations = self._generate_default_combinations(
+                    all_selected, max_combinations, preferences
+                )
         else:
             # 默认模式：使用原有逻辑（向后兼容）
             all_combinations = self._generate_default_combinations(
-                all_selected,
-                max_combinations,
-                preferences
+                all_selected, max_combinations, preferences
             )
         
         # 按评分排序，取前 N 个
@@ -1277,6 +1288,73 @@ class SmartGroupRecommender:
                         break
                 if len(all_combinations) >= max_combinations * 3:
                     break
+        
+        return all_combinations
+    
+    def _generate_strategy_type_combinations(
+        self,
+        all_selected: List[Dict],
+        groups: Dict,
+        group_by: List[str],
+        max_combinations: int,
+        preferences: Dict
+    ) -> List[Dict]:
+        """
+        策略类型分散模式：从不同策略类型中各取策略
+        
+        Args:
+            all_selected: 所有筛选后的策略
+            groups: 分组结果
+            group_by: 分组维度
+            max_combinations: 最多生成几个组合
+            preferences: 偏好参数
+        
+        Returns:
+            策略类型分散组合列表
+        """
+        # 按 strategy_type 分组
+        type_groups = {}
+        for strategy in all_selected:
+            st = strategy.get('strategy_type', 'UNKNOWN')
+            if st not in type_groups:
+                type_groups[st] = []
+            type_groups[st].append(strategy)
+        
+        self.log(f"   策略类型数: {len(type_groups)}")
+        for st, strategies in type_groups.items():
+            self.log(f"   - 类型 {st}: {len(strategies)} 个策略")
+        
+        if len(type_groups) < 2:
+            self.log(f"⚠️  策略类型不足2种，降级为默认模式")
+            return self._generate_default_combinations(all_selected, max_combinations, preferences)
+        
+        # 生成组合：从每个类型中取策略
+        all_combinations = []
+        import itertools
+        
+        # 策略1：每个类型取1个（最简单）
+        type_list = list(type_groups.keys())
+        for combo_types in itertools.combinations(type_list, min(len(type_list), 3)):
+            # 从每个类型的 top 3 中选择
+            for type_strategies in itertools.product(*[type_groups[t][:3] for t in combo_types]):
+                combo_strategies = list(type_strategies)
+                combos = recommend_combinations(
+                    strategies=combo_strategies,
+                    group_size=len(combo_strategies),
+                    top_n=1,
+                    preferences=preferences
+                )
+                for combo in combos:
+                    combo['style'] = '多策略型'
+                    combo['diversity_type'] = 'strategy_type'
+                    combo['strategy_types'] = list(combo_types)
+                all_combinations.extend(combos)
+                
+                # 限制组合数量
+                if len(all_combinations) >= max_combinations * 5:
+                    break
+            if len(all_combinations) >= max_combinations * 5:
+                break
         
         return all_combinations
     
