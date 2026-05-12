@@ -1151,7 +1151,9 @@ class SmartGroupRecommender:
         
         if intent:
             strategy_goal = intent.get('strategy_goal')
-            diversity_priority = intent.get('preferences', {}).get('diversity_priority')
+            constraints = intent.get('constraints', {})
+            preferences_intent = intent.get('preferences', {})
+            diversity_priority = preferences_intent.get('diversity_priority')
             
             # 将 diversity_priority 和 min_strategies 传递给 preferences
             if diversity_priority:
