@@ -730,32 +730,43 @@ class SmartGroupRecommender:
         """
         groups = {}
         
+        # 判断是否需要提取方向（只有分组维度包含 direction 时才提取）
+        need_direction = 'direction' in group_by
+        
         for strategy in strategies:
             key_parts = []
             for dim in group_by:
                 value = strategy.get(dim)
                 
-                # 特殊处理：如果 direction 为空，从策略名称提取
-                if dim == 'direction' and not value:
+                # 特殊处理：如果需要按 direction 分组，且 direction 为空，尝试从名称提取
+                if dim == 'direction' and not value and need_direction:
                     name = strategy.get('name', '')
                     if '做多' in name or '-long-' in name.lower():
                         value = 'long'
                     elif '做空' in name or '-short-' in name.lower():
                         value = 'short'
                     else:
-                        value = 'UNKNOWN'
-                    # 同步更新到策略数据（方便后续使用）
-                    strategy['direction'] = value
+                        # 策略名称中没有方向信息，可能是不支持方向的策略类型
+                        value = None  # 保持为 None，不强制分组
+                    
+                    # 如果成功提取到方向，同步更新到策略数据
+                    if value:
+                        strategy['direction'] = value
                 
+                # 如果值为 None 且需要分组，跳过该策略（不强制归入 UNKNOWN）
                 if value is None:
+                    # 对于必须的分组维度，如果值为空则跳过
+                    if dim in ['direction', 'coin']:  # 关键维度
+                        break  # 跳过这个策略
                     value = 'UNKNOWN'
                 
                 key_parts.append(str(value))
-            
-            key = tuple(key_parts)
-            if key not in groups:
-                groups[key] = []
-            groups[key].append(strategy)
+            else:
+                # 只有成功构造完整 key 才加入分组
+                key = tuple(key_parts)
+                if key not in groups:
+                    groups[key] = []
+                groups[key].append(strategy)
         
         return groups
     
