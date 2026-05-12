@@ -565,13 +565,13 @@ class ParallelQueryExecutor:
                 print(f"   任务已提交，开始查询...", flush=True)
             
             futures = {
-                executor.submit(self._query_with_retry, query_backtest, params): idx
+                executor.submit(self._query_with_retry, query_backtest, params): (idx, params)
                 for idx, params in enumerate(query_params_list)
             }
             
             # 收集结果
             for future in as_completed(futures):
-                idx = futures[future]
+                idx, params = futures[future]
                 completed += 1
                 
                 try:
@@ -585,6 +585,14 @@ class ParallelQueryExecutor:
                             print(f"⚠️  组合 #{idx+1} 查询失败: {result['error']}")
                     else:
                         strategies = result.get("info", [])
+                        
+                        # 将查询参数中的 direction 同步到策略数据（如果 API 没有返回）
+                        search_direction = params.get('search_direction')
+                        if search_direction:
+                            for s in strategies:
+                                if not s.get('direction'):  # 只在为空时补充
+                                    s['direction'] = search_direction
+                        
                         new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids)
                 
                 except Exception as e:
@@ -730,32 +738,13 @@ class SmartGroupRecommender:
         """
         groups = {}
         
-        # 判断是否需要提取方向（只有分组维度包含 direction 时才提取）
-        need_direction = 'direction' in group_by
-        
         for strategy in strategies:
             key_parts = []
             for dim in group_by:
                 value = strategy.get(dim)
                 
-                # 特殊处理：如果需要按 direction 分组，且 direction 为空，尝试从名称提取
-                if dim == 'direction' and not value and need_direction:
-                    name = strategy.get('name', '')
-                    if '做多' in name or '-long-' in name.lower():
-                        value = 'long'
-                    elif '做空' in name or '-short-' in name.lower():
-                        value = 'short'
-                    else:
-                        # 策略名称中没有方向信息，可能是不支持方向的策略类型
-                        value = None  # 保持为 None，不强制分组
-                    
-                    # 如果成功提取到方向，同步更新到策略数据
-                    if value:
-                        strategy['direction'] = value
-                
-                # 如果值为 None 且需要分组，跳过该策略（不强制归入 UNKNOWN）
+                # 如果关键维度为空，跳过该策略（不强制归类）
                 if value is None:
-                    # 对于必须的分组维度，如果值为空则跳过
                     if dim in ['direction', 'coin']:  # 关键维度
                         break  # 跳过这个策略
                     value = 'UNKNOWN'
