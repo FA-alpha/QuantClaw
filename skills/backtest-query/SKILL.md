@@ -26,7 +26,8 @@
 3. **动态查询**：用户说了时间/策略类型时，先查ID（`--list-ai-times` / `--list-strategies`）
 4. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
 5. **一次性执行**：推荐时总是加 `--output`，避免二次运行
-6. **数据验证优先**：
+6. **意图分析必做**：每次调用 `smart_group_recommend.py` 前，必须先读取 `INTENT_ANALYSIS.md` 生成 intent JSON
+7. **数据验证优先**：
    - 多币种 → 先 `--list-coins` 验证币种存在
    - 多策略类型 → 先 `--list-strategies` 验证类型存在
    - 无效的参数不要传递，提示用户修改
@@ -50,7 +51,10 @@
 | `--max-combinations` | `1` | 返回几个组合 |
 | `--top-per-group` | `3` | 每组取几个策略 |
 
-7. **意图分析**：推荐组合时读取 `INTENT_ANALYSIS.md`，生成 intent JSON 传递
+8. **意图分析流程**（必需步骤）：
+   - 使用 `smart_group_recommend.py` 时必须传递 `--intent-json`
+   - 步骤：读取 `skills/backtest-query/INTENT_ANALYSIS.md` → 分析用户意图 → 生成 JSON → 传递参数
+   - 不传会导致推荐结果不准确
 
 ---
 
@@ -58,11 +62,26 @@
 
 ## 典型案例
 
-### 创建策略组（4步）
-1. 推荐（smart_group_recommend.py）
-2. 提取 tokens
-3. 创建（query.py --create-group）
-4. 返回结果
+### 创建策略组（完整流程）
+```python
+# 1. 读取意图分析规则
+read('skills/backtest-query/INTENT_ANALYSIS.md')
+
+# 2. 生成 intent JSON（根据用户需求）
+intent = {
+  "strategy_goal": "hedging",  # 对冲/分散/趋势/未知
+  "constraints": {"coins": ["BTC","SOL"], "directions": ["long","short"]},
+  "preferences": {"risk_level": "balanced", "diversity_priority": "direction"}
+}
+
+# 3. 推荐（必须传 --intent-json）
+exec("smart_group_recommend.py --agent-id {aid} --coins 'BTC,SOL' \
+  --intent-json '{json.dumps(intent)}' --output /tmp/result.json")
+
+# 4. 提取 tokens → 创建策略组
+tokens = [从JSON提取]
+exec("query.py --agent-id {aid} --create-group --group-name '...' --strategy-tokens '{tokens}'")
+```
 
 ### 指定参数
 用户说 "最近30天" → 先 `--list-ai-times` 查ID → 传 `--ai-time-ids "16"`
@@ -84,7 +103,7 @@
 --strategy-direction-map '{"11": ["long", "short"]}'  # 方向
 --coin-pct-map '{"BTC": ["80"]}'    # 比例（BTC: 10~120, 其他: 60~140）
 --ai-time-ids "16"               # 时间ID（用户说了才传）
---intent-json '{...}'            # 意图JSON（推荐传）
+--intent-json '{...}'            # 意图JSON（必传，从 INTENT_ANALYSIS.md 生成）
 --max-combinations 1             # 总是传
 --top-per-group 3                # 总是传
 --output /tmp/result.json        # 必需
