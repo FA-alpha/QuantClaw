@@ -1111,7 +1111,47 @@ class SmartGroupRecommender:
                 preferences['max_drawdown'] = detail_criteria['max_recent_drawdown']
             # 可以根据其他筛选条件动态调整偏好
         
-        # 生成多种大小的组合（避免只有1个组合的情况）
+        # 分支：根据 intent 决定组合生成方式
+        all_combinations = []
+        n_strategies = len(all_selected)
+        
+        if intent and intent.get('strategy_goal') == 'hedging':
+            # 对冲模式：强制多空平衡
+            self.log(f"🎯 对冲模式：生成多空平衡组合")
+            all_combinations = self._generate_hedging_combinations(
+                all_selected, 
+                groups, 
+                group_by,
+                max_combinations,
+                preferences
+            )
+        else:
+            # 默认模式：使用原有逻辑（向后兼容）
+            all_combinations = self._generate_default_combinations(
+                all_selected,
+                max_combinations,
+                preferences
+            )
+        
+        # 按评分排序，取前 N 个
+        all_combinations.sort(key=lambda x: x.get('score', 0), reverse=True)
+        combinations = all_combinations[:max_combinations]
+        
+        # 6. 返回结果
+        return {
+            "query": query_text,
+            "group_by": group_by,
+            "groups": {str(k): len(v) for k, v in groups.items()},
+            "total_fetched": len(strategies),
+            "total_selected": len(all_selected),
+            "selected_strategies": all_selected,
+            "combinations": combinations,
+            "criteria": detail_criteria,
+            "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown']
+        }
+    
+    def _generate_default_combinations(self, all_selected: List[Dict], max_combinations: int, preferences: Dict) -> List[Dict]:
+        """默认组合生成逻辑（原有逻辑）"""
         all_combinations = []
         n_strategies = len(all_selected)
         
@@ -1152,22 +1192,93 @@ class SmartGroupRecommender:
                         combo['style'] = f'{size}策略组合'
                 all_combinations.extend(combos)
         
-        # 按评分排序，取前 N 个
-        all_combinations.sort(key=lambda x: x.get('score', 0), reverse=True)
-        combinations = all_combinations[:max_combinations]
+        return all_combinations
+    
+    def _generate_hedging_combinations(
+        self, 
+        all_selected: List[Dict], 
+        groups: Dict, 
+        group_by: List[str],
+        max_combinations: int,
+        preferences: Dict
+    ) -> List[Dict]:
+        """
+        对冲模式组合生成：强制多空平衡
         
-        # 6. 返回结果
-        return {
-            "query": query_text,
-            "group_by": group_by,
-            "groups": {str(k): len(v) for k, v in groups.items()},
-            "total_fetched": len(strategies),
-            "total_selected": len(all_selected),
-            "selected_strategies": all_selected,
-            "combinations": combinations,
-            "criteria": detail_criteria,
-            "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown']
-        }
+        Args:
+            all_selected: 所有筛选后的策略
+            groups: 分组结果
+            group_by: 分组维度
+            max_combinations: 最多生成几个组合
+            preferences: 偏好参数
+        
+        Returns:
+            对冲组合列表
+        """
+        # 找出 long 和 short 分组
+        long_strategies = []
+        short_strategies = []
+        
+        for key, group_strategies in groups.items():
+            # key 是 tuple，例如 ('long', 'BTC') 或 ('short', 'SOL')
+            direction_idx = group_by.index('direction') if 'direction' in group_by else -1
+            
+            if direction_idx >= 0:
+                direction = key[direction_idx]
+                if direction == 'long':
+                    long_strategies.extend(group_strategies)
+                elif direction == 'short':
+                    short_strategies.extend(group_strategies)
+        
+        self.log(f"   做多策略: {len(long_strategies)} 个")
+        self.log(f"   做空策略: {len(short_strategies)} 个")
+        
+        if not long_strategies or not short_strategies:
+            self.log(f"⚠️  缺少多空策略，降级为默认模式")
+            return self._generate_default_combinations(all_selected, max_combinations, preferences)
+        
+        # 生成对冲组合：从 long 和 short 中各取部分
+        all_combinations = []
+        
+        # 策略1：简单对冲（1 long + 1 short）
+        for l_strat in long_strategies[:3]:  # 取前3个 long
+            for s_strat in short_strategies[:3]:  # 取前3个 short
+                combo_strategies = [l_strat, s_strat]
+                combos = recommend_combinations(
+                    strategies=combo_strategies,
+                    group_size=2,
+                    top_n=1,
+                    preferences=preferences
+                )
+                for combo in combos:
+                    combo['style'] = '对冲型'
+                    combo['hedging_type'] = 'simple'
+                all_combinations.extend(combos)
+        
+        # 策略2：强化对冲（2 long + 2 short）
+        if len(long_strategies) >= 2 and len(short_strategies) >= 2:
+            import itertools
+            for long_pair in itertools.combinations(long_strategies[:5], 2):
+                for short_pair in itertools.combinations(short_strategies[:5], 2):
+                    combo_strategies = list(long_pair) + list(short_pair)
+                    combos = recommend_combinations(
+                        strategies=combo_strategies,
+                        group_size=4,
+                        top_n=1,
+                        preferences=preferences
+                    )
+                    for combo in combos:
+                        combo['style'] = '稳健对冲'
+                        combo['hedging_type'] = 'balanced'
+                    all_combinations.extend(combos)
+                    
+                    # 限制组合数量
+                    if len(all_combinations) >= max_combinations * 3:
+                        break
+                if len(all_combinations) >= max_combinations * 3:
+                    break
+        
+        return all_combinations
     
     def print_result(self, result: Dict):
         """打印推荐结果（简洁模式，节省token）"""
