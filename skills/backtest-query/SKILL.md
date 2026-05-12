@@ -34,14 +34,40 @@
 2. **参数铁律**：用户说的才传，没说的不传
 3. **动态查询**：先查ID（`--list-coins/strategies/ai-times`）
 4. **Agent ID 传递**：使用 `--agent-id` 参数显式指定（避免路径依赖）
-5. **意图分析**（调用 smart_group_recommend.py 时）：
-   - ✅ **先读取** `INTENT_ANALYSIS.md`，分析用户意图，生成 JSON
-   - ✅ **传递 `--intent-json`** 参数给脚本
-   - 📄 详细规则见：[INTENT_ANALYSIS.md](./INTENT_ANALYSIS.md)
+5. **意图分析**（smart_group_recommend.py 专用）：
+   
+   **何时使用**：
+   - 用户要求推荐或创建策略组合
+   - 涉及多币种、多空、对冲等复杂场景
+   
+   **如何使用**：
+   ```python
+   # 步骤1：读取规则
+   read('skills/backtest-query/INTENT_ANALYSIS.md')
+   
+   # 步骤2：根据规则分析用户输入，生成 JSON
+   intent_json = {
+     "strategy_goal": "hedging",
+     "constraints": {"coins": ["BTC", "SOL"], "directions": ["long", "short"], "min_strategies": 4},
+     "preferences": {"risk_level": "balanced", "diversity_priority": "direction"}
+   }
+   
+   # 步骤3：调用脚本，传递 --intent-json
+   exec(command=f"python3 skills/backtest-query/smart_group_recommend.py \
+     --agent-id {agent_id} \
+     --query '{user_query}' \
+     --coins 'BTC,SOL' \
+     --intent-json '{json.dumps(intent_json)}' \
+     --output /tmp/combo.json")
+   ```
+   
+   **降级**：如果分析不出来，省略 `--intent-json`，脚本会用默认逻辑
+
 6. **一次性执行**：
    - ✅ **推荐时总是加 `--output`**，避免二次运行获取 tokens
    - ✅ **合理设置 `--max-combinations`**（推荐3个，创建取1个）
    - ❌ **禁止"先看结果再重新运行"** 的模式
+
 7. **数据不足处理**：
    - ❌ **禁止自行修改查询条件**
    - ✅ **引导用户调整参数**
