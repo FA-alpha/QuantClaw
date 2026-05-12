@@ -1324,53 +1324,133 @@ class SmartGroupRecommender:
         if min_strategies <= 2:
             # 策略1：简单对冲（1 long + 1 short = 2个策略）
             self.log(f"   生成简单对冲组合（2个策略）")
-            for l_strat in long_strategies[:3]:  # 取前3个 long
-                for s_strat in short_strategies[:3]:  # 取前3个 short
-                    # 跨币种对冲检查
-                    if require_different_coins and l_strat['coin'] == s_strat['coin']:
-                        continue  # 跳过同币种组合
-                    
-                    combo_strategies = [l_strat, s_strat]
-                    combos = recommend_combinations(
-                        strategies=combo_strategies,
-                        group_size=2,
-                        top_n=1,
-                        preferences=preferences
-                    )
-                    for combo in combos:
-                        combo['style'] = '跨币种对冲' if require_different_coins else '对冲型'
-                        combo['hedging_type'] = 'simple'
-                    all_combinations.extend(combos)
+            
+            if require_different_coins:
+                # 跨币种对冲：按币种分组后各取一个
+                from collections import defaultdict
+                long_by_coin = defaultdict(list)
+                short_by_coin = defaultdict(list)
+                
+                for s in long_strategies:
+                    long_by_coin[s['coin']].append(s)
+                for s in short_strategies:
+                    short_by_coin[s['coin']].append(s)
+                
+                self.log(f"   Long 币种: {list(long_by_coin.keys())}")
+                self.log(f"   Short 币种: {list(short_by_coin.keys())}")
+                
+                # 跨币种配对
+                for long_coin, long_list in long_by_coin.items():
+                    for short_coin, short_list in short_by_coin.items():
+                        if long_coin == short_coin:
+                            continue  # 跳过同币种
+                        
+                        # 从每个币种中取前2个
+                        for l_strat in long_list[:2]:
+                            for s_strat in short_list[:2]:
+                                combo_strategies = [l_strat, s_strat]
+                                combos = recommend_combinations(
+                                    strategies=combo_strategies,
+                                    group_size=2,
+                                    top_n=1,
+                                    preferences=preferences
+                                )
+                                for combo in combos:
+                                    combo['style'] = '跨币种对冲'
+                                    combo['hedging_type'] = 'simple'
+                                all_combinations.extend(combos)
+                                
+                                if len(all_combinations) >= max_combinations * 3:
+                                    break
+                            if len(all_combinations) >= max_combinations * 3:
+                                break
+                        if len(all_combinations) >= max_combinations * 3:
+                            break
+                    if len(all_combinations) >= max_combinations * 3:
+                        break
+            else:
+                # 同币种对冲：直接取前N个
+                for l_strat in long_strategies[:3]:
+                    for s_strat in short_strategies[:3]:
+                        combo_strategies = [l_strat, s_strat]
+                        combos = recommend_combinations(
+                            strategies=combo_strategies,
+                            group_size=2,
+                            top_n=1,
+                            preferences=preferences
+                        )
+                        for combo in combos:
+                            combo['style'] = '对冲型'
+                            combo['hedging_type'] = 'simple'
+                        all_combinations.extend(combos)
         
         # 策略2：强化对冲（2 long + 2 short = 4个策略）
         if min_strategies >= 4 and len(long_strategies) >= 2 and len(short_strategies) >= 2:
             self.log(f"   生成强化对冲组合（4个策略）")
             import itertools
-            for long_pair in itertools.combinations(long_strategies[:5], 2):
-                for short_pair in itertools.combinations(short_strategies[:5], 2):
-                    # 跨币种对冲检查（至少有一个不同币种）
-                    if require_different_coins:
-                        all_coins_in_combo = set(s['coin'] for s in list(long_pair) + list(short_pair))
-                        if len(all_coins_in_combo) == 1:
-                            continue  # 跳过全部同币种的组合
-                    
-                    combo_strategies = list(long_pair) + list(short_pair)
-                    combos = recommend_combinations(
-                        strategies=combo_strategies,
-                        group_size=4,
-                        top_n=1,
-                        preferences=preferences
-                    )
-                    for combo in combos:
-                        combo['style'] = '稳健对冲'
-                        combo['hedging_type'] = 'balanced'
-                    all_combinations.extend(combos)
-                    
-                    # 限制组合数量
+            
+            if require_different_coins:
+                # 跨币种对冲：从每个币种中分别取
+                from collections import defaultdict
+                long_by_coin = defaultdict(list)
+                short_by_coin = defaultdict(list)
+                
+                for s in long_strategies:
+                    long_by_coin[s['coin']].append(s)
+                for s in short_strategies:
+                    short_by_coin[s['coin']].append(s)
+                
+                # 确保至少有2个币种
+                if len(long_by_coin) >= 2 or len(short_by_coin) >= 2:
+                    # 尝试构建包含多个币种的组合
+                    for long_coins in itertools.combinations(list(long_by_coin.keys()), min(2, len(long_by_coin))):
+                        for short_coins in itertools.combinations(list(short_by_coin.keys()), min(2, len(short_by_coin))):
+                            # 从每个选定的币种中取一个策略
+                            long_combo = [long_by_coin[c][0] for c in long_coins]
+                            short_combo = [short_by_coin[c][0] for c in short_coins]
+                            
+                            # 确保币种不完全重叠
+                            all_coins_in_combo = set(s['coin'] for s in long_combo + short_combo)
+                            if len(all_coins_in_combo) == 1:
+                                continue
+                            
+                            combo_strategies = long_combo + short_combo
+                            if len(combo_strategies) >= 4:
+                                combos = recommend_combinations(
+                                    strategies=combo_strategies[:4],
+                                    group_size=4,
+                                    top_n=1,
+                                    preferences=preferences
+                                )
+                                for combo in combos:
+                                    combo['style'] = '稳健对冲'
+                                    combo['hedging_type'] = 'balanced'
+                                all_combinations.extend(combos)
+                                
+                                if len(all_combinations) >= max_combinations * 3:
+                                    break
+                        if len(all_combinations) >= max_combinations * 3:
+                            break
+            else:
+                # 同币种对冲：直接组合
+                for long_pair in itertools.combinations(long_strategies[:5], 2):
+                    for short_pair in itertools.combinations(short_strategies[:5], 2):
+                        combo_strategies = list(long_pair) + list(short_pair)
+                        combos = recommend_combinations(
+                            strategies=combo_strategies,
+                            group_size=4,
+                            top_n=1,
+                            preferences=preferences
+                        )
+                        for combo in combos:
+                            combo['style'] = '稳健对冲'
+                            combo['hedging_type'] = 'balanced'
+                        all_combinations.extend(combos)
+                        
+                        if len(all_combinations) >= max_combinations * 3:
+                            break
                     if len(all_combinations) >= max_combinations * 3:
                         break
-                if len(all_combinations) >= max_combinations * 3:
-                    break
         
         # 策略3：自定义数量对冲（min_strategies = 3, 5, 6等）
         if min_strategies == 3 or min_strategies > 4:
@@ -1382,30 +1462,66 @@ class SmartGroupRecommender:
             short_count = min_strategies - long_count
             
             if len(long_strategies) >= long_count and len(short_strategies) >= short_count:
-                for long_combo in itertools.combinations(long_strategies[:6], long_count):
-                    for short_combo in itertools.combinations(short_strategies[:6], short_count):
-                        # 跨币种对冲检查
-                        if require_different_coins:
-                            all_coins_in_combo = set(s['coin'] for s in list(long_combo) + list(short_combo))
+                if require_different_coins:
+                    # 跨币种：按币种分组选择
+                    from collections import defaultdict
+                    long_by_coin = defaultdict(list)
+                    short_by_coin = defaultdict(list)
+                    
+                    for s in long_strategies:
+                        long_by_coin[s['coin']].append(s)
+                    for s in short_strategies:
+                        short_by_coin[s['coin']].append(s)
+                    
+                    # 从多个币种中选择
+                    for long_coins in itertools.combinations(list(long_by_coin.keys()), min(long_count, len(long_by_coin))):
+                        for short_coins in itertools.combinations(list(short_by_coin.keys()), min(short_count, len(short_by_coin))):
+                            # 检查币种不完全相同
+                            all_coins_in_combo = set(long_coins) | set(short_coins)
                             if len(all_coins_in_combo) == 1:
                                 continue
-                        
-                        combo_strategies = list(long_combo) + list(short_combo)
-                        combos = recommend_combinations(
-                            strategies=combo_strategies,
-                            group_size=min_strategies,
-                            top_n=1,
-                            preferences=preferences
-                        )
-                        for combo in combos:
-                            combo['style'] = f'{min_strategies}策略对冲'
-                            combo['hedging_type'] = 'custom'
-                        all_combinations.extend(combos)
-                        
+                            
+                            # 从每个币种中取一个策略
+                            long_combo = [long_by_coin[c][0] for c in long_coins]
+                            short_combo = [short_by_coin[c][0] for c in short_coins]
+                            
+                            combo_strategies = long_combo + short_combo
+                            if len(combo_strategies) >= min_strategies:
+                                combos = recommend_combinations(
+                                    strategies=combo_strategies[:min_strategies],
+                                    group_size=min_strategies,
+                                    top_n=1,
+                                    preferences=preferences
+                                )
+                                for combo in combos:
+                                    combo['style'] = f'{min_strategies}策略对冲'
+                                    combo['hedging_type'] = 'custom'
+                                all_combinations.extend(combos)
+                                
+                                if len(all_combinations) >= max_combinations * 3:
+                                    break
                         if len(all_combinations) >= max_combinations * 3:
                             break
-                    if len(all_combinations) >= max_combinations * 3:
-                        break
+                else:
+                    # 同币种：直接组合
+                    for long_combo in itertools.combinations(long_strategies[:6], long_count):
+                        for short_combo in itertools.combinations(short_strategies[:6], short_count):
+                            combo_strategies = list(long_combo) + list(short_combo)
+                            combos = recommend_combinations(
+                                strategies=combo_strategies,
+                                group_size=min_strategies,
+                                top_n=1,
+                                preferences=preferences
+                            )
+                            for combo in combos:
+                                combo['style'] = f'{min_strategies}策略对冲'
+                                combo['hedging_type'] = 'custom'
+                            all_combinations.extend(combos)
+                            
+                            if len(all_combinations) >= max_combinations * 3:
+                                break
+                        if len(all_combinations) >= max_combinations * 3:
+                            break
             else:
                 self.log(f"   ⚠️  策略数量不足（需要{long_count}多+{short_count}空），降级为简单对冲")
         
