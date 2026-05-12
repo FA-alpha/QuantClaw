@@ -4,18 +4,19 @@
 
 ---
 
-## 🚨 脚本选择
+## 🚨 脚本选择（意图识别）
 
-| 用户意图 | 使用脚本 | 说明 |
-|---------|---------|------|
-| 推荐策略组 | `smart_group_recommend.py` | 展示推荐结果 |
-| 创建策略组 | `smart_group_recommend.py` → `query.py --create-group` | 先推荐，再创建 |
-| 保存单个策略 | `query.py --add-strategy` | 收藏到策略库 |
-| 查询列表 | `query.py --list-xxx` | 币种/策略类型/时间 |
+| 用户意图 | 触发关键词 | 使用脚本 | 执行方式 |
+|---------|----------|---------|---------|
+| **推荐策略组** | "推荐"/"建议"/"给我看看" | `smart_group_recommend.py` | 展示结果，**询问是否创建** |
+| **创建策略组** | "创建"/"新建"/"建"/"构建"/"帮我建" | `smart_group_recommend.py` → `query.py --create-group` | **静默执行，直接创建** |
+| 保存单个策略 | "保存"/"收藏" | `query.py --add-strategy` | 收藏到策略库 |
+| 查询列表 | "有哪些"/"列出"/"查看" | `query.py --list-xxx` | 展示列表 |
 
 **⚠️ 核心规则**：
-- 创建策略组 = 推荐 + 创建（两步，因为需要 strategy_tokens）
-- 查询列表用 `query.py`，推荐组合用 `smart_group_recommend.py`
+1. 看到 "创建/建/构建" → **必须执行完整的两步流程**（推荐 + 创建），不要只推荐
+2. 看到 "推荐/建议" → 只展示结果，询问用户是否创建
+3. 创建时 `--max-combinations 1` 确保只返回一个最佳组合
 
 ---
 
@@ -60,10 +61,14 @@
 
 ### 总是传递的参数
 
-| 参数 | 默认值 | 说明 |
-|------|-------|------|
-| `--max-combinations` | `1` | 返回几个组合 |
-| `--top-per-group` | `3` | 每组取几个策略 |
+| 参数 | 默认值 | 说明 | 重要性 |
+|------|-------|------|-------|
+| `--max-combinations` | `1` | 返回几个组合 | **创建时必须=1，只返回最佳组合** |
+| `--top-per-group` | `3` | 每组取几个策略 | 每个币种/方向取几个策略 |
+
+**⚠️ 特别注意**：
+- 用户说 "创建/建/构建" → `--max-combinations 1`（只要最佳组合）
+- 用户说 "推荐/对比" → `--max-combinations 3`（可以返回多个供选择）
 
 8. **意图分析流程**（必需步骤）：
    - 使用 `smart_group_recommend.py` 时必须传递 `--intent-json`
@@ -76,25 +81,62 @@
 
 ## 典型案例
 
-### 创建策略组（完整流程）
-```python
-# 1. 读取意图分析规则
-read('skills/backtest-query/INTENT_ANALYSIS.md')
+### 案例A：创建策略组（用户说"创建/建/构建"）
 
-# 2. 生成 intent JSON（根据用户需求）
+**用户说**："帮我构建一个 DOGE 与 BCH 对冲策略组"
+
+```python
+# 识别意图：包含"构建" → 创建模式（必须执行完整流程）
+
+# 1. 查询币种（验证存在）
+coins_result = exec("query.py --agent-id {aid} --list-coins")
+valid_coins = ["DOGE", "BCH"]  # 验证通过
+
+# 2. 读取意图规则 → 生成 intent JSON
+read('skills/backtest-query/INTENT_ANALYSIS.md')
 intent = {
-  "strategy_goal": "hedging",  # 对冲/分散/趋势/未知
-  "constraints": {"coins": ["BTC","SOL"], "directions": ["long","short"]},
-  "preferences": {"risk_level": "balanced", "diversity_priority": "direction"}
+  "strategy_goal": "hedging",
+  "constraints": {"coins": ["DOGE","BCH"], "directions": ["long","short"]},
+  "preferences": {"diversity_priority": "direction"}
 }
 
-# 3. 推荐（必须传 --intent-json）
-exec("smart_group_recommend.py --agent-id {aid} --coins 'BTC,SOL' \
-  --intent-json '{json.dumps(intent)}' --output /tmp/result.json")
+# 3. 推荐（--max-combinations 1 确保只返回一个最佳组合）
+result = exec("smart_group_recommend.py --agent-id {aid} \
+  --coins 'DOGE,BCH' \
+  --strategy-direction-map '{\"11\": [\"long\", \"short\"]}' \
+  --max-combinations 1 \
+  --top-per-group 3 \
+  --intent-json '{json.dumps(intent)}' \
+  --output /tmp/result.json")
 
-# 4. 提取 tokens → 创建策略组
-tokens = [从JSON提取]
-exec("query.py --agent-id {aid} --create-group --group-name '...' --strategy-tokens '{tokens}'")
+# 4. 提取 tokens（从唯一的组合中）
+tokens = result["combinations"][0]["strategies"] 提取所有 strategy_token
+
+# 5. 创建策略组（自动执行，不询问）
+exec("query.py --agent-id {aid} --create-group \
+  --group-name 'DOGE与BCH对冲策略组' \
+  --strategy-tokens '{','.join(tokens)}'")
+
+# 6. 返回："✅ 已创建策略组：DOGE与BCH对冲策略组"
+```
+
+**⚠️ 关键**：看到 "创建/建/构建" → 必须执行第5步，不要只展示推荐结果
+
+---
+
+### 案例B：推荐策略组（用户说"推荐/建议"）
+
+**用户说**："推荐 BTC 策略"
+
+```python
+# 识别意图：包含"推荐" → 推荐模式（只展示，不自动创建）
+
+# 1-4 步骤同上（查询、生成intent、推荐）
+
+# 5. 展示推荐结果，询问用户
+回复："为您推荐以下策略组合：[展示结果]。是否创建策略组？"
+
+# 如果用户确认 → 再执行 query.py --create-group
 ```
 
 ### 动态查询示例
