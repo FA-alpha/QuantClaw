@@ -634,6 +634,49 @@ class SmartGroupRecommender:
     
     # ==================== 智能分组策略 ====================
     
+    def infer_grouping_from_intent(self, intent: Dict) -> List[str]:
+        """
+        根据 AI 意图分析结果推断分组策略
+        
+        Args:
+            intent: AI 意图分析 JSON
+        
+        Returns:
+            分组维度列表
+        """
+        strategy_goal = intent.get('strategy_goal', 'unknown')
+        constraints = intent.get('constraints', {})
+        preferences = intent.get('preferences', {})
+        
+        dimensions = []
+        
+        # 根据策略目标决定分组
+        if strategy_goal == 'hedging':
+            # 对冲：优先按方向分组，再按币种
+            diversity_priority = preferences.get('diversity_priority', 'direction')
+            if diversity_priority == 'direction':
+                dimensions = ['direction', 'coin']
+            else:
+                dimensions = ['coin', 'direction']
+        
+        elif strategy_goal == 'diversification':
+            # 分散：按币种分组（同方向多样化）
+            dimensions = ['coin']
+        
+        elif strategy_goal == 'trend':
+            # 趋势：单方向，按策略类型或币种分组
+            diversity_priority = preferences.get('diversity_priority', 'strategy_type')
+            if diversity_priority == 'coin':
+                dimensions = ['coin']
+            else:
+                dimensions = ['strategy_type']
+        
+        else:  # unknown 或其他
+            # 默认按币种分组
+            dimensions = ['coin']
+        
+        return dimensions
+    
     def infer_grouping_strategy(self, query_text: str) -> List[str]:
         """
         根据用户问题推断分组策略
@@ -900,7 +943,8 @@ class SmartGroupRecommender:
         detail_criteria: Optional[Dict] = None,
         max_combinations: int = 10,
         sort_methods: Optional[List[str]] = None,
-        api_sort_type: Optional[int] = None
+        api_sort_type: Optional[int] = None,
+        intent: Optional[Dict] = None
     ) -> Dict:
         """
         智能推荐主流程
@@ -913,6 +957,7 @@ class SmartGroupRecommender:
             max_combinations: 最多推荐几个组合
             sort_methods: 排序方式列表
             api_sort_type: API排序类型（仅用于日志）
+            intent: AI 意图分析结果（可选）
         
         Returns:
             推荐结果
@@ -921,10 +966,17 @@ class SmartGroupRecommender:
         self.log("🧠 智能分组推荐系统")
         self.log("="*70)
         
-        # 1. 推断分组策略
+        # 1. 推断分组策略（考虑 intent）
         self.log(f"\n📝 用户需求: {query_text}")
-        group_by = self.infer_grouping_strategy(query_text)
-        self.log(f"🎯 分组策略: {' → '.join(group_by)}")
+        
+        if intent:
+            # 使用 AI 意图调整分组策略
+            group_by = self.infer_grouping_from_intent(intent)
+            self.log(f"🎯 分组策略（基于意图 {intent.get('strategy_goal')}）: {' → '.join(group_by)}")
+        else:
+            # 原有逻辑
+            group_by = self.infer_grouping_strategy(query_text)
+            self.log(f"🎯 分组策略: {' → '.join(group_by)}")
         
         # 2. 使用预先查询的数据
         self.log(f"\n📊 使用预先查询的 {len(strategies)} 条策略")
@@ -1127,6 +1179,9 @@ def parse_arguments():
     # Agent 认证
     parser.add_argument("--agent-id", type=str, help="Agent ID（可选，用于 token 自动获取）")
     
+    # 意图分析（由 AI Agent 提供）
+    parser.add_argument("--intent-json", type=str, help="意图分析 JSON（可选，由 AI Agent 预生成）")
+    
     # 查询需求
     parser.add_argument("--query", type=str, required=True, help="用户查询需求描述")
     
@@ -1177,14 +1232,24 @@ def main():
     # 1. 解析参数
     args = parse_arguments()
     
-    # 2. 验证参数
+    # 2. 解析意图 JSON（如果提供）
+    intent = None
+    if args.intent_json:
+        try:
+            intent = json.loads(args.intent_json)
+            print(f"📋 使用 AI 意图分析: {intent.get('strategy_goal', 'unknown')}")
+        except json.JSONDecodeError as e:
+            print(f"⚠️  意图 JSON 解析失败: {e}，将使用默认逻辑")
+            intent = None
+    
+    # 3. 验证参数
     try:
         validate_args(args)
     except ValidationError as e:
         print(f"❌ 参数错误: {e}")
         sys.exit(1)
     
-    # 3. 获取 token
+    # 4. 获取 token
     token = get_user_token(agent_id=args.agent_id)
     if not token:
         print("❌ 无法自动获取 token，请使用 --agent-id 参数或在正确的 workspace 中执行")
@@ -1241,7 +1306,8 @@ def main():
             detail_criteria=detail_criteria,
             max_combinations=args.max_combinations,
             sort_methods=sort_methods,
-            api_sort_type=args.api_sort
+            api_sort_type=args.api_sort,
+            intent=intent  # 传递 intent
         )
     except Exception as e:
         print(f"❌ 推荐失败: {e}")
