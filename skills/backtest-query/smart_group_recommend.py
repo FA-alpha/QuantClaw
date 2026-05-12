@@ -1119,14 +1119,18 @@ class SmartGroupRecommender:
             strategy_goal = intent.get('strategy_goal')
             diversity_priority = intent.get('preferences', {}).get('diversity_priority')
             
-            # 将 diversity_priority 传递给 preferences
+            # 将 diversity_priority 和 min_strategies 传递给 preferences
             if diversity_priority:
                 preferences['diversity_priority'] = diversity_priority
+            
+            # 读取 min_strategies 约束
+            min_strategies = constraints.get('min_strategies', 2)
+            preferences['min_strategies'] = min_strategies
             
             if strategy_goal == 'hedging':
                 # 对冲模式：强制多空平衡
                 hedge_type = "跨币种对冲" if diversity_priority == 'coin' else "同币种多空"
-                self.log(f"🎯 对冲模式：生成{hedge_type}组合")
+                self.log(f"🎯 对冲模式：生成{hedge_type}组合（最少{min_strategies}个策略）")
                 all_combinations = self._generate_hedging_combinations(
                     all_selected, groups, group_by, max_combinations, preferences
                 )
@@ -1257,6 +1261,9 @@ class SmartGroupRecommender:
         diversity_priority = preferences.get('diversity_priority', 'direction')
         require_different_coins = (diversity_priority == 'coin')
         
+        # 获取最少策略数量要求
+        min_strategies = preferences.get('min_strategies', 2)
+        
         if require_different_coins:
             # 统计涉及的币种数量
             all_coins = set(s['coin'] for s in all_selected)
@@ -1269,27 +1276,31 @@ class SmartGroupRecommender:
         # 生成对冲组合：从 long 和 short 中各取部分
         all_combinations = []
         
-        # 策略1：简单对冲（1 long + 1 short）
-        for l_strat in long_strategies[:3]:  # 取前3个 long
-            for s_strat in short_strategies[:3]:  # 取前3个 short
-                # 跨币种对冲检查
-                if require_different_coins and l_strat['coin'] == s_strat['coin']:
-                    continue  # 跳过同币种组合
-                
-                combo_strategies = [l_strat, s_strat]
-                combos = recommend_combinations(
-                    strategies=combo_strategies,
-                    group_size=2,
-                    top_n=1,
-                    preferences=preferences
-                )
-                for combo in combos:
-                    combo['style'] = '跨币种对冲' if require_different_coins else '对冲型'
-                    combo['hedging_type'] = 'simple'
-                all_combinations.extend(combos)
+        # 根据 min_strategies 决定组合策略
+        if min_strategies <= 2:
+            # 策略1：简单对冲（1 long + 1 short = 2个策略）
+            self.log(f"   生成简单对冲组合（2个策略）")
+            for l_strat in long_strategies[:3]:  # 取前3个 long
+                for s_strat in short_strategies[:3]:  # 取前3个 short
+                    # 跨币种对冲检查
+                    if require_different_coins and l_strat['coin'] == s_strat['coin']:
+                        continue  # 跳过同币种组合
+                    
+                    combo_strategies = [l_strat, s_strat]
+                    combos = recommend_combinations(
+                        strategies=combo_strategies,
+                        group_size=2,
+                        top_n=1,
+                        preferences=preferences
+                    )
+                    for combo in combos:
+                        combo['style'] = '跨币种对冲' if require_different_coins else '对冲型'
+                        combo['hedging_type'] = 'simple'
+                    all_combinations.extend(combos)
         
-        # 策略2：强化对冲（2 long + 2 short）
-        if len(long_strategies) >= 2 and len(short_strategies) >= 2:
+        # 策略2：强化对冲（2 long + 2 short = 4个策略）
+        if min_strategies >= 4 and len(long_strategies) >= 2 and len(short_strategies) >= 2:
+            self.log(f"   生成强化对冲组合（4个策略）")
             import itertools
             for long_pair in itertools.combinations(long_strategies[:5], 2):
                 for short_pair in itertools.combinations(short_strategies[:5], 2):
@@ -1316,6 +1327,43 @@ class SmartGroupRecommender:
                         break
                 if len(all_combinations) >= max_combinations * 3:
                     break
+        
+        # 策略3：自定义数量对冲（min_strategies = 3, 5, 6等）
+        if min_strategies == 3 or min_strategies > 4:
+            self.log(f"   生成自定义对冲组合（{min_strategies}个策略）")
+            import itertools
+            
+            # 计算 long 和 short 的分配（尽量平衡）
+            long_count = min_strategies // 2
+            short_count = min_strategies - long_count
+            
+            if len(long_strategies) >= long_count and len(short_strategies) >= short_count:
+                for long_combo in itertools.combinations(long_strategies[:6], long_count):
+                    for short_combo in itertools.combinations(short_strategies[:6], short_count):
+                        # 跨币种对冲检查
+                        if require_different_coins:
+                            all_coins_in_combo = set(s['coin'] for s in list(long_combo) + list(short_combo))
+                            if len(all_coins_in_combo) == 1:
+                                continue
+                        
+                        combo_strategies = list(long_combo) + list(short_combo)
+                        combos = recommend_combinations(
+                            strategies=combo_strategies,
+                            group_size=min_strategies,
+                            top_n=1,
+                            preferences=preferences
+                        )
+                        for combo in combos:
+                            combo['style'] = f'{min_strategies}策略对冲'
+                            combo['hedging_type'] = 'custom'
+                        all_combinations.extend(combos)
+                        
+                        if len(all_combinations) >= max_combinations * 3:
+                            break
+                    if len(all_combinations) >= max_combinations * 3:
+                        break
+            else:
+                self.log(f"   ⚠️  策略数量不足（需要{long_count}多+{short_count}空），降级为简单对冲")
         
         return all_combinations
     
