@@ -43,10 +43,27 @@
    **如何使用**：
    ```python
    # 步骤1：识别需要查询的列表
+   
+   # 1.1 币种验证（如果涉及多币种）
+   if 用户提到多个币种:
+       # 先查询可用币种列表
+       result = exec("python3 query.py --agent-id {agent_id} --list-coins")
+       available_coins = [提取结果中的 coin]
+       
+       # 验证并过滤用户提到的币种
+       user_coins = ["BTC", "ETH", "XYZ"]
+       valid_coins = [c for c in user_coins if c in available_coins]
+       
+       # 如果有无效币种，提示用户
+       invalid = set(user_coins) - set(valid_coins)
+       if invalid:
+           提示用户："{invalid} 没有数据，只查询 {valid_coins}"
+   
+   # 1.2 策略类型验证（如果要求多种策略类型）
    if 用户要求"多种策略类型" or "风霆和鲲鹏":
-       # 先查询可用策略类型
-       exec("python3 skills/backtest-query/query.py --agent-id {agent_id} --list-strategies")
-       # 从结果中提取策略类型ID
+       result = exec("python3 query.py --agent-id {agent_id} --list-strategies")
+       # 提取可用的策略类型ID（如 11=风霆, 3=鲲鹏）
+       # 验证用户要求的类型是否存在
    
    # 步骤2：读取意图分析规则
    read('skills/backtest-query/INTENT_ANALYSIS.md')
