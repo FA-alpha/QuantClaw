@@ -213,6 +213,7 @@ class PersistentSessionListener:
                             logger.info(f'📝 [Listener] Saving response for {state["user_id"]}: {len(response_text)} chars')
                             self.chat_store.append(state['user_id'], 'assistant', response_text)
                             state['response_saved'] = True
+                            logger.info(f'✅ [Listener] Message saved, task completed for {session_key}')
                             
                             # 检测回测ID并启动监控
                             if state.get('user_token'):
@@ -221,8 +222,11 @@ class PersistentSessionListener:
                                     for back_id in back_ids:
                                         if monitor_manager.start_monitor(back_id, state['user_id'], state['user_token']):
                                             logger.info(f"🚀 [Listener] Auto-started backtest {back_id} monitor")
+                            
+                            # 任务完成，停止监听器（避免占用资源）
+                            asyncio.create_task(self.stop_listener(session_key))
                         
-                        # 重置状态，准备下一轮
+                        # 重置状态，准备下一轮（虽然监听器会被停止）
                         state['current_response'] = ''
                         state['response_saved'] = False
         
@@ -701,6 +705,11 @@ async def handle_websocket(request):
     if user_id and user_token:
         monitor_manager.user_tokens = getattr(monitor_manager, 'user_tokens', {})
         monitor_manager.user_tokens[user_id] = user_token
+    
+    # 重连时停止该 session 的旧后备监听器（防止重复保存）
+    if session_key in persistent_listener.active_listeners:
+        logger.info(f'🔄 Reconnected: stopping old backup listener for {session_key}')
+        await persistent_listener.stop_listener(session_key)
 
     try:
         async with aiohttp.ClientSession() as http_session:
