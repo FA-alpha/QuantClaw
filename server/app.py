@@ -861,12 +861,18 @@ async def handle_websocket(request):
                                 if msg_type == 'event':
                                     msg_session_key = payload.get('sessionKey', '')
                                     if msg_session_key and msg_session_key != session_key:
+                                        # 调试：记录被过滤的消息
+                                        if event_type == 'agent':
+                                            logger.debug(f'⚠️ Filtered event for different session: {msg_session_key} (expected: {session_key})')
                                         continue
                                     
                                     # 处理 agent 流式响应
                                     if event_type == 'agent':
                                         stream = payload.get('stream')
                                         stream_data = payload.get('data', {})
+                                        
+                                        # 调试：记录收到的 agent 事件类型
+                                        logger.debug(f'🎯 Agent event: stream={stream}, session={msg_session_key}')
                                         
                                         if stream == 'assistant':
                                             text = stream_data.get('text', '')
