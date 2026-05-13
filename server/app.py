@@ -929,20 +929,14 @@ async def handle_websocket(request):
                 
                 # 连接结束时的处理
                 if user_id:
-                    has_unsaved_response = current_response[0] and not response_saved[0]
+                    # 检查是否有未完成的响应（有流式数据但未收到 lifecycle.end）
+                    has_incomplete_response = current_response[0] and not response_saved[0]
                     
-                    # 1. 如果有未保存的响应，立即保存
-                    if has_unsaved_response:
-                        logger.warning(f'⚠️ Connection closed with unsaved response for {user_id}')
-                        logger.info(f'💾 Saving incomplete response: {len(current_response[0])} chars')
-                        chat_store.append(user_id, 'assistant', current_response[0])
-                        response_saved[0] = True
-                    
-                    # 2. 启动持久监听器作为后备（防止 Agent 还在处理但消息未到达）
-                    # 条件：有未保存的响应，说明 Agent 可能还在工作
-                    if has_unsaved_response:
-                        logger.warning(f'🚨 Connection closed before response completed for {user_id}')
-                        logger.info(f'🎧 Starting backup persistent listener for {session_key}')
+                    # 不保存流式数据！只启动后备监听器等待 lifecycle.end
+                    if has_incomplete_response:
+                        logger.warning(f'🚨 Connection closed before lifecycle.end for {user_id}')
+                        logger.info(f'📊 Incomplete stream data: {len(current_response[0])} chars (not saving)')
+                        logger.info(f'🎧 Starting backup persistent listener to wait for completion')
                         await persistent_listener.start_listener(session_key, user_id, user_token)
 
     except aiohttp.ClientError as e:
