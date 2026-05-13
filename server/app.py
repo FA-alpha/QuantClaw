@@ -871,11 +871,15 @@ async def handle_websocket(request):
                                             text = stream_data.get('text', '')
                                             delta = stream_data.get('delta', '')
                                             current_response[0] = text
+                                            # 发送流式数据到客户端
                                             await ws_client.send_json({
                                                 'type': 'stream',
                                                 'text': text,
                                                 'delta': delta,
                                             })
+                                            # 调试：记录流式数据发送（仅记录前几次）
+                                            if len(text) < 100:
+                                                logger.debug(f'🌊 Streaming to {user_id}: {len(text)} chars')
                                         elif stream == 'lifecycle':
                                             phase = stream_data.get('phase')
                                             error = stream_data.get('error')
