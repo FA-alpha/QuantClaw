@@ -731,6 +731,13 @@ async def handle_websocket(request):
                     handle_gateway_messages(),
                     return_exceptions=True
                 )
+                
+                # 连接结束时检查并保存未完成的响应
+                if user_id and current_response[0] and not response_saved[0]:
+                    logger.warning(f'⚠️ Connection closed with unsaved response for {user_id}')
+                    logger.info(f'💾 Saving incomplete response: {len(current_response[0])} chars')
+                    chat_store.append(user_id, 'assistant', current_response[0])
+                    response_saved[0] = True
 
     except aiohttp.ClientError as e:
         logger.error(f'Gateway connection error: {e}')
