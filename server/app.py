@@ -137,7 +137,7 @@ class PersistentSessionListener:
                                 'minProtocol': 3,
                                 'maxProtocol': 3,
                                 'client': {
-                                    'id': 'quantclaw-listener',
+                                    'id': 'gateway-client',
                                     'version': '1.0.0',
                                     'platform': 'linux',
                                     'mode': 'backend'
