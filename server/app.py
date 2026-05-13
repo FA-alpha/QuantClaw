@@ -796,9 +796,6 @@ async def handle_websocket(request):
                                         current_response[0] = ''  # 重置
                                         response_saved[0] = False  # 重置保存标志
                                         
-                                        # 启动持久监听器（如果尚未启动）
-                                        await persistent_listener.start_listener(session_key, user_id, user_token)
-                                        
                                         rpc_msg = {
                                             'type': 'req',
                                             'id': next_id(),
@@ -930,19 +927,42 @@ async def handle_websocket(request):
                     return_exceptions=True
                 )
                 
-                # 连接结束时检查并保存未完成的响应
-                if user_id and current_response[0] and not response_saved[0]:
-                    logger.warning(f'⚠️ Connection closed with unsaved response for {user_id}')
-                    logger.info(f'💾 Saving incomplete response: {len(current_response[0])} chars')
-                    chat_store.append(user_id, 'assistant', current_response[0])
-                    response_saved[0] = True
+                # 连接结束时的处理
+                if user_id:
+                    # 1. 如果有未保存的响应，立即保存
+                    if current_response[0] and not response_saved[0]:
+                        logger.warning(f'⚠️ Connection closed with unsaved response for {user_id}')
+                        logger.info(f'💾 Saving incomplete response: {len(current_response[0])} chars')
+                        chat_store.append(user_id, 'assistant', current_response[0])
+                        response_saved[0] = True
+                    
+                    # 2. 启动持久监听器作为后备（防止后续消息丢失）
+                    # 如果 response_saved 为 False，说明可能还有消息正在处理
+                    if not response_saved[0]:
+                        logger.warning(f'🚨 Connection closed before response completed for {user_id}')
+                        logger.info(f'🎧 Starting backup persistent listener for {session_key}')
+                        await persistent_listener.start_listener(session_key, user_id, user_token)
 
     except aiohttp.ClientError as e:
         logger.error(f'Gateway connection error: {e}')
-        await ws_client.send_json({'type': 'error', 'error': f'Gateway connection failed: {e}'})
+        try:
+            await ws_client.send_json({'type': 'error', 'error': f'Gateway connection failed: {e}'})
+        except:
+            pass
+        # 连接异常时也启动后备监听器
+        if user_id and session_key and not response_saved[0]:
+            logger.info(f'🎧 Starting backup listener due to connection error')
+            await persistent_listener.start_listener(session_key, user_id, user_token)
     except Exception as e:
         logger.error(f'WS error: {e}')
-        await ws_client.send_json({'type': 'error', 'error': str(e)})
+        try:
+            await ws_client.send_json({'type': 'error', 'error': str(e)})
+        except:
+            pass
+        # 其他异常时也启动后备监听器
+        if user_id and session_key and not response_saved[0]:
+            logger.info(f'🎧 Starting backup listener due to error')
+            await persistent_listener.start_listener(session_key, user_id, user_token)
 
     logger.info(f'WS disconnect: {session_key}')
     return ws_client
