@@ -99,32 +99,44 @@
 ### 案例：创建策略组（完整流程）
 
 用户："帮我构建 DOGE 与 BCH 对冲策略组"
-```python
-# 1. 查币种 → 验证
-# 2. 读 INTENT_ANALYSIS.md → 生成 intent JSON
-# 3. 推荐（max-combinations=1）→ 保存到 /tmp/result.json
-# 4. 读取结果并检查
-result = json.load(open('/tmp/result.json'))
 
-# 检查是否有错误
-if 'error' in result:
-    # 数据不足：显示建议，引导用户调整
-    suggestions = result.get('suggestions', [])
-    回复：f"抱歉，{result['message']}。建议：\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(suggestions))
-    return
+⚠️ **重要原则**：区分两种数据处理模式
 
-# 检查是否有组合
-if not result.get('combinations'):
-    回复："未找到符合条件的策略组合。建议放宽条件重试。"
-    return
-
-# 5. 提取 tokens → 创建策略组
-tokens = [s['strategy_token'] for s in result['combinations'][0]['strategies']]
-exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
-
-# 6. 返回："✅ 已创建"
+#### 模式 A：单策略查询（Agent 需要分析）
+```bash
+# 查询单个策略 → 返回完整数据 → Agent 分析展示
+exec("query.py --coin BTC --strategy-type 11 ...")
+# stdout: 返回完整 JSON，Agent 解析并展示给用户
 ```
-⚠️ 关键：检查 error 字段，引导用户而不是自动修改参数
+**原因**：单策略数据简单，Agent 需要灵活展示
+
+#### 模式 B：组合推荐（Python 内部分析，Agent 不看数据）
+```bash
+# 1. 查币种 → 验证（列表类查询保持原样）
+exec("query.py --list-coins") 
+# stdout: 返回完整列表供验证
+
+# 2. 读 INTENT_ANALYSIS.md → 生成 intent JSON
+
+# 3. 推荐 → 使用 --quiet 只输出状态
+exec("smart_group_recommend.py ... --output /tmp/result.json --quiet")
+# stdout: "✓ 已保存到 /tmp/result.json (3 个组合)"
+# 或错误："✗ 候选策略不足 (2/4)。建议：放宽时间 | 增加币种"
+
+# 4. 读取文件提取 tokens → 创建策略组
+exec("jq -r '.combinations[0].strategies[].strategy_token' /tmp/result.json | paste -sd,")
+# stdout: "token1,token2,token3"
+
+exec("query.py --create-group --strategy-tokens 'token1,token2,token3' --group-name 'xxx'")
+# stdout: "✅ 策略组创建成功: xxx (ID: 91)"
+
+# 5. Agent 回复用户："✅ 已创建策略组 (ID: 91)"
+```
+
+**关键点**：
+- 组合推荐使用 `--quiet`：Python 内部已完成分析，只输出状态
+- 完整数据存在 `/tmp/result.json`，Agent 不读取
+- Agent 只用 `jq` 提取必要字段（tokens）传递给下一步
 
 ### 区分推荐与创建
 - 推荐："推荐BTC策略" → 展示结果，询问是否创建
