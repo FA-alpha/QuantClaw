@@ -343,24 +343,6 @@ class BacktestMonitorManager:
         except Exception as e:
             logger.error(f"发送通知失败: {e}")
 
-# 创建全局管理器
-monitor_manager = BacktestMonitorManager()
-chat_store = ChatStore(CHAT_DIR)
-persistent_listener = PersistentSessionListener(GATEWAY_WS, GATEWAY_TOKEN, chat_store)
-
-# ============ 后台任务 ============
-
-async def notification_checker():
-    """定期检查回测完成通知"""
-    while True:
-        try:
-            monitor_manager.check_notification_files()
-            await asyncio.sleep(5)  # 每5秒检查一次
-        except Exception as e:
-            logger.error(f"通知检查器错误: {e}")
-            await asyncio.sleep(10)  # 出错后延长间隔
-
-
 # ============ 聊天记录存储 ============
 
 class ChatStore:
@@ -413,6 +395,24 @@ class ChatStore:
         file = self._get_file(user_id)
         if file.exists():
             file.unlink()
+
+
+# 创建全局管理器
+monitor_manager = BacktestMonitorManager()
+chat_store = ChatStore(CHAT_DIR)
+persistent_listener = PersistentSessionListener(GATEWAY_WS, GATEWAY_TOKEN, chat_store)
+
+# ============ 后台任务 ============
+
+async def notification_checker():
+    """定期检查回测完成通知"""
+    while True:
+        try:
+            monitor_manager.check_notification_files()
+            await asyncio.sleep(5)  # 每5秒检查一次
+        except Exception as e:
+            logger.error(f"通知检查器错误: {e}")
+            await asyncio.sleep(10)  # 出错后延长间隔
 
 
 # ============ 认证辅助函数 ============
