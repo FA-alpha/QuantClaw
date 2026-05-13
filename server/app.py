@@ -929,16 +929,18 @@ async def handle_websocket(request):
                 
                 # 连接结束时的处理
                 if user_id:
+                    has_unsaved_response = current_response[0] and not response_saved[0]
+                    
                     # 1. 如果有未保存的响应，立即保存
-                    if current_response[0] and not response_saved[0]:
+                    if has_unsaved_response:
                         logger.warning(f'⚠️ Connection closed with unsaved response for {user_id}')
                         logger.info(f'💾 Saving incomplete response: {len(current_response[0])} chars')
                         chat_store.append(user_id, 'assistant', current_response[0])
                         response_saved[0] = True
                     
-                    # 2. 启动持久监听器作为后备（防止后续消息丢失）
-                    # 如果 response_saved 为 False，说明可能还有消息正在处理
-                    if not response_saved[0]:
+                    # 2. 启动持久监听器作为后备（防止 Agent 还在处理但消息未到达）
+                    # 条件：有未保存的响应，说明 Agent 可能还在工作
+                    if has_unsaved_response:
                         logger.warning(f'🚨 Connection closed before response completed for {user_id}')
                         logger.info(f'🎧 Starting backup persistent listener for {session_key}')
                         await persistent_listener.start_listener(session_key, user_id, user_token)
@@ -949,8 +951,8 @@ async def handle_websocket(request):
             await ws_client.send_json({'type': 'error', 'error': f'Gateway connection failed: {e}'})
         except:
             pass
-        # 连接异常时也启动后备监听器
-        if user_id and session_key and not response_saved[0]:
+        # 连接异常时启动后备监听器（任何异常都可能导致消息丢失）
+        if user_id and session_key and user_token:
             logger.info(f'🎧 Starting backup listener due to connection error')
             await persistent_listener.start_listener(session_key, user_id, user_token)
     except Exception as e:
@@ -960,7 +962,7 @@ async def handle_websocket(request):
         except:
             pass
         # 其他异常时也启动后备监听器
-        if user_id and session_key and not response_saved[0]:
+        if user_id and session_key and user_token:
             logger.info(f'🎧 Starting backup listener due to error')
             await persistent_listener.start_listener(session_key, user_id, user_token)
 
