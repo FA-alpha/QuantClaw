@@ -857,14 +857,14 @@ async def handle_websocket(request):
                                         })
                                     continue
                                 
-                                # Event 消息：过滤只属于当前 session 的
+                                # Event 消息：不过滤 sessionKey，接收所有消息
+                                # 原因：Gateway 可能使用不同的 sessionKey（如 agent:quantclaw:main）
                                 if msg_type == 'event':
                                     msg_session_key = payload.get('sessionKey', '')
-                                    if msg_session_key and msg_session_key != session_key:
-                                        # 调试：记录被过滤的消息
-                                        if event_type == 'agent':
-                                            logger.debug(f'⚠️ Filtered event for different session: {msg_session_key} (expected: {session_key})')
-                                        continue
+                                    # 调试：记录收到的 sessionKey
+                                    if event_type == 'agent' and msg_session_key:
+                                        logger.debug(f'📥 Received event from session: {msg_session_key} (connected as: {session_key})')
+                                    # 不再过滤，接收所有事件
                                     
                                     # 处理 agent 流式响应
                                     if event_type == 'agent':
