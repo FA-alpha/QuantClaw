@@ -37,6 +37,201 @@ DATA_DIR.mkdir(exist_ok=True)
 CHAT_DIR = DATA_DIR / 'chats'
 CHAT_DIR.mkdir(exist_ok=True, parents=True)
 
+# ============ 持久会话监听器 ============
+
+class PersistentSessionListener:
+    """
+    后台持久监听器：独立于客户端 WebSocket
+    负责持续监听 Agent 会话并保存消息到本地存储
+    """
+    
+    def __init__(self, gateway_ws: str, gateway_token: str, chat_store):
+        self.gateway_ws = gateway_ws
+        self.gateway_token = gateway_token
+        self.chat_store = chat_store
+        self.active_listeners = {}  # {session_key: task}
+        self.session_states = {}  # {session_key: {'current_response': '', 'response_saved': bool}}
+    
+    async def start_listener(self, session_key: str, user_id: str, user_token: str = None):
+        """为指定 session 启动持久监听器"""
+        if session_key in self.active_listeners:
+            logger.info(f'Listener already active: {session_key}')
+            return
+        
+        # 初始化状态
+        self.session_states[session_key] = {
+            'current_response': '',
+            'response_saved': False,
+            'user_id': user_id,
+            'user_token': user_token,
+        }
+        
+        # 启动后台任务
+        task = asyncio.create_task(self._listen_loop(session_key))
+        self.active_listeners[session_key] = task
+        logger.info(f'🎧 Started persistent listener for {session_key} (user: {user_id})')
+    
+    async def stop_listener(self, session_key: str):
+        """停止指定 session 的监听器"""
+        task = self.active_listeners.pop(session_key, None)
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            logger.info(f'🔇 Stopped listener for {session_key}')
+        
+        # 清理状态
+        self.session_states.pop(session_key, None)
+    
+    async def _listen_loop(self, session_key: str):
+        """持久监听循环（独立运行，不受客户端影响）"""
+        while True:
+            try:
+                async with aiohttp.ClientSession() as http_session:
+                    gateway_url = f'{self.gateway_ws}?token={self.gateway_token}'
+                    
+                    async with http_session.ws_connect(gateway_url) as gateway_ws:
+                        # 握手
+                        if not await self._complete_handshake(gateway_ws):
+                            logger.error(f'Handshake failed for {session_key}')
+                            await asyncio.sleep(5)
+                            continue
+                        
+                        logger.info(f'🔗 Listener connected to Gateway: {session_key}')
+                        
+                        # 持续监听消息
+                        async for msg in gateway_ws:
+                            if msg.type == WSMsgType.TEXT:
+                                await self._handle_gateway_message(session_key, msg.data)
+                            elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                                logger.warning(f'Gateway connection closed for {session_key}')
+                                break
+                        
+            except asyncio.CancelledError:
+                # 被主动取消
+                logger.info(f'Listener task cancelled: {session_key}')
+                break
+            except Exception as e:
+                logger.error(f'Listener error for {session_key}: {e}')
+            
+            # 重连延迟
+            await asyncio.sleep(5)
+    
+    async def _complete_handshake(self, gateway_ws) -> bool:
+        """完成 Gateway 握手"""
+        connect_id = f'conn_listener_{id(gateway_ws)}'
+        
+        try:
+            async for msg in gateway_ws:
+                if msg.type == WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+                    
+                    if data.get('event') == 'connect.challenge':
+                        connect_req = {
+                            'type': 'req',
+                            'id': connect_id,
+                            'method': 'connect',
+                            'params': {
+                                'minProtocol': 3,
+                                'maxProtocol': 3,
+                                'client': {
+                                    'id': 'quantclaw-listener',
+                                    'version': '1.0.0',
+                                    'platform': 'linux',
+                                    'mode': 'backend'
+                                },
+                                'role': 'operator',
+                                'scopes': ['operator.read'],
+                                'caps': [],
+                                'commands': [],
+                                'permissions': {},
+                                'auth': {'token': self.gateway_token},
+                                'locale': 'zh-CN',
+                                'userAgent': 'quantclaw-listener/1.0.0'
+                            }
+                        }
+                        await gateway_ws.send_json(connect_req)
+                    
+                    elif data.get('type') == 'res' and data.get('id') == connect_id:
+                        if data.get('ok'):
+                            return True
+                        else:
+                            logger.error(f'Handshake failed: {data.get("error")}')
+                            return False
+                elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                    return False
+            
+            return False
+        except asyncio.TimeoutError:
+            return False
+    
+    async def _handle_gateway_message(self, session_key: str, msg_data: str):
+        """处理来自 Gateway 的消息"""
+        try:
+            data = json.loads(msg_data)
+            
+            # 忽略心跳
+            event_type = data.get('event', '')
+            if event_type in ('health', 'tick'):
+                return
+            
+            msg_type = data.get('type', '')
+            payload = data.get('payload', {})
+            
+            # 只处理 event 消息
+            if msg_type != 'event':
+                return
+            
+            # 过滤：只处理当前 session 的消息
+            msg_session_key = payload.get('sessionKey', '')
+            if msg_session_key and msg_session_key != session_key:
+                return
+            
+            state = self.session_states.get(session_key)
+            if not state:
+                return
+            
+            # 处理 agent 事件
+            if event_type == 'agent':
+                stream = payload.get('stream')
+                stream_data = payload.get('data', {})
+                
+                if stream == 'assistant':
+                    # 累积响应文本
+                    text = stream_data.get('text', '')
+                    state['current_response'] = text
+                
+                elif stream == 'lifecycle':
+                    phase = stream_data.get('phase')
+                    
+                    if phase == 'end':
+                        # 保存完整回复
+                        if state['user_id'] and state['current_response'] and not state['response_saved']:
+                            response_text = state['current_response']
+                            logger.info(f'📝 [Listener] Saving response for {state["user_id"]}: {len(response_text)} chars')
+                            self.chat_store.append(state['user_id'], 'assistant', response_text)
+                            state['response_saved'] = True
+                            
+                            # 检测回测ID并启动监控
+                            if state.get('user_token'):
+                                back_ids = monitor_manager.extract_backtest_ids(response_text)
+                                if back_ids:
+                                    for back_id in back_ids:
+                                        if monitor_manager.start_monitor(back_id, state['user_id'], state['user_token']):
+                                            logger.info(f"🚀 [Listener] Auto-started backtest {back_id} monitor")
+                        
+                        # 重置状态，准备下一轮
+                        state['current_response'] = ''
+                        state['response_saved'] = False
+        
+        except json.JSONDecodeError:
+            pass
+        except Exception as e:
+            logger.error(f'Error handling message in listener: {e}')
+
+
 # ============ 回测监控管理 ============
 
 class BacktestMonitorManager:
@@ -144,8 +339,10 @@ class BacktestMonitorManager:
         except Exception as e:
             logger.error(f"发送通知失败: {e}")
 
-# 创建全局监控管理器
+# 创建全局管理器
 monitor_manager = BacktestMonitorManager()
+chat_store = ChatStore(CHAT_DIR)
+persistent_listener = PersistentSessionListener(GATEWAY_WS, GATEWAY_TOKEN, chat_store)
 
 # ============ 后台任务 ============
 
@@ -212,9 +409,6 @@ class ChatStore:
         file = self._get_file(user_id)
         if file.exists():
             file.unlink()
-
-
-chat_store = ChatStore(CHAT_DIR)
 
 
 # ============ 认证辅助函数 ============
@@ -601,6 +795,10 @@ async def handle_websocket(request):
                                     if text:
                                         current_response[0] = ''  # 重置
                                         response_saved[0] = False  # 重置保存标志
+                                        
+                                        # 启动持久监听器（如果尚未启动）
+                                        await persistent_listener.start_listener(session_key, user_id, user_token)
+                                        
                                         rpc_msg = {
                                             'type': 'req',
                                             'id': next_id(),
