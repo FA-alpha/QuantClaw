@@ -153,7 +153,14 @@ class UserManager {
 
   // 自动注册：绑定客户端传入的 token
   async autoRegister(clientToken: string): Promise<UserRecord> {
-    // 1. 先验证 token 真实性
+    // 1. 先检查 token 是否已注册
+    const existingUser = this.users.get(clientToken);
+    if (existingUser) {
+      this.logger.info(`[quantclaw-auth] Token already registered: ${existingUser.userId}`);
+      return existingUser;
+    }
+    
+    // 2. 验证 token 真实性
     if (this.tokenValidator) {
       const validation = await this.tokenValidator.validate(clientToken);
       if (!validation.valid) {
@@ -162,7 +169,7 @@ class UserManager {
       this.logger.info(`[quantclaw-auth] Token validated: status=${validation.status}`);
     }
     
-    // 2. 使用客户端 token 的 hash 生成用户ID
+    // 3. 使用客户端 token 的 hash 生成用户ID
     const hash = crypto.createHash('sha256').update(clientToken).digest('hex').substring(0, 12);
     const userId = `u_${hash}`;
     const agentId = `qc-${hash}`;
