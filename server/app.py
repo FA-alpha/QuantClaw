@@ -17,7 +17,7 @@ from aiohttp import web, WSMsgType
 from pathlib import Path
 from datetime import datetime
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 # CORS 配置
