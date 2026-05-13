@@ -137,7 +137,7 @@ class PersistentSessionListener:
                                 'minProtocol': 3,
                                 'maxProtocol': 3,
                                 'client': {
-                                    'id': f'quantclaw-listener-{uuid.uuid4().hex[:8]}',
+                                    'id': 'quantclaw-listener',
                                     'version': '1.0.0',
                                     'platform': 'linux',
                                     'mode': 'backend'
@@ -736,7 +736,7 @@ async def handle_websocket(request):
                                         'minProtocol': 3,
                                         'maxProtocol': 3,
                                         'client': {
-                                            'id': f'quantclaw-ws-{uuid.uuid4().hex[:8]}',
+                                            'id': 'gateway-client',
                                             'version': '1.0.0',
                                             'platform': 'linux',
                                             'mode': 'backend'
