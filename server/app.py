@@ -823,6 +823,7 @@ async def handle_websocket(request):
                             except json.JSONDecodeError:
                                 pass
                         elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                            logger.info(f'🔴 Client WS closed/error for {user_id}: {msg.type}')
                             break
 
                 async def handle_gateway_messages():
@@ -932,13 +933,18 @@ async def handle_websocket(request):
                             except json.JSONDecodeError:
                                 pass
                         elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                            logger.info(f'🔴 Gateway WS closed/error for {user_id}: {msg.type}')
                             break
 
+                logger.info(f'🔗 Starting message handlers for {session_key}')
+                
                 await asyncio.gather(
                     handle_client_messages(),
                     handle_gateway_messages(),
                     return_exceptions=True
                 )
+                
+                logger.info(f'🔌 Handlers finished for {session_key}')
                 
                 # 连接结束时的处理
                 if user_id:
