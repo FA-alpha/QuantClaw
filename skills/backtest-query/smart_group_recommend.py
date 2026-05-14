@@ -204,8 +204,8 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             if not coins:
                 coins = ["BTC", "ETH", "SOL"]
     else:
-        # 默认模式：没有指定则报错
-        raise ValidationError("未指定 --coins 参数，请提供币种列表或使用 --auto-expand 自动扩展")
+        # 默认模式：没有指定则报错（引导用户确认）
+        raise ValidationError("未指定币种参数。请先询问用户想查询哪些币种，可提示用户输入'列表'查看所有可用币种。")
     
     # 2. 策略类型列表
     if args.strategy_types:
@@ -222,8 +222,8 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             if not strategy_types:
                 strategy_types = [11, 7, 1]
     else:
-        # 默认模式：没有指定则报错
-        raise ValidationError("未指定 --strategy-types 参数，请提供策略类型列表或使用 --auto-expand 自动扩展")
+        # 默认模式：没有指定则报错（引导用户确认）
+        raise ValidationError("未指定策略类型参数。请先询问用户想查询哪种策略类型（如风霆、网格、趋势等），可提示用户输入'列表'查看所有策略类型。")
     
     # 3. 时间ID列表（可选参数，未提供则不限制时间）
     if args.ai_time_ids:
@@ -1834,14 +1834,29 @@ def main():
     try:
         combinations = build_query_combinations(args, token)
     except Exception as e:
-        error_result = {
-            "error": "生成查询组合失败",
-            "message": str(e),
-            "suggestions": [
-                "检查币种是否有效（使用 query.py --list-coins 查询）",
-                "检查策略类型是否有效（使用 query.py --list-strategies 查询）",
-                "检查时间ID是否有效（使用 query.py --list-ai-times 查询）"
+        # 根据错误信息生成用户友好的建议
+        error_msg = str(e)
+        suggestions = []
+        
+        if "未指定币种" in error_msg or "币种" in error_msg:
+            suggestions.append("请告诉我您想查询哪些币种（如 BTC、ETH 等）")
+            suggestions.append("如果不确定，可以输入'列表'查看所有可用币种")
+        
+        if "未指定策略类型" in error_msg or "策略类型" in error_msg:
+            suggestions.append("请告诉我您想查询哪种策略类型（如风霆、网格、趋势等）")
+            suggestions.append("如果不确定，可以输入'列表'查看所有策略类型")
+        
+        if not suggestions:
+            # 其他错误，使用通用建议
+            suggestions = [
+                "请检查输入的币种或策略类型是否正确",
+                "您可以输入'列表'查看所有可用的选项"
             ]
+        
+        error_result = {
+            "error": "参数不完整",
+            "message": error_msg,
+            "suggestions": suggestions
         }
         if args.output:
             with open(args.output, 'w') as f:
