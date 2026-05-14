@@ -322,7 +322,7 @@ def query_backtest(
     version: str = None,
     leverage: int = None,
     search_extend: str = None,
-    app_v: str = "1.0.1",
+    app_v: str = "2.0.0",
     version_extra: dict = None,
 ) -> dict:
     """
