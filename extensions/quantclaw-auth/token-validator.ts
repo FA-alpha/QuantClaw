@@ -87,7 +87,7 @@ export class TokenValidator {
       const params = new URLSearchParams({
         show_type: String(this.config.showType || 2),
         usertoken: token,  // 注意：参数名是 usertoken 不是 token
-        app_v: '1.0.1',
+        app_v: '2.0.0',
         lang: '1',
       });
       const postData = params.toString();
