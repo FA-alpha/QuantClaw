@@ -724,17 +724,14 @@ def main():
                     print(f"错误: {result['error']}")
                 else:
                     group_id = result.get("info", {}).get("id")
-                    # 输出简洁摘要（Agent 自行补充说明）
                     print(f"✅ 策略组创建成功: {args.group_name} (ID: {group_id})")
-                    risk = combination['portfolio_risk']
-                    print(f"评分: {combination['score']} | 收益: {combination['expected_return']}% | 回撤: {risk['max_drawdown']}% | 夏普: {risk['sharpe_ratio']} | 胜率: {risk.get('win_rate', 'N/A')}%")
                     
-                    # 策略列表（紧凑格式）
-                    strategies_str = ", ".join([
-                        f"{s['coin']}-{'多' if s['direction'] == 'long' else '空'}({s['year_rate']}%,{s['sharp_rate']},{s['max_loss']}%)"
-                        for s in combination['strategies']
-                    ])
-                    print(f"策略: {strategies_str}")
+                    # 输出完整的组合信息（供 Agent 分析展示）
+                    print(json.dumps({
+                        "group_id": group_id,
+                        "group_name": args.group_name,
+                        "combination": combination
+                    }, ensure_ascii=False, indent=2))
                 return
                 
             except FileNotFoundError:
