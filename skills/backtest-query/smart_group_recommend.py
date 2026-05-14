@@ -1203,6 +1203,9 @@ class SmartGroupRecommender:
             min_strategies = constraints.get('min_strategies', 2)
             preferences['min_strategies'] = min_strategies
             
+            # 传递 constraints（包含 coins 等硬约束）
+            preferences['constraints'] = constraints
+            
             if strategy_goal == 'hedging':
                 # 对冲模式：强制多空平衡
                 hedge_type = "跨币种对冲" if diversity_priority == 'coin' else "同币种多空"

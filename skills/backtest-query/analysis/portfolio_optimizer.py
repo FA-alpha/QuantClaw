@@ -83,6 +83,78 @@ def score_portfolio(
     return round(score, 2)
 
 
+def _generate_combinations_with_coin_coverage(
+    strategies: List[Dict],
+    group_size: int,
+    required_coins: List[str],
+    max_combinations: int
+) -> List[Tuple[int, ...]]:
+    """
+    生成确保每个币种至少有一个策略的组合
+    
+    Args:
+        strategies: 策略列表
+        group_size: 组合大小
+        required_coins: 必须覆盖的币种列表
+        max_combinations: 最大组合数
+    
+    Returns:
+        list: 符合条件的组合列表（索引元组）
+    """
+    import random
+    
+    # 按币种分组策略
+    coin_strategies = {}
+    for i, s in enumerate(strategies):
+        coin = s.get('coin')
+        if coin in required_coins:
+            if coin not in coin_strategies:
+                coin_strategies[coin] = []
+            coin_strategies[coin].append(i)
+    
+    # 检查是否所有币种都有策略
+    missing_coins = [c for c in required_coins if c not in coin_strategies or not coin_strategies[c]]
+    if missing_coins:
+        # 如果有币种没有策略，放宽限制（警告但不强制）
+        print(f"⚠️  部分币种无可用策略: {', '.join(missing_coins)}，组合中可能不包含这些币种")
+        available_coins = [c for c in required_coins if c in coin_strategies and coin_strategies[c]]
+    else:
+        available_coins = required_coins
+    
+    # 如果没有足够的币种或组合大小小于币种数，无法满足要求
+    if len(available_coins) > group_size:
+        print(f"⚠️  组合大小({group_size})小于币种数量({len(available_coins)})，无法确保每个币种都有策略")
+        # 降级为普通组合生成
+        return list(itertools.combinations(range(len(strategies)), group_size))[:max_combinations]
+    
+    # 生成组合：从每个币种至少选一个，剩余位置随机分配
+    valid_combinations = set()
+    attempts = 0
+    max_attempts = max_combinations * 10  # 最多尝试10倍
+    
+    while len(valid_combinations) < max_combinations and attempts < max_attempts:
+        attempts += 1
+        
+        # 1. 从每个币种至少选一个策略
+        selected = []
+        for coin in available_coins:
+            selected.append(random.choice(coin_strategies[coin]))
+        
+        # 2. 剩余位置从所有策略中随机选择（不重复）
+        remaining_slots = group_size - len(selected)
+        if remaining_slots > 0:
+            all_indices = [i for i in range(len(strategies)) if i not in selected]
+            if len(all_indices) >= remaining_slots:
+                selected.extend(random.sample(all_indices, remaining_slots))
+        
+        # 转为元组并去重
+        combo_tuple = tuple(sorted(selected))
+        if len(combo_tuple) == group_size:  # 确保组合大小正确
+            valid_combinations.add(combo_tuple)
+    
+    return list(valid_combinations)
+
+
 def optimize_portfolio(
     strategies: List[Dict],
     group_size: int = 3,
@@ -96,7 +168,7 @@ def optimize_portfolio(
         strategies: 策略列表
         group_size: 组合大小
         max_combinations: 最大尝试组合数
-        preferences: 用户偏好
+        preferences: 用户偏好（可包含 constraints.coins 要求每个币种至少1个策略）
     
     Returns:
         list: 推荐组合列表，每个包含 {
@@ -111,14 +183,26 @@ def optimize_portfolio(
     if n < group_size:
         raise ValueError(f"策略数量({n})少于组合大小({group_size})")
     
-    # 生成所有可能的组合
-    all_combinations = list(itertools.combinations(range(n), group_size))
+    # 检查是否需要确保每个币种都有策略
+    required_coins = None
+    if preferences and 'constraints' in preferences:
+        required_coins = preferences['constraints'].get('coins')
     
-    # 限制计算量
-    if len(all_combinations) > max_combinations:
-        # 随机采样
-        import random
-        all_combinations = random.sample(all_combinations, max_combinations)
+    # 生成所有可能的组合
+    if required_coins and len(required_coins) > 1:
+        # 确保每个币种至少有一个策略
+        all_combinations = _generate_combinations_with_coin_coverage(
+            strategies, group_size, required_coins, max_combinations
+        )
+    else:
+        # 默认：生成所有可能的组合
+        all_combinations = list(itertools.combinations(range(n), group_size))
+        
+        # 限制计算量
+        if len(all_combinations) > max_combinations:
+            # 随机采样
+            import random
+            all_combinations = random.sample(all_combinations, max_combinations)
     
     # 评估每个组合
     results = []
