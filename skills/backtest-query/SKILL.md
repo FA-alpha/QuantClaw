@@ -124,20 +124,22 @@ exec("smart_group_recommend.py ... --output /tmp/result.json --quiet")
 # 或错误："✗ 候选策略不足 (2/4)。建议：放宽时间 | 增加币种"
 
 # 4. Python 脚本读取文件并创建 + 输出摘要
-exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 'xxx'")
-# stdout 输出格式化摘要：
+exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 'xxx' --agent-id qc-xxx")
+# stdout 输出格式化摘要（~500 字符）：
 #   ✅ 策略组创建成功: xxx (ID: 91)
 #   
 #   组合评分: 70.0
 #   预期收益: 126.5%
 #   最大回撤: 42.1%
+#   夏普比率: 2.06
 #   
 #   策略列表:
-#   1. DOGE-风霆V4.3-做多 (收益146.8%, 夏普2.53)
-#   2. BCH-风霆V4.3-做多 (收益185.7%, 夏普1.62)
-#   ...
+#     1. DOGE-做多 (收益146.85%, 夏普2.53, 回撤31.17%)
+#     2. BCH-做多 (收益185.66%, 夏普1.62, 回撤53.07%)
+#     3. DOGE-做空 (收益93.02%, 夏普0.92, 回撤73.33%)
+#     4. BCH-做空 (收益80.46%, 夏普3.18, 回撤10.85%)
 
-# 5. Agent 直接转发给用户
+# 5. Agent 直接转发摘要给用户
 ```
 
 **关键点**：
@@ -170,7 +172,7 @@ exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 
 
 ### smart_group_recommend.py
 ```bash
---agent-id "qc-xxx"              # 必需
+--agent-id "qc-xxx"              # 必需（自动获取 token）
 --query "用户原话"               # 必需
 --coins "BTC,ETH"                # 币种（先验证）
 --strategy-types "11,7"          # 策略类型（11=风霆, 7=网格）
@@ -181,8 +183,13 @@ exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 
 --intent-json '{...}'            # 意图JSON（必传，从 INTENT_ANALYSIS.md 生成）
 --max-combinations 1             # 总是传
 --top-per-group 3                # 总是传
---output /tmp/result.json        # 必需
+--output /tmp/result.json        # 必需（数据保存位置）
+--quiet                          # 必需（静默模式，只输出状态，省 token）
 ```
+
+**--quiet 模式输出**（stdout，~50 字符）：
+- 成功：`✓ 已保存到 /tmp/result.json (3 个组合)`
+- 失败：`✗ 候选策略不足 (2/4)。建议：放宽时间 | 增加币种`
 
 **输出 JSON 格式**（保存到 --output 文件中）：
 
@@ -214,10 +221,22 @@ exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 
 
 ### query.py
 ```bash
+--agent-id "qc-xxx"              # 必需（自动获取 token）
 --list-coins / --list-strategies / --list-ai-times  # 查询列表
---create-group --group-name "xxx" --strategy-tokens "t1,t2,t3"  # 创建组
---add-strategy --strategy-token "xxx"  # 保存单策略
+
+# 创建策略组（两种方式）
+--create-group --from-file /tmp/result.json --group-name "xxx"  # 从推荐结果创建（推荐）
+--create-group --strategy-tokens "t1,t2,t3" --group-name "xxx"  # 手动指定 tokens
+
+# 保存单策略
+--add-strategy --strategy-token "xxx"  
 ```
+
+**--from-file 输出格式**：
+- 自动读取推荐结果文件
+- 创建策略组
+- 输出格式化摘要（~500 字符），包含：评分、收益、回撤、策略列表
+- Agent 直接转发给用户，无需解析 JSON
 
 ### 参数规则
 - 版本：用户说 "V4.3" → `{"11": ["4.3"]}`；未说 → 不传
