@@ -210,7 +210,7 @@ Agent正确操作：
    - **禁止**硬编码任何 ID/币种
 
 4. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
-5. **直接读取 stdout**：**不要使用 `--output` 参数**，脚本会将 JSON 输出到 stdout，从 exec 结果中直接解析
+5. **使用 `--output` 保存结果**：使用 agent-id 命名临时文件避免冲突 → `/tmp/result_${agent_id}.json`
 6. **意图分析必做**：每次调用 `smart_group_recommend.py` 前，必须先读取 `INTENT_ANALYSIS.md` 生成 intent JSON
 
 ### 🔑 意图 JSON 传递规范（重要）
@@ -219,7 +219,7 @@ Agent正确操作：
 
 **正确做法**：
 ```bash
-# 不使用 --output，直接从 stdout 获取 JSON 结果
+# 使用 --output 保存到临时文件
 agent_id="qc-xxx"
 cd skills/backtest-query && python3 smart_group_recommend.py \
   --agent-id "${agent_id}" \
@@ -228,46 +228,8 @@ cd skills/backtest-query && python3 smart_group_recommend.py \
   --strategy-types "11" \
   --intent-json '{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}' \
   --max-combinations 1 \
-  --top-per-group 3
-```
-
-**如何解析结果**：
-
-脚本会输出两部分：
-1. **进度信息**（纯文本，到 stderr）：`📦 分组结果...`、`🎯 每组筛选...` 等
-2. **最终 JSON**（到 stdout）：从第一个 `{` 到最后一个 `}`
-
-**解析方法**：
-```python
-# 从 exec 输出中提取 JSON
-import json
-output = """
-📦 分组结果: 4 组
-...
-💾 结果已保存: /tmp/result.json
-{
-  "combinations": [...],
-  "total_fetched": 200,
-  "total_selected": 33
-}
-"""
-
-# 方法1: 找第一个 { 开始的 JSON
-start = output.find('{')
-if start != -1:
-    json_str = output[start:]
-    result = json.loads(json_str)
-
-# 方法2: 按行解析，找 JSON 开始和结束
-lines = output.strip().split('\n')
-json_lines = []
-in_json = False
-for line in lines:
-    if line.strip().startswith('{'):
-        in_json = True
-    if in_json:
-        json_lines.append(line)
-result = json.loads('\n'.join(json_lines))
+  --top-per-group 3 \
+  --output /tmp/result_${agent_id}.json
 ```
 
 **❌ 错误做法**：
@@ -359,8 +321,8 @@ cd skills/backtest-query && python3 query.py --list-coins --agent-id "qc-xxx"
 agent_id="qc-xxx"
 intent_json='{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}'
 
-# 3. 执行推荐（不使用 --output，直接获取 stdout）
-output=$(cd skills/backtest-query && python3 smart_group_recommend.py \
+# 3. 执行推荐（保存到临时文件）
+cd skills/backtest-query && python3 smart_group_recommend.py \
   --agent-id "${agent_id}" \
   --query "帮我构建 DOGE 与 BCH 对冲策略组" \
   --coins "DOGE,BCH" \
@@ -368,25 +330,17 @@ output=$(cd skills/backtest-query && python3 smart_group_recommend.py \
   --strategy-direction-map '{"11": ["long", "short"]}' \
   --intent-json "${intent_json}" \
   --max-combinations 1 \
-  --top-per-group 3)
+  --top-per-group 3 \
+  --output /tmp/result_${agent_id}.json
 
-# 4. 从输出中解析 JSON
+# 4. 读取结果文件
 ```
 
 **Python 伪代码检查逻辑**：
 ```python
 import json
-
-# 从 exec 输出中提取 JSON（从第一个 { 开始）
-output = """[exec 的完整输出]"""
-start = output.find('{')
-if start == -1:
-    # 没有找到 JSON，可能是错误输出
-    print("执行失败，输出:", output)
-    exit(1)
-
-json_str = output[start:]
-result = json.loads(json_str)
+agent_id = "qc-xxx"  # 从环境获取
+result = json.load(open(f'/tmp/result_{agent_id}.json'))
 
 # 检查是否有错误
 if 'error' in result:
