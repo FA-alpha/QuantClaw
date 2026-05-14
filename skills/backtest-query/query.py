@@ -724,18 +724,17 @@ def main():
                     print(f"错误: {result['error']}")
                 else:
                     group_id = result.get("info", {}).get("id")
-                    # 输出格式化摘要
+                    # 输出简洁摘要（Agent 自行补充说明）
                     print(f"✅ 策略组创建成功: {args.group_name} (ID: {group_id})")
-                    print()
-                    print(f"组合评分: {combination['score']}")
-                    print(f"预期收益: {combination['expected_return']}%")
-                    print(f"最大回撤: {combination['portfolio_risk']['max_drawdown']}%")
-                    print(f"夏普比率: {combination['portfolio_risk']['sharpe_ratio']}")
-                    print()
-                    print("策略列表:")
-                    for i, s in enumerate(combination['strategies'], 1):
-                        direction_text = "做多" if s['direction'] == 'long' else "做空"
-                        print(f"  {i}. {s['coin']}-{direction_text} (收益{s['year_rate']}%, 夏普{s['sharp_rate']}, 回撤{s['max_loss']}%)")
+                    risk = combination['portfolio_risk']
+                    print(f"评分: {combination['score']} | 收益: {combination['expected_return']}% | 回撤: {risk['max_drawdown']}% | 夏普: {risk['sharpe_ratio']} | 胜率: {risk.get('win_rate', 'N/A')}%")
+                    
+                    # 策略列表（紧凑格式）
+                    strategies_str = ", ".join([
+                        f"{s['coin']}-{'多' if s['direction'] == 'long' else '空'}({s['year_rate']}%,{s['sharp_rate']},{s['max_loss']}%)"
+                        for s in combination['strategies']
+                    ])
+                    print(f"策略: {strategies_str}")
                 return
                 
             except FileNotFoundError:
