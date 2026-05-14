@@ -99,39 +99,32 @@
 ### 案例：创建策略组（完整流程）
 
 用户："帮我构建 DOGE 与 BCH 对冲策略组"
-
-⚠️ **重要原则**：区分两种数据处理模式
-
-#### 模式 A：单策略查询（Agent 需要分析）
-```bash
-# 查询单个策略 → 返回完整数据 → Agent 分析展示
-exec("query.py --coin BTC --strategy-type 11 ...")
-# stdout: 返回完整 JSON，Agent 解析并展示给用户
-```
-**原因**：单策略数据简单，Agent 需要灵活展示
-
-#### 模式 B：组合推荐（Python 输出摘要，Agent 直接转发）
-```bash
-# 1. 查币种 → 验证（列表类查询保持原样）
-exec("query.py --list-coins") 
-# stdout: 返回完整列表供验证
-
+```python
+# 1. 查币种 → 验证
 # 2. 读 INTENT_ANALYSIS.md → 生成 intent JSON
+# 3. 推荐（max-combinations=1）→ 保存到 /tmp/result.json
+# 4. 读取结果并检查
+result = json.load(open('/tmp/result.json'))
 
-# 3. 推荐 → 使用 --quiet 只输出摘要（省 token）
-exec("smart_group_recommend.py ... --output /tmp/result.json --quiet")
-# stdout: "✓ 已保存到 /tmp/result.json (3 个组合)"
-# 或错误："✗ 候选策略不足 (2/4)。建议：放宽时间 | 增加币种"
+# 检查是否有错误
+if 'error' in result:
+    # 数据不足：显示建议，引导用户调整
+    suggestions = result.get('suggestions', [])
+    回复：f"抱歉，{result['message']}。建议：\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(suggestions))
+    return
 
-# 4. 创建策略组并展示
-exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 'xxx' --agent-id qc-xxx")
-# stdout 返回完整组合信息（JSON），Agent 解析后展示给用户
+# 检查是否有组合
+if not result.get('combinations'):
+    回复："未找到符合条件的策略组合。建议放宽条件重试。"
+    return
+
+# 5. 提取 tokens → 创建策略组
+tokens = [s['strategy_token'] for s in result['combinations'][0]['strategies']]
+exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
+
+# 6. 返回："✅ 已创建"
 ```
-
-**关键点**：
-- **中间查询过程**：`smart_group_recommend.py --quiet` 只输出状态（~50 字符），完整数据（6KB+）不传给 LLM，节省大量 token
-- **最终结果展示**：`query.py --from-file` 返回完整 JSON，Agent 正常解析展示
-- **核心优化**：减少中间过程的数据传输，保留最终展示的灵活性
+⚠️ 关键：检查 error 字段，引导用户而不是自动修改参数
 
 ### 区分推荐与创建
 - 推荐："推荐BTC策略" → 展示结果，询问是否创建
@@ -157,7 +150,7 @@ exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 
 
 ### smart_group_recommend.py
 ```bash
---agent-id "qc-xxx"              # 必需（自动获取 token）
+--agent-id "qc-xxx"              # 必需
 --query "用户原话"               # 必需
 --coins "BTC,ETH"                # 币种（先验证）
 --strategy-types "11,7"          # 策略类型（11=风霆, 7=网格）
@@ -168,13 +161,8 @@ exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 
 --intent-json '{...}'            # 意图JSON（必传，从 INTENT_ANALYSIS.md 生成）
 --max-combinations 1             # 总是传
 --top-per-group 3                # 总是传
---output /tmp/result.json        # 必需（数据保存位置）
---quiet                          # 必需（静默模式，只输出状态，省 token）
+--output /tmp/result.json        # 必需
 ```
-
-**--quiet 模式输出**（stdout，~50 字符）：
-- 成功：`✓ 已保存到 /tmp/result.json (3 个组合)`
-- 失败：`✗ 候选策略不足 (2/4)。建议：放宽时间 | 增加币种`
 
 **输出 JSON 格式**（保存到 --output 文件中）：
 
@@ -206,21 +194,11 @@ exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 
 
 ### query.py
 ```bash
---agent-id "qc-xxx"              # 必需（自动获取 token）
+--agent-id "qc-xxx"              # 用于自动获取 token
 --list-coins / --list-strategies / --list-ai-times  # 查询列表
-
-# 创建策略组（两种方式）
---create-group --from-file /tmp/result.json --group-name "xxx"  # 从推荐结果创建（推荐）
---create-group --strategy-tokens "t1,t2,t3" --group-name "xxx"  # 手动指定 tokens
-
-# 保存单策略
---add-strategy --strategy-token "xxx"  
+--create-group --group-name "xxx" --strategy-tokens "t1,t2,t3"  # 创建组
+--add-strategy --strategy-token "xxx"  # 保存单策略
 ```
-
-**--from-file 输出格式**：
-- 自动读取推荐结果文件 → 创建策略组
-- 输出完整组合信息 JSON，包含：group_id, group_name, combination (评分/收益/回撤/策略列表等)
-- Agent 正常解析 JSON 并展示给用户
 
 ### 参数规则
 - 版本：用户说 "V4.3" → `{"11": ["4.3"]}`；未说 → 不传

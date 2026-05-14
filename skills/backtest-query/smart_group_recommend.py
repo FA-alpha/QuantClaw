@@ -1898,30 +1898,14 @@ def main():
         sys.exit(1)
     
     # 9. 输出结果
+    if not args.quiet:
+        recommender.print_result(result)
+    
+    # 保存到文件（JSON 完整输出）
     if args.output:
-        # 保存到文件（JSON 完整输出）
         recommender.save_result(result, args.output)
-        
-        if args.quiet:
-            # 静默模式：只输出状态信息，不输出完整数据
-            if "error" in result:
-                print(f"✗ {result['message']}")
-                if result.get('suggestions'):
-                    print("建议：" + " | ".join(result['suggestions']))
-            else:
-                combinations_count = len(result.get('combinations', []))
-                print(f"✓ 已保存到 {args.output} ({combinations_count} 个组合)")
-        else:
-            # 详细模式：输出完整信息
-            recommender.print_result(result)
-            print(f"\n💾 完整结果已保存: {args.output}")
-    else:
-        # 没有指定输出文件，按原样输出
         if not args.quiet:
-            recommender.print_result(result)
-        else:
-            # 即使静默模式也要输出结果（因为没有保存到文件）
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(f"\n💾 完整结果已保存: {args.output}")
     
     if not args.quiet:
         print("\n✅ 推荐完成")

@@ -565,7 +565,6 @@ def main():
     parser.add_argument("--create-group", action="store_true", help="创建策略组")
     parser.add_argument("--group-name", help="策略组名称")
     parser.add_argument("--strategy-tokens", help="策略 token（多个逗号分隔，用于创建策略组）")
-    parser.add_argument("--from-file", help="从推荐结果文件创建策略组（JSON 文件路径）")
     parser.add_argument("--list-coins", action="store_true", help="列出可用币种")
     parser.add_argument("--list-ai-times", action="store_true", help="列出 AI 回测时间")
     parser.add_argument("--list-strategies", action="store_true", help="列出 AI 回测策略")
@@ -698,55 +697,8 @@ def main():
         if not args.group_name:
             print("错误: 需要 --group-name")
             return
-        
-        # 从文件读取策略 tokens 和信息
-        if args.from_file:
-            try:
-                with open(args.from_file, 'r') as f:
-                    data = json.load(f)
-                
-                if "error" in data:
-                    print(f"错误: {data['message']}")
-                    return
-                
-                if not data.get("combinations"):
-                    print("错误: 推荐文件中没有找到策略组合")
-                    return
-                
-                # 提取第一个组合的 tokens
-                combination = data["combinations"][0]
-                tokens = [s["strategy_token"] for s in combination["strategies"]]
-                strategy_tokens = ",".join(tokens)
-                
-                # 创建策略组
-                result = create_strategy_group(args.token, strategy_tokens, args.group_name)
-                if "error" in result:
-                    print(f"错误: {result['error']}")
-                else:
-                    group_id = result.get("info", {}).get("id")
-                    print(f"✅ 策略组创建成功: {args.group_name} (ID: {group_id})")
-                    
-                    # 输出完整的组合信息（供 Agent 分析展示）
-                    print(json.dumps({
-                        "group_id": group_id,
-                        "group_name": args.group_name,
-                        "combination": combination
-                    }, ensure_ascii=False, indent=2))
-                return
-                
-            except FileNotFoundError:
-                print(f"错误: 文件不存在: {args.from_file}")
-                return
-            except json.JSONDecodeError:
-                print(f"错误: 文件不是有效的 JSON: {args.from_file}")
-                return
-            except Exception as e:
-                print(f"错误: 读取文件失败: {e}")
-                return
-        
-        # 直接使用 --strategy-tokens
         if not args.strategy_tokens:
-            print("错误: 需要 --strategy-tokens 或 --from-file")
+            print("错误: 需要 --strategy-tokens")
             return
         result = create_strategy_group(args.token, args.strategy_tokens, args.group_name)
         if "error" in result:
