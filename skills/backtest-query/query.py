@@ -448,6 +448,33 @@ def format_result(data: dict, output_format: str = "table") -> str:
         return f"错误: {data['error']}"
     
     if output_format == "json":
+        # ⚠️ 精简 JSON 输出，移除超大字段（config/metrics）
+        # 避免 Agent 上下文超限（每条策略平均 6-8KB）
+        if "info" in data and isinstance(data["info"], list):
+            simplified_info = []
+            for item in data["info"]:
+                # 只保留关键字段
+                simplified = {
+                    "id": item.get("id"),
+                    "back_id": item.get("back_id"),
+                    "name": item.get("name"),
+                    "coin": item.get("coin"),
+                    "strategy_type": item.get("strategy_type"),
+                    "year_rate": item.get("year_rate"),
+                    "sharp_rate": item.get("sharp_rate"),
+                    "max_loss": item.get("max_loss"),
+                    "win_rate": item.get("win_rate"),
+                    "strategy_token": item.get("strategy_token"),
+                    "version": item.get("version"),
+                    "leverage": item.get("leverage"),
+                    "direction": item.get("direction"),  # 保留方向（重要）
+                }
+                # 移除 None 值
+                simplified = {k: v for k, v in simplified.items() if v is not None}
+                simplified_info.append(simplified)
+            
+            data = {**data, "info": simplified_info}
+        
         return json.dumps(data, indent=2, ensure_ascii=False)
     
     info = data.get("info", [])
