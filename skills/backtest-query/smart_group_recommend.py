@@ -847,6 +847,53 @@ class SmartGroupRecommender:
         
         return groups
     
+    def _create_strategy_summary(self, strategies: List[Dict]) -> Dict:
+        """
+        创建策略列表的精简摘要（避免输出大量数据）
+        
+        Args:
+            strategies: 策略列表
+        
+        Returns:
+            精简摘要字典
+        """
+        summary = {
+            "total_count": len(strategies),
+            "by_coin": {},
+            "by_direction": {},
+            "by_coin_direction": {},
+            "sample_strategies": []  # 只保留前3个作为样本
+        }
+        
+        for s in strategies:
+            coin = s.get('coin', 'UNKNOWN')
+            direction = s.get('direction', 'UNKNOWN')
+            
+            # 按币种统计
+            summary["by_coin"][coin] = summary["by_coin"].get(coin, 0) + 1
+            
+            # 按方向统计
+            summary["by_direction"][direction] = summary["by_direction"].get(direction, 0) + 1
+            
+            # 按币种+方向统计
+            key = f"{coin}_{direction}"
+            summary["by_coin_direction"][key] = summary["by_coin_direction"].get(key, 0) + 1
+        
+        # 保留前3个策略作为样本（只保留关键字段）
+        for s in strategies[:3]:
+            summary["sample_strategies"].append({
+                "back_id": s.get("back_id"),
+                "coin": s.get("coin"),
+                "direction": s.get("direction"),
+                "name": s.get("name"),
+                "strategy_token": s.get("strategy_token"),
+                "year_rate": s.get("year_rate"),
+                "sharp_rate": s.get("sharp_rate"),
+                "max_loss": s.get("max_loss")
+            })
+        
+        return summary
+    
     # ==================== 详情深度分析 ====================
     
     def fetch_detail_data(self, strategies: List[Dict], max_fetch: int = 30) -> List[Dict]:
@@ -1154,7 +1201,7 @@ class SmartGroupRecommender:
                 "query": query_text,
                 "total_fetched": len(strategies),
                 "total_selected": len(all_selected),
-                "selected_strategies": all_selected
+                "selected_summary": self._create_strategy_summary(all_selected)
             }
         
         # 检查是否满足 min_strategies 要求
@@ -1173,7 +1220,7 @@ class SmartGroupRecommender:
                 "total_fetched": len(strategies),
                 "total_selected": len(all_selected),
                 "min_strategies_required": min_strategies,
-                "selected_strategies": all_selected
+                "selected_summary": self._create_strategy_summary(all_selected)
             }
         
         self.log(f"\n🎲 生成策略组合（最多 {max_combinations} 个）...")
@@ -1243,7 +1290,7 @@ class SmartGroupRecommender:
             "groups": {str(k): len(v) for k, v in groups.items()},
             "total_fetched": len(strategies),
             "total_selected": len(all_selected),
-            "selected_strategies": all_selected,
+            "selected_summary": self._create_strategy_summary(all_selected),
             "combinations": combinations,
             "criteria": detail_criteria,
             "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown']
