@@ -110,7 +110,7 @@ exec("query.py --coin BTC --strategy-type 11 ...")
 ```
 **原因**：单策略数据简单，Agent 需要灵活展示
 
-#### 模式 B：组合推荐（中间过程不输出，最终展示关键信息）
+#### 模式 B：组合推荐（Python 输出摘要，Agent 直接转发）
 ```bash
 # 1. 查币种 → 验证（列表类查询保持原样）
 exec("query.py --list-coins") 
@@ -118,31 +118,33 @@ exec("query.py --list-coins")
 
 # 2. 读 INTENT_ANALYSIS.md → 生成 intent JSON
 
-# 3. 推荐 → 使用 --quiet 只输出状态（省 token）
+# 3. 推荐 → 使用 --quiet 只输出摘要（省 token）
 exec("smart_group_recommend.py ... --output /tmp/result.json --quiet")
 # stdout: "✓ 已保存到 /tmp/result.json (3 个组合)"
 # 或错误："✗ 候选策略不足 (2/4)。建议：放宽时间 | 增加币种"
 
-# 4. 提取 tokens 创建策略组
-exec("jq -r '.combinations[0].strategies[].strategy_token' /tmp/result.json | paste -sd,")
-# stdout: "token1,token2,token3"
+# 4. Python 脚本读取文件并创建 + 输出摘要
+exec("python3 query.py --create-group --from-file /tmp/result.json --group-name 'xxx'")
+# stdout 输出格式化摘要：
+#   ✅ 策略组创建成功: xxx (ID: 91)
+#   
+#   组合评分: 70.0
+#   预期收益: 126.5%
+#   最大回撤: 42.1%
+#   
+#   策略列表:
+#   1. DOGE-风霆V4.3-做多 (收益146.8%, 夏普2.53)
+#   2. BCH-风霆V4.3-做多 (收益185.7%, 夏普1.62)
+#   ...
 
-exec("query.py --create-group --strategy-tokens 'token1,token2,token3' --group-name 'xxx'")
-# stdout: "✅ 策略组创建成功: xxx (ID: 91)"
-
-# 5. 读取关键信息用于展示（只提取必要字段，不读完整 JSON）
-exec("jq '{score: .combinations[0].score, expected_return: .combinations[0].expected_return, 
-    max_drawdown: .combinations[0].portfolio_risk.max_drawdown, strategies: [.combinations[0].strategies[] | 
-    {name, coin, direction, year_rate, sharp_rate, max_loss}]}' /tmp/result.json")
-# stdout: 返回精简 JSON（~500 字符）
-
-# 6. Agent 解析精简数据，展示给用户
+# 5. Agent 直接转发给用户
 ```
 
 **关键点**：
-- **中间查询**：`--quiet` 只输出状态，完整数据（6KB+）不传给 LLM
-- **最终展示**：用 `jq` 提取关键字段（~500 字符），Agent 格式化后展示
-- **Token 节省**：从 6000+ 字符降到 500 字符（节省 ~90%）
+- **中间查询**：`--quiet` 只输出状态（~50 字符），完整数据（6KB+）不传给 LLM
+- **最终展示**：Python 脚本自己读文件输出格式化摘要（~500 字符）
+- **Agent 不用 jq**：避免提取错误，Python 脚本自己控制输出格式
+- **Token 节省**：从 6000+ 字符降到 500 字符（节省 ~92%）
 
 ### 区分推荐与创建
 - 推荐："推荐BTC策略" → 展示结果，询问是否创建

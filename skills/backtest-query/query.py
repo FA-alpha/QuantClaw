@@ -565,6 +565,7 @@ def main():
     parser.add_argument("--create-group", action="store_true", help="创建策略组")
     parser.add_argument("--group-name", help="策略组名称")
     parser.add_argument("--strategy-tokens", help="策略 token（多个逗号分隔，用于创建策略组）")
+    parser.add_argument("--from-file", help="从推荐结果文件创建策略组（JSON 文件路径）")
     parser.add_argument("--list-coins", action="store_true", help="列出可用币种")
     parser.add_argument("--list-ai-times", action="store_true", help="列出 AI 回测时间")
     parser.add_argument("--list-strategies", action="store_true", help="列出 AI 回测策略")
@@ -697,8 +698,59 @@ def main():
         if not args.group_name:
             print("错误: 需要 --group-name")
             return
+        
+        # 从文件读取策略 tokens 和信息
+        if args.from_file:
+            try:
+                with open(args.from_file, 'r') as f:
+                    data = json.load(f)
+                
+                if "error" in data:
+                    print(f"错误: {data['message']}")
+                    return
+                
+                if not data.get("combinations"):
+                    print("错误: 推荐文件中没有找到策略组合")
+                    return
+                
+                # 提取第一个组合的 tokens
+                combination = data["combinations"][0]
+                tokens = [s["strategy_token"] for s in combination["strategies"]]
+                strategy_tokens = ",".join(tokens)
+                
+                # 创建策略组
+                result = create_strategy_group(args.token, strategy_tokens, args.group_name)
+                if "error" in result:
+                    print(f"错误: {result['error']}")
+                else:
+                    group_id = result.get("info", {}).get("id")
+                    # 输出格式化摘要
+                    print(f"✅ 策略组创建成功: {args.group_name} (ID: {group_id})")
+                    print()
+                    print(f"组合评分: {combination['score']}")
+                    print(f"预期收益: {combination['expected_return']}%")
+                    print(f"最大回撤: {combination['portfolio_risk']['max_drawdown']}%")
+                    print(f"夏普比率: {combination['portfolio_risk']['sharpe_ratio']}")
+                    print()
+                    print("策略列表:")
+                    for i, s in enumerate(combination['strategies'], 1):
+                        direction_text = "做多" if s['direction'] == 'long' else "做空"
+                        print(f"  {i}. {s['coin']}-{direction_text} (收益{s['year_rate']}%, 夏普{s['sharp_rate']}, 回撤{s['max_loss']}%)")
+                return
+                
+            except FileNotFoundError:
+                print(f"错误: 文件不存在: {args.from_file}")
+                return
+            except json.JSONDecodeError:
+                print(f"错误: 文件不是有效的 JSON: {args.from_file}")
+                return
+            except Exception as e:
+                print(f"错误: 读取文件失败: {e}")
+                return
+        
+        # 直接使用 --strategy-tokens
         if not args.strategy_tokens:
-            print("错误: 需要 --strategy-tokens")
+            print("错误: 需要 --strategy-tokens 或 --from-file")
             return
         result = create_strategy_group(args.token, args.strategy_tokens, args.group_name)
         if "error" in result:
