@@ -107,9 +107,10 @@ cd skills/backtest-query && python3 smart_group_recommend.py --agent-id xxx --qu
 | 参数类型 | 属于哪个技能 | 处理方式 |
 |---------|------------|---------|
 | 币种、策略类型、版本、方向 | backtest-query | 用于创建策略组 |
-| 资金配比、保证金分配 | start-backtest | **不影响策略组创建** |
+| **资金配比**、保证金分配 | start-backtest | **❌ 不传给 backtest-query！这是回测参数** |
 | "2025年全年"/"最近30天"等 | start-backtest | **不是AI时间ID** |
 | AI时间ID（"震荡行情"/"牛市"） | backtest-query | 用于筛选策略 |
+| 策略建仓比例（60/80/100） | backtest-query | coin-pct-map，**与资金配比无关** |
 
 **易混淆示例**：
 
@@ -415,7 +416,9 @@ exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
 --strategy-types "11,7"          # 策略类型（11=风霆, 7=网格）
 --strategy-version-map '{"11": ["4.3"]}'  # 版本过滤
 --strategy-direction-map '{"11": ["long", "short"]}'  # 方向
---coin-pct-map '{"BTC": ["80"]}'    # 比例（BTC: 10~120, 其他: 60~140）
+--coin-pct-map '{"BTC": ["80"]}'    # ⚠️ 策略的建仓比例（非资金分配！）
+                                    # BTC: 10/20/.../120, 其他: 60/80/.../140
+                                    # 用户说"资金配比"时不传此参数！
 --ai-time-ids "16"               # 时间ID（用户说了才传）
 --intent-json '{...}'            # 意图JSON（必传，从 INTENT_ANALYSIS.md 生成）
 --max-combinations 1             # 总是传
