@@ -124,7 +124,7 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
             pass
     
     url = f"{API_BASE}/Strategy/coin_lists"
-    data = {"usertoken": token}
+    data = {"usertoken": token, "app_v": "2.0.0"}
     
     try:
         resp = requests.post(url, data=data, timeout=30)
@@ -241,6 +241,7 @@ def apply_backtest(
     data = {
         "usertoken": token,
         "data_type": str(data_type),
+        "app_v": "2.0.0"
     }
 
     # 策略参数：使用 strategy_id
