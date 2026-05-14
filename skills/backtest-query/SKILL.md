@@ -212,6 +212,7 @@ Agent正确操作：
 4. **必须加 `--agent-id`**：所有脚本都需要（用于自动获取 token）
 5. **一次性执行**：推荐时总是加 `--output`，避免二次运行
 6. **意图分析必做**：每次调用 `smart_group_recommend.py` 前，必须先读取 `INTENT_ANALYSIS.md` 生成 intent JSON
+7. **临时文件命名规范**：使用 agent-id 避免多 agent 冲突 → `/tmp/result_${agent_id}.json`
 
 ### 🔑 意图 JSON 传递规范（重要）
 
@@ -219,15 +220,17 @@ Agent正确操作：
 
 **正确做法**：
 ```bash
+# 使用 agent-id 命名临时文件，避免多 agent 冲突
+agent_id="qc-xxx"
 cd skills/backtest-query && python3 smart_group_recommend.py \
-  --agent-id "qc-xxx" \
+  --agent-id "${agent_id}" \
   --query "用户原话" \
   --coins "DOGE,BCH" \
   --strategy-types "11" \
   --intent-json '{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}' \
   --max-combinations 1 \
   --top-per-group 3 \
-  --output /tmp/result.json
+  --output /tmp/result_${agent_id}.json
 ```
 
 **❌ 错误做法**：
@@ -316,19 +319,20 @@ cd skills/backtest-query && python3 query.py --list-coins --agent-id "qc-xxx"
 
 # 2. 根据 INTENT_ANALYSIS.md 生成 intent JSON（在内存中）
 # 对冲策略 → hedging, 多币种 → diversity_priority: coin
+agent_id="qc-xxx"
 intent_json='{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}'
 
 # 3. 执行推荐（传递 JSON 字符串）
 cd skills/backtest-query && python3 smart_group_recommend.py \
-  --agent-id "qc-xxx" \
+  --agent-id "${agent_id}" \
   --query "帮我构建 DOGE 与 BCH 对冲策略组" \
   --coins "DOGE,BCH" \
   --strategy-types "11" \
   --strategy-direction-map '{"11": ["long", "short"]}' \
-  --intent-json '{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}' \
+  --intent-json "${intent_json}" \
   --max-combinations 1 \
   --top-per-group 3 \
-  --output /tmp/result.json
+  --output /tmp/result_${agent_id}.json
 
 # 4. 读取结果并检查
 ```
@@ -336,7 +340,8 @@ cd skills/backtest-query && python3 smart_group_recommend.py \
 **Python 伪代码检查逻辑**：
 ```python
 import json
-result = json.load(open('/tmp/result.json'))
+agent_id = "qc-xxx"  # 从环境获取
+result = json.load(open(f'/tmp/result_{agent_id}.json'))
 
 # 检查是否有错误
 if 'error' in result:
@@ -393,7 +398,7 @@ exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
 --intent-json '{...}'            # 意图JSON（必传，从 INTENT_ANALYSIS.md 生成）
 --max-combinations 1             # 总是传
 --top-per-group 3                # 总是传
---output /tmp/result.json        # 必需
+--output /tmp/result_${agent_id}.json  # 必需，使用 agent_id 避免冲突
 ```
 
 **输出 JSON 格式**（保存到 --output 文件中）：
