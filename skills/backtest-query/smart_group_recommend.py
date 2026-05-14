@@ -333,8 +333,11 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             version_spec = strategy_version_map[str(st)]
             
             if version_spec is None:
-                # null → 自动查询该策略所有版本
-                versions_list = auto_get_versions(st)
+                # null → 根据 auto_expand 决定
+                if args.auto_expand:
+                    versions_list = auto_get_versions(st)
+                else:
+                    versions_list = [None]
             
             elif isinstance(version_spec, list):
                 versions_list = []
@@ -366,16 +369,23 @@ def build_query_combinations(args, token: str) -> List[Dict]:
                 print(f"⚠️  策略 {st} 没有版本 {user_versions}，跳过该策略")
                 continue
         
-        # ==================== 优先级3：自动查询 ====================
-        else:
+        # ==================== 优先级3：自动查询或使用默认 ====================
+        elif args.auto_expand:
             versions_list = auto_get_versions(st)
+        else:
+            # 默认模式：不指定版本（使用 None 表示不限制版本）
+            versions_list = [None]
         
         # ==================== 获取该策略的 directions（优先级同上） ====================
         if str(st) in strategy_direction_map:
             direction_spec = strategy_direction_map[str(st)]
             
             if direction_spec is None:
-                directions = auto_get_directions(st)
+                # null → 根据 auto_expand 决定
+                if args.auto_expand:
+                    directions = auto_get_directions(st)
+                else:
+                    directions = [None]
             elif isinstance(direction_spec, list):
                 directions = direction_spec
             else:
@@ -385,8 +395,12 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         elif args.directions:
             directions = parse_csv(args.directions)
         
-        else:
+        elif args.auto_expand:
             directions = auto_get_directions(st)
+        
+        else:
+            # 默认模式：不指定方向（使用 None 表示不限制方向）
+            directions = [None]
         
         # === 嵌套循环：version → direction → coin → pct → time_id ===
         for version_item in versions_list:
@@ -397,7 +411,11 @@ def build_query_combinations(args, token: str) -> List[Dict]:
                         pct_spec = coin_pct_map[coin]
                         
                         if pct_spec is None:
-                            search_pcts = auto_get_pcts(coin)
+                            # null → 根据 auto_expand 决定
+                            if args.auto_expand:
+                                search_pcts = auto_get_pcts(coin)
+                            else:
+                                search_pcts = [None]
                         elif isinstance(pct_spec, list):
                             search_pcts = pct_spec
                         else:
@@ -407,31 +425,38 @@ def build_query_combinations(args, token: str) -> List[Dict]:
                     elif args.search_pcts:
                         search_pcts = parse_csv(args.search_pcts)
                     
-                    else:
+                    elif args.auto_expand:
                         search_pcts = auto_get_pcts(coin)
+                    
+                    else:
+                        # 默认模式：不指定比例（使用 None 表示不限制比例）
+                        search_pcts = [None]
                     
                     for pct in search_pcts:
                         # 处理时间ID（可能为 None）
                         time_id_list = ai_time_ids if ai_time_ids else [None]
                         
                         for time_id in time_id_list:
-                            # === 构建组合 ===
+                            # === 构建组合（只添加非 None 的字段）===
                             combo = {
                                 'coin': coin,
                                 'strategy_type': st,
-                                'direction': direction,
-                                'search_pct': pct,
                             }
                             
-                            # 时间ID为可选参数
+                            # 方向（可选）
+                            if direction is not None:
+                                combo['direction'] = direction
+                            
+                            # 比例（可选）
+                            if pct is not None:
+                                combo['search_pct'] = pct
+                            
+                            # 时间ID（可选）
                             if time_id is not None:
                                 combo['ai_time_id'] = time_id
                             
                             # 处理版本信息
-                            if version_item is None:
-                                # 没有版本信息，不添加 version 字段
-                                pass
-                            elif isinstance(version_item, dict):
+                            if version_item is not None and isinstance(version_item, dict):
                                 # 提取版本号
                                 combo['version'] = version_item.get('version')
                                 # 直接使用完整的版本配置对象
