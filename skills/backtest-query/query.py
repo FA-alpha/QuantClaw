@@ -68,7 +68,7 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
     
     # 请求 API
     url = f"{API_BASE}/Strategy/coin_lists"
-    data = {"usertoken": token}
+    data = {"usertoken": token, "app_v": "2.0.0"}
     
     try:
         resp = requests.post(url, data=data, timeout=30)
@@ -113,7 +113,7 @@ def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
     
     # 请求 API
     url = f"{API_BASE}/Extend/ai_time_lists"
-    data = {"usertoken": token}
+    data = {"usertoken": token, "app_v": "2.0.0"}
     
     try:
         resp = requests.post(url, data=data, timeout=30)
@@ -158,7 +158,7 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
     
     # 请求 API
     url = f"{API_BASE}/Extend/ai_strategy_lists"
-    data = {"usertoken": token}
+    data = {"usertoken": token, "app_v": "2.0.0"}
     
     try:
         resp = requests.post(url, data=data, timeout=30)
@@ -194,7 +194,8 @@ def add_strategy(token: str, strategy_token: str) -> dict:
     url = f"{API_BASE}/Strategy/adds_do"
     data = {
         "usertoken": token,
-        "strategy_token": strategy_token
+        "strategy_token": strategy_token,
+        "app_v": "2.0.0"
     }
     
     try:
@@ -228,7 +229,8 @@ def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
     data = {
         "usertoken": token,
         "strategy_token": strategy_tokens,
-        "name": name
+        "name": name,
+        "app_v": "2.0.0"
     }
     
     try:
@@ -260,7 +262,8 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
     url = f"{API_BASE}/Backtrack/stat_info"
     data = {
         "usertoken": token,
-        "back_id": back_id
+        "back_id": back_id,
+        "app_v": "2.0.0"
     }
     
     try:
