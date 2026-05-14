@@ -213,6 +213,65 @@ Agent正确操作：
 5. **一次性执行**：推荐时总是加 `--output`，避免二次运行
 6. **意图分析必做**：每次调用 `smart_group_recommend.py` 前，必须先读取 `INTENT_ANALYSIS.md` 生成 intent JSON
 
+### 🔑 意图 JSON 传递规范（重要）
+
+**⚠️ 关键**：`--intent-json` 参数需要传递 **JSON 字符串字面值**，不是文件路径！
+
+**正确做法**：
+```bash
+cd skills/backtest-query && python3 smart_group_recommend.py \
+  --agent-id "qc-xxx" \
+  --query "用户原话" \
+  --coins "DOGE,BCH" \
+  --strategy-types "11" \
+  --intent-json '{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}' \
+  --max-combinations 1 \
+  --top-per-group 3 \
+  --output /tmp/result.json
+```
+
+**❌ 错误做法**：
+```bash
+# 不要传文件路径！
+--intent-json /tmp/intent.json  # ❌ 会导致 JSON 解析失败
+```
+
+**生成 intent JSON 的步骤**：
+
+1. **读取意图分析规则**：
+   ```bash
+   cd skills/backtest-query && cat INTENT_ANALYSIS.md
+   ```
+
+2. **根据用户需求生成 JSON 对象**（在内存中构建，不写文件）：
+   ```python
+   # 示例：用户说 "DOGE和BCH对冲策略"
+   intent_json = {
+       "strategy_goal": "hedging",
+       "constraints": {
+           "coins": ["DOGE", "BCH"],
+           "directions": ["long", "short"],
+           "min_strategies": 4
+       },
+       "preferences": {
+           "risk_level": "balanced",
+           "diversity_priority": "coin"
+       }
+   }
+   ```
+
+3. **将 JSON 对象转为单行字符串**（用于命令行传递）：
+   ```bash
+   # 单行紧凑格式，外层用单引号包裹
+   --intent-json '{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}'
+   ```
+
+**⚠️ 注意事项**：
+- JSON 字符串外层必须用**单引号** `'...'` 包裹（避免 shell 解析问题）
+- JSON 内部的字符串用**双引号** `"..."`
+- 不要有换行符（保持单行）
+- 不要使用文件路径
+
 ### 参数传递规则
 
 | 用户说了 | 操作 | 传递参数 |
@@ -248,11 +307,35 @@ Agent正确操作：
 ### 案例：创建策略组（完整流程）
 
 用户："帮我构建 DOGE 与 BCH 对冲策略组"
-```python
-# 1. 查币种 → 验证
-# 2. 读 INTENT_ANALYSIS.md → 生成 intent JSON
-# 3. 推荐（max-combinations=1）→ 保存到 /tmp/result.json
+
+**完整执行步骤**：
+
+```bash
+# 1. 查币种验证
+cd skills/backtest-query && python3 query.py --list-coins --agent-id "qc-xxx"
+
+# 2. 根据 INTENT_ANALYSIS.md 生成 intent JSON（在内存中）
+# 对冲策略 → hedging, 多币种 → diversity_priority: coin
+intent_json='{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}'
+
+# 3. 执行推荐（传递 JSON 字符串）
+cd skills/backtest-query && python3 smart_group_recommend.py \
+  --agent-id "qc-xxx" \
+  --query "帮我构建 DOGE 与 BCH 对冲策略组" \
+  --coins "DOGE,BCH" \
+  --strategy-types "11" \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
+  --intent-json '{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}' \
+  --max-combinations 1 \
+  --top-per-group 3 \
+  --output /tmp/result.json
+
 # 4. 读取结果并检查
+```
+
+**Python 伪代码检查逻辑**：
+```python
+import json
 result = json.load(open('/tmp/result.json'))
 
 # 检查是否有错误
