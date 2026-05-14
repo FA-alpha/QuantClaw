@@ -4,6 +4,18 @@
 
 ---
 
+## 📁 脚本路径规范
+
+**重要**：本 skill 的脚本位于 `skills/backtest-query/` 目录内。
+
+执行方式（从 Agent 工作区）：
+```bash
+cd skills/backtest-query && python3 query.py --list-coins --agent-id xxx
+cd skills/backtest-query && python3 smart_group_recommend.py --agent-id xxx --query "..."
+```
+
+---
+
 ## 🚨 脚本选择（意图识别）
 
 | 用户意图 | 触发关键词 | 使用脚本 | 执行方式 |
