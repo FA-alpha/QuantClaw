@@ -148,7 +148,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
     参数优先级体系：
     1. 映射参数（最高优先级）：strategy-version-map, strategy-direction-map, coin-pct-map
     2. 全局参数（中优先级）：versions, directions, search-pcts
-    3. 自动查询（最低优先级）：未传参数时自动获取
+    3. 自动查询（最低优先级，需 --auto-expand）：未传参数时自动获取
     
     智能处理参数依赖关系：
     - versions 依赖 strategy_type（从策略的 versions 字段获取）
@@ -192,8 +192,8 @@ def build_query_combinations(args, token: str) -> List[Dict]:
     # 1. 币种列表
     if args.coins:
         coins = parse_csv(args.coins)
-    else:
-        # 查询所有币种
+    elif args.auto_expand:
+        # 自动扩展模式：查询所有币种
         result = get_coin_list(token)
         if "error" in result:
             if _should_print_warning():
@@ -203,12 +203,15 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             coins = [c["coin"] for c in result.get("info", [])]
             if not coins:
                 coins = ["BTC", "ETH", "SOL"]
+    else:
+        # 默认模式：没有指定则报错
+        raise ValidationError("未指定 --coins 参数，请提供币种列表或使用 --auto-expand 自动扩展")
     
     # 2. 策略类型列表
     if args.strategy_types:
         strategy_types = parse_csv_int(args.strategy_types)
-    else:
-        # 查询所有策略类型
+    elif args.auto_expand:
+        # 自动扩展模式：查询所有策略类型
         result = get_ai_strategy_list(token)
         if "error" in result:
             if _should_print_warning():
@@ -218,12 +221,15 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             strategy_types = [s["strategy_type"] for s in result.get("info", [])]
             if not strategy_types:
                 strategy_types = [11, 7, 1]
+    else:
+        # 默认模式：没有指定则报错
+        raise ValidationError("未指定 --strategy-types 参数，请提供策略类型列表或使用 --auto-expand 自动扩展")
     
-    # 3. 时间ID列表
+    # 3. 时间ID列表（可选参数，未提供则不限制时间）
     if args.ai_time_ids:
         ai_time_ids = parse_csv(args.ai_time_ids)
-    else:
-        # 查询所有时间ID
+    elif args.auto_expand:
+        # 自动扩展模式：查询所有时间ID
         result = get_ai_time_list(token)
         if "error" in result:
             if _should_print_warning():
@@ -233,6 +239,9 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             ai_time_ids = [str(t["id"]) for t in result.get("info", [])]
             if not ai_time_ids:
                 ai_time_ids = ["5"]
+    else:
+        # 默认模式：时间为可选参数，未提供则不限制
+        ai_time_ids = None
     
     # ==================== 第2步：获取策略完整信息（用于提取 versions） ====================
     
@@ -402,15 +411,21 @@ def build_query_combinations(args, token: str) -> List[Dict]:
                         search_pcts = auto_get_pcts(coin)
                     
                     for pct in search_pcts:
-                        for time_id in ai_time_ids:
+                        # 处理时间ID（可能为 None）
+                        time_id_list = ai_time_ids if ai_time_ids else [None]
+                        
+                        for time_id in time_id_list:
                             # === 构建组合 ===
                             combo = {
                                 'coin': coin,
                                 'strategy_type': st,
                                 'direction': direction,
                                 'search_pct': pct,
-                                'ai_time_id': time_id,
                             }
+                            
+                            # 时间ID为可选参数
+                            if time_id is not None:
+                                combo['ai_time_id'] = time_id
                             
                             # 处理版本信息
                             if version_item is None:
@@ -1732,6 +1747,10 @@ def parse_arguments():
     # 输出参数
     parser.add_argument("--output", type=str, help="输出文件路径")
     parser.add_argument("--quiet", action="store_true", help="静默模式")
+    
+    # 行为开关
+    parser.add_argument("--auto-expand", action="store_true", 
+                       help="自动扩展模式：未传参数时自动查询所有可能值（默认关闭）")
     
     return parser.parse_args()
 
