@@ -353,7 +353,10 @@ def calc_margin_allocation(
     token: str,
     strategy_ids: str,
     allocation_rules: dict = None,
-    total_balance: float = 10000
+    total_balance: float = 10000,
+    leverage: float = 1.5,
+    long_pct: int = 90,
+    short_pct: int = 20
 ) -> dict:
     """
     计算保证金分配方案
@@ -365,6 +368,9 @@ def calc_margin_allocation(
         strategy_ids: 策略IDs，逗号分隔
         allocation_rules: 分配规则字典
         total_balance: 总保证金（默认10000）
+        leverage: 杠杆倍数（默认1.5）
+        long_pct: 做多保证金占比（默认90）
+        short_pct: 做空保证金占比（默认20）
     
     Returns:
         dict: 包含每个策略具体保证金分配的响应数据
@@ -374,7 +380,10 @@ def calc_margin_allocation(
         "usertoken": token,
         "strategy_ids": strategy_ids,
         "total_balance": str(total_balance),
-        "app_v": "2.0.0"
+        "app_v": "2.0.0",
+        "leverage": str(leverage),
+        "long_pct": str(long_pct),
+        "short_pct": str(short_pct)
     }
     
     # 添加分配规则参数
@@ -391,10 +400,6 @@ def calc_margin_allocation(
         if "strategy_type_allocation" in allocation_rules:
             data["strategy_type_allocation"] = json.dumps(allocation_rules["strategy_type_allocation"])
         
-        # 自定义规则
-        if "custom_rules" in allocation_rules:
-            data["custom_rules"] = json.dumps(allocation_rules["custom_rules"])
-    
     try:
         resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
@@ -511,7 +516,9 @@ def main():
     parser.add_argument("--direction-allocation", help="按方向分配比例，JSON格式：{'做多': 70, '做空': 30}")
     parser.add_argument("--strategy-type-allocation", help="按策略类型分配，JSON格式")
     parser.add_argument("--total-balance", type=float, default=10000, help="总保证金（默认10000）")
-    
+    parser.add_argument("--long-pct", type=int, default=90, help="做多保证金占比（默认90）")
+    parser.add_argument("--short-pct", type=int, default=20, help="做空保证金占比（默认20）")
+        
     args = parser.parse_args()
     
     # 自动获取 token（如果未提供或为空）
@@ -618,9 +625,14 @@ def main():
             token=args.token,
             strategy_ids=args.strategy_ids,
             allocation_rules=allocation_rules,
-            total_balance=args.total_balance
+            total_balance=args.total_balance,
+            leverage=getattr(args, 'leverage', 1.5),
+            long_pct=args.long_pct,
+            short_pct=args.short_pct
         )
         
+        print(f"[DEBUG] 使用参数: leverage={getattr(args, 'leverage', 1.5)}, long_pct={args.long_pct}, short_pct={args.short_pct}")
+               
         if args.format == "json":
             print(json.dumps(result, indent=2, ensure_ascii=False))
         else:

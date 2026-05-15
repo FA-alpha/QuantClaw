@@ -247,6 +247,14 @@ if result.get("status") == 1:
 
 **接口**: `POST /Strategy/calc_margin`
 
+### 默认参数
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `app_v` | "2.0.0" | API版本 |
+| `leverage` | "1.5" | 杠杆倍数 |
+| `long_pct` | "90" | 做多保证金占比 |
+| `short_pct` | "20" | 做空保证金占比 |
+
 ### 返回数据结构
 ```json
 {
