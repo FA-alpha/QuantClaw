@@ -11,7 +11,7 @@ import os
 import time
 from datetime import datetime
 import requests
-from api_logger import log_http_request
+from api_logger import log_http_request, log_error
 
 # API 配置
 API_BASE = "https://www.fourieralpha.com/Mobile"
@@ -617,7 +617,9 @@ def auto_get_token(agent_id: str = None):
         return None
         
     except Exception as e:
-        print(f"[ERROR] 读取用户配置失败: {e}")
+        error_msg = f"读取用户配置失败: {e}"
+        print(f"[ERROR] {error_msg}")
+        log_error(error_msg, exception=e, context={"function": "auto_get_token"})
         return None
 
 
@@ -848,4 +850,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # 记录未捕获的异常
+        log_error(
+            error_msg=str(e),
+            exception=e,
+            context={"script": "query.py", "args": sys.argv[1:]}
+        )
+        # 继续抛出，保持原有错误显示
+        raise

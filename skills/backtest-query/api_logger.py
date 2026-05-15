@@ -15,12 +15,23 @@ API 请求日志模块
 import json
 import os
 import glob
+import traceback
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Optional
 
 # 日志配置
 LOG_BASE_DIR = os.path.expanduser("~/.quantclaw/logs")
 LOG_RETENTION_DAYS = 7  # 保留最近 7 天的日志
+
+# 错误类型常量
+class ErrorType:
+    """错误类型定义"""
+    NETWORK = "network_error"           # 网络错误（超时、连接失败）
+    API = "api_error"                   # API 业务错误（认证失败、参数错误）
+    PARSE = "parse_error"               # 解析错误（JSON、数据格式）
+    SCRIPT = "script_error"             # 脚本运行错误（Python 异常）
+    VALIDATION = "validation_error"     # 参数验证错误
+    UNKNOWN = "unknown_error"           # 未知错误
 
 
 def get_agent_id() -> str:
@@ -157,7 +168,52 @@ def simplify_backtest_item(item: dict) -> dict:
     }
 
 
-def log_http_request(url: str, data: dict, response: dict = None, error: str = None, agent_id: str = None):
+def determine_error_type(error_msg: str, exception: Exception = None) -> str:
+    """
+    判断错误类型
+    
+    Args:
+        error_msg: 错误信息
+        exception: 异常对象（可选）
+    
+    Returns:
+        str: 错误类型
+    """
+    error_lower = error_msg.lower()
+    
+    # 网络错误
+    if any(keyword in error_lower for keyword in [
+        'timeout', 'connection', 'network', 'unreachable', 'refused'
+    ]):
+        return ErrorType.NETWORK
+    
+    # 解析错误
+    if any(keyword in error_lower for keyword in [
+        'json', 'parse', 'decode', 'invalid syntax'
+    ]):
+        return ErrorType.PARSE
+    
+    # 验证错误
+    if any(keyword in error_lower for keyword in [
+        'validation', 'invalid', 'required', 'missing'
+    ]):
+        return ErrorType.VALIDATION
+    
+    # API 错误（认证、权限等）
+    if any(keyword in error_lower for keyword in [
+        'token', 'auth', 'permission', 'forbidden', 'unauthorized'
+    ]):
+        return ErrorType.API
+    
+    # 脚本错误（Python 异常）
+    if exception is not None:
+        return ErrorType.SCRIPT
+    
+    return ErrorType.UNKNOWN
+
+
+def log_http_request(url: str, data: dict, response: dict = None, error: str = None, 
+                    error_type: str = None, agent_id: str = None):
     """
     记录 HTTP 请求日志
     
@@ -166,6 +222,7 @@ def log_http_request(url: str, data: dict, response: dict = None, error: str = N
         data: 请求参数
         response: 响应数据（可选）
         error: 错误信息（可选）
+        error_type: 错误类型（可选，自动判断）
         agent_id: Agent ID（可选，自动获取）
     """
     # 获取日志文件路径（按 agent_id 和日期分文件）
@@ -173,6 +230,7 @@ def log_http_request(url: str, data: dict, response: dict = None, error: str = N
     
     # 构建日志条目
     log_entry = {
+        "type": "http_request",
         "timestamp": datetime.now().isoformat(),
         "url": url,
         "params": mask_sensitive_data(data),
@@ -200,6 +258,7 @@ def log_http_request(url: str, data: dict, response: dict = None, error: str = N
     
     if error:
         log_entry["error"] = error
+        log_entry["error_type"] = error_type or determine_error_type(error)
         log_entry["success"] = False
     else:
         log_entry["success"] = True
@@ -210,6 +269,58 @@ def log_http_request(url: str, data: dict, response: dict = None, error: str = N
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
         
         # 定期清理旧日志（每次写入都检查，但实际删除很快）
+        cleanup_old_logs(agent_id)
+    except Exception as log_error:
+        print(f"⚠️  日志写入失败: {log_error}")
+
+
+def log_error(error_msg: str, error_type: str = None, exception: Exception = None,
+             context: dict = None, agent_id: str = None):
+    """
+    记录脚本错误日志（通用错误记录函数）
+    
+    Args:
+        error_msg: 错误信息
+        error_type: 错误类型（可选，自动判断）
+        exception: 异常对象（可选，会记录堆栈）
+        context: 上下文信息（可选，如函数名、参数等）
+        agent_id: Agent ID（可选，自动获取）
+    
+    Example:
+        try:
+            result = some_function(param)
+        except Exception as e:
+            log_error(
+                error_msg=str(e),
+                exception=e,
+                context={"function": "some_function", "param": param}
+            )
+            raise  # 继续抛出异常，不改变原有逻辑
+    """
+    log_file = get_log_file_path(agent_id)
+    
+    log_entry = {
+        "type": "script_error",
+        "timestamp": datetime.now().isoformat(),
+        "error": error_msg,
+        "error_type": error_type or determine_error_type(error_msg, exception),
+        "success": False,
+    }
+    
+    # 添加异常堆栈
+    if exception is not None:
+        log_entry["exception_type"] = type(exception).__name__
+        log_entry["traceback"] = traceback.format_exc()
+    
+    # 添加上下文信息
+    if context:
+        log_entry["context"] = context
+    
+    # 写入日志
+    try:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+        
         cleanup_old_logs(agent_id)
     except Exception as log_error:
         print(f"⚠️  日志写入失败: {log_error}")

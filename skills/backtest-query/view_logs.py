@@ -22,11 +22,26 @@ def format_timestamp(ts_str: str) -> str:
 def print_log_entry(entry: dict, verbose: bool = False):
     """打印单条日志"""
     timestamp = format_timestamp(entry.get("timestamp", ""))
-    url = entry.get("url", "")
-    endpoint = url.split('/')[-1] if url else "未知"
+    log_type = entry.get("type", "unknown")
     success = "✅" if entry.get("success") else "❌"
     
-    print(f"\n{success} [{timestamp}] {endpoint}")
+    # 根据日志类型显示不同的标题
+    if log_type == "http_request":
+        url = entry.get("url", "")
+        endpoint = url.split('/')[-1] if url else "未知"
+        title = endpoint
+    elif log_type == "script_error":
+        error_type = entry.get("error_type", "unknown")
+        title = f"脚本错误 [{error_type}]"
+    else:
+        title = log_type
+    
+    # 显示错误类型（如果有）
+    if entry.get("error_type"):
+        error_type_display = entry["error_type"].replace("_", " ").title()
+        print(f"\n{success} [{timestamp}] {title} ({error_type_display})")
+    else:
+        print(f"\n{success} [{timestamp}] {title}")
     
     # 打印参数
     if entry.get("params"):
@@ -34,9 +49,19 @@ def print_log_entry(entry: dict, verbose: bool = False):
     
     # 打印响应或错误
     if verbose:
+        # 显示上下文
+        if entry.get("context"):
+            print(f"   上下文: {json.dumps(entry['context'], ensure_ascii=False)}")
+        
+        # 显示错误信息
         if entry.get("error"):
             print(f"   错误: {entry['error']}")
         
+        # 显示异常堆栈（脚本错误）
+        if entry.get("traceback"):
+            print(f"   堆栈:\n{entry['traceback']}")
+        
+        # 显示响应
         response = entry.get("response")
         if response:
             # 完整显示，不截断
@@ -68,6 +93,10 @@ def main():
     parser.add_argument("--path", action="store_true", help="显示日志文件路径")
     parser.add_argument("--filter", dest="filter_func", help="过滤特定接口（URL末尾）")
     parser.add_argument("--error-only", action="store_true", help="只显示错误日志")
+    parser.add_argument("--type", dest="log_type", choices=["http_request", "script_error"], 
+                        help="过滤日志类型")
+    parser.add_argument("--error-type", dest="error_type", 
+                        help="过滤错误类型（network_error, api_error, script_error等）")
     parser.add_argument("--agent-id", dest="agent_id", help="指定 Agent ID")
     
     args = parser.parse_args()
@@ -98,6 +127,12 @@ def main():
     # 过滤
     if args.filter_func:
         logs = [log for log in logs if args.filter_func in log.get("url", "")]
+    
+    if args.log_type:
+        logs = [log for log in logs if log.get("type") == args.log_type]
+    
+    if args.error_type:
+        logs = [log for log in logs if log.get("error_type") == args.error_type]
     
     if args.error_only:
         logs = [log for log in logs if not log.get("success")]
