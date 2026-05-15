@@ -890,7 +890,6 @@ def main():
     parser.add_argument("--direction-allocation", help="按方向分配比例，JSON格式：{'做多': 70, '做空': 30}")
     parser.add_argument("--ai-time-allocation", help="按AI回测时间类型(市场行情)分配，JSON格式：{'震荡行情': 60, '趋势行情': 40}")
     parser.add_argument("--sub-group-allocation", help="按细分组分配，JSON格式：{'2025年震荡做多': 40, '2024年趋势做空': 30}")
-    parser.add_argument("--natural-allocation", help="自然语言分配描述，如'DOGE占40%，BTC做多60%，震荡行情70%'")
     parser.add_argument("--strategy-type-allocation", help="按策略类型分配，JSON格式")
     parser.add_argument("--total-balance", type=float, default=10000, help="总保证金（默认10000）")
     parser.add_argument("--long-pct", type=int, default=90, help="做多保证金占比（默认90）")
@@ -1014,7 +1013,7 @@ def main():
             natural_rules = parse_natural_language_allocation(args.natural_allocation, strategies)
             allocation_rules.update(natural_rules)
         
-        # 解析其他分配规则
+        # 解析分配规则
         if getattr(args, 'coin_long_allocation', None):
             try:
                 allocation_rules["coin_long_allocation"] = json.loads(args.coin_long_allocation)
