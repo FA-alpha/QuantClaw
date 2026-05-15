@@ -357,13 +357,26 @@ allocation_rules = {
 }
 ```
 
-#### 6. 复合规则（同时满足多个约束）
+#### 6. 按细分组分配（方向+市场行情组合）
+```python
+allocation_rules = {
+    "sub_group_allocation": {
+        "2025年震荡做多": 40,
+        "2025年震荡做空": 30, 
+        "2024年趋势做多": 20,
+        "2024年趋势做空": 10
+    }
+}
+```
+
+#### 7. 复合规则（同时满足多个约束）
 ```python
 allocation_rules = {
     "coin_long_allocation": {"BTC": 40, "ETH": 30, "SOL": 30},
     "coin_short_allocation": {"BTC": 60, "ETH": 40},
     "direction_allocation": {"做多": 70, "做空": 30},
-    "ai_time_allocation": {"震荡行情": 60, "趋势行情": 40}
+    "ai_time_allocation": {"震荡行情": 60, "趋势行情": 40},
+    "sub_group_allocation": {"2025年震荡做多": 35, "2025年震荡做空": 25}
 }
 ```
 

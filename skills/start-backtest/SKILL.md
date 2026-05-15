@@ -553,10 +553,42 @@ python skills/start-backtest/start.py \
   --total-balance 10000
 ```
 
-**🔍 市场行情分类说明：**
+**🔍 策略多层级分组机制：**
+
+**第一步：根据ai_time_id进行基础分组**
 - 根据策略的 `ai_time_id` 参数进行分类
 - 市场行情名称取自策略的 `ai_time_name` 参数
 - 如："震荡行情"、"趋势行情"、"单边行情"等
+
+**第二步：按方向进行大组分类**
+```
+📊 做多方向组
+  └─ 2025年震荡做多: 3个策略 (BTC, ETH, SOL)
+  └─ 2024年震荡做多: 2个策略 (BTC, ETH)
+  └─ 2025年趋势做多: 1个策略 (BTC)
+
+📊 做空方向组  
+  └─ 2025年震荡做空: 2个策略 (ETH, SOL)
+  └─ 2024年趋势做空: 1个策略 (BTC)
+```
+
+**第三步：细分组保证金分配**
+```bash
+# 查看策略分组
+python skills/start-backtest/start.py \
+  --group-strategies \
+  --strategy-ids 4300,4679,4680,4681
+
+# 按细分组分配保证金
+python skills/start-backtest/start.py \
+  --calc-margin \
+  --strategy-ids 4300,4679,4680,4681 \
+  --sub-group-allocation '{"2025年震荡做多": 40, "2025年震荡做空": 30, "2024年趋势做多": 30}'
+```
+
+**分组命名规则：**
+- 格式：`{时间}+{行情类型}+{方向}`
+- 示例：`2025年震荡做多`、`2024年趋势做空`
 
 **默认配置:**
 - 杠杆：1.5倍  

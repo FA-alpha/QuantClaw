@@ -356,7 +356,8 @@ def calc_margin_allocation(
     total_balance: float = 10000,
     leverage: float = 1.5,
     long_pct: int = 90,
-    short_pct: int = 20
+    short_pct: int = 20,
+    grouped_strategies: dict = None
 ) -> dict:
     """
     计算保证金分配方案
@@ -404,6 +405,10 @@ def calc_margin_allocation(
         if "ai_time_allocation" in allocation_rules:
             data["ai_time_allocation"] = json.dumps(allocation_rules["ai_time_allocation"])
         
+        # 按细分组分配（方向+市场行情组合）
+        if "sub_group_allocation" in allocation_rules:
+            data["sub_group_allocation"] = json.dumps(allocation_rules["sub_group_allocation"])
+        
         # 按策略类型分配
         if "strategy_type_allocation" in allocation_rules:
             data["strategy_type_allocation"] = json.dumps(allocation_rules["strategy_type_allocation"])
@@ -421,6 +426,148 @@ def calc_margin_allocation(
         return result
     except requests.RequestException as e:
         return {"error": str(e)}
+
+
+def get_strategies_with_grouping(token: str, strategy_ids: str) -> dict:
+    """
+    获取策略详细信息并进行分组
+    
+    Args:
+        token: 用户登录token
+        strategy_ids: 策略IDs，逗号分隔
+    
+    Returns:
+        dict: {
+            "strategies": [...],           # 原始策略列表
+            "grouped": {...},              # 分组结果
+            "sub_groups": {...}            # 细分组信息
+        }
+    """
+    # 首先获取策略列表来获得策略详细信息
+    strategies_result = get_strategy_lists(token, limit=1000)  # 获取大量策略用于匹配
+    
+    if "error" in strategies_result:
+        return {"error": strategies_result["error"]}
+    
+    all_strategies = strategies_result.get("info", [])
+    strategy_id_list = [sid.strip() for sid in strategy_ids.split(",") if sid.strip()]
+    
+    # 过滤出指定的策略
+    target_strategies = []
+    for strategy in all_strategies:
+        if str(strategy.get("strategy_id", "")) in strategy_id_list or str(strategy.get("id", "")) in strategy_id_list:
+            target_strategies.append(strategy)
+    
+    # 对策略进行分组
+    grouped = group_strategies_by_market_direction(target_strategies)
+    
+    # 生成细分组信息
+    sub_groups = {}
+    for direction, sub_groups_dict in grouped.items():
+        for sub_group_name, strategies in sub_groups_dict.items():
+            strategy_count = len(strategies)
+            sub_groups[sub_group_name] = {
+                "direction": direction,
+                "count": strategy_count,
+                "strategy_ids": [str(s.get("strategy_id", s.get("id", ""))) for s in strategies],
+                "coins": list(set([s.get("coin", "") for s in strategies if s.get("coin")]))
+            }
+    
+    return {
+        "strategies": target_strategies,
+        "grouped": grouped,
+        "sub_groups": sub_groups
+    }
+
+
+def group_strategies_by_market_direction(strategies: list) -> dict:
+    """
+    根据AI时间类型和方向对策略进行多层级分组
+    
+    Args:
+        strategies: 策略列表，每个策略包含ai_time_id, ai_time_name, direction等字段
+    
+    Returns:
+        dict: 分组结果 {
+            "做多": {
+                "2025年震荡做多": [strategy1, strategy2, ...],
+                "2024年趋势做多": [strategy3, ...]
+            },
+            "做空": {
+                "2025年震荡做空": [strategy4, ...],
+                "2024年趋势做空": [strategy5, ...]
+            }
+        }
+    """
+    grouped = {"做多": {}, "做空": {}}
+    
+    for strategy in strategies:
+        direction = strategy.get("direction", "").strip()
+        ai_time_name = strategy.get("ai_time_name", "").strip()
+        ai_time_id = strategy.get("ai_time_id", "")
+        
+        # 确定大方向组
+        if "做多" in direction or "long" in direction.lower():
+            main_group = "做多"
+        elif "做空" in direction or "short" in direction.lower():
+            main_group = "做空"
+        else:
+            # 默认归类到做多
+            main_group = "做多"
+        
+        # 构建细分组名：时间+行情+方向
+        if ai_time_name:
+            # 如果ai_time_name已经包含方向，直接使用
+            if main_group in ai_time_name:
+                sub_group_name = ai_time_name
+            else:
+                # 否则添加方向后缀
+                sub_group_name = f"{ai_time_name}{main_group}"
+        else:
+            # 没有ai_time_name时，使用ai_time_id
+            sub_group_name = f"类型{ai_time_id}{main_group}" if ai_time_id else f"默认{main_group}"
+        
+        # 初始化子组
+        if sub_group_name not in grouped[main_group]:
+            grouped[main_group][sub_group_name] = []
+        
+        # 添加策略到对应子组
+        grouped[main_group][sub_group_name].append(strategy)
+    
+    return grouped
+
+
+def format_strategy_groups(grouped_strategies: dict) -> str:
+    """
+    格式化显示策略分组信息
+    
+    Args:
+        grouped_strategies: group_strategies_by_market_direction的返回结果
+    
+    Returns:
+        str: 格式化的分组显示字符串
+    """
+    lines = ["策略分组结果:\n"]
+    
+    for direction, sub_groups in grouped_strategies.items():
+        lines.append(f"📊 **{direction}方向组** (共{len(sub_groups)}个子组)")
+        
+        for sub_group_name, strategies in sub_groups.items():
+            strategy_count = len(strategies)
+            lines.append(f"  └─ {sub_group_name}: {strategy_count}个策略")
+            
+            # 显示每个策略的简要信息
+            for i, strategy in enumerate(strategies[:3]):  # 最多显示3个
+                name = strategy.get("name", "未知策略")[:20]
+                coin = strategy.get("coin", "")
+                lines.append(f"     {i+1}. {name} ({coin})")
+            
+            if strategy_count > 3:
+                lines.append(f"     ... 还有{strategy_count-3}个策略")
+        
+        lines.append("")  # 空行
+    
+    return "\n".join(lines)
 
 
 def format_groups(data: dict) -> str:
@@ -508,6 +655,7 @@ def main():
     parser.add_argument("--strategy-ids", help="策略 IDs（多策略，逗号分隔）")
     parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
     parser.add_argument("--calc-margin", action="store_true", help="计算保证金分配方案")
+    parser.add_argument("--group-strategies", action="store_true", help="查看策略分组（按ai_time和方向）")
     parser.add_argument("--bgn-date", help="开始日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--end-date", help="结束日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--init-balance", type=float, help="初始资金（默认10000）")
@@ -524,6 +672,7 @@ def main():
     parser.add_argument("--coin-short-allocation", help="按币种做空分配比例，JSON格式：{'BTC': 50, 'ETH': 50}")
     parser.add_argument("--direction-allocation", help="按方向分配比例，JSON格式：{'做多': 70, '做空': 30}")
     parser.add_argument("--ai-time-allocation", help="按AI回测时间类型(市场行情)分配，JSON格式：{'震荡行情': 60, '趋势行情': 40}")
+    parser.add_argument("--sub-group-allocation", help="按细分组分配，JSON格式：{'2025年震荡做多': 40, '2024年趋势做空': 30}")
     parser.add_argument("--strategy-type-allocation", help="按策略类型分配，JSON格式")
     parser.add_argument("--total-balance", type=float, default=10000, help="总保证金（默认10000）")
     parser.add_argument("--long-pct", type=int, default=90, help="做多保证金占比（默认90）")
@@ -600,6 +749,34 @@ def main():
                 print(f"交易次数: {info.get('trade_num', 'N/A')}")
         return
     
+    # 查看策略分组
+    if args.group_strategies:
+        if not args.strategy_ids:
+            print("错误: 需要 --strategy-ids 参数")
+            sys.exit(1)
+        
+        result = get_strategies_with_grouping(args.token, args.strategy_ids)
+        
+        if "error" in result:
+            print(f"错误: {result['error']}")
+            sys.exit(1)
+        
+        if args.format == "json":
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            grouped = result.get("grouped", {})
+            sub_groups = result.get("sub_groups", {})
+            
+            print(format_strategy_groups(grouped))
+            
+            print("📋 细分组详情:")
+            for sub_group_name, info in sub_groups.items():
+                direction = info["direction"]
+                count = info["count"]
+                coins = ", ".join(info["coins"])
+                print(f"  {sub_group_name}: {direction} | {count}个策略 | 币种: {coins}")
+        return
+    
     # 计算保证金分配
     if args.calc_margin:
         if not args.strategy_ids:
@@ -628,6 +805,13 @@ def main():
                 allocation_rules["ai_time_allocation"] = json.loads(args.ai_time_allocation)
             except json.JSONDecodeError:
                 print("错误: --ai-time-allocation 参数格式错误，需要有效的JSON")
+                sys.exit(1)
+        
+        if getattr(args, 'sub_group_allocation', None):
+            try:
+                allocation_rules["sub_group_allocation"] = json.loads(args.sub_group_allocation)
+            except json.JSONDecodeError:
+                print("错误: --sub-group-allocation 参数格式错误，需要有效的JSON")
                 sys.exit(1)
         
         if args.direction_allocation:
