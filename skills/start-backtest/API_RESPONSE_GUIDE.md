@@ -12,6 +12,7 @@
 | `get_group_lists` | `/Strategy/group_lists` | 获取策略组列表 |
 | `get_strategy_lists` | `/Strategy/lists` | 获取策略列表 |
 | `get_backtest_detail` | `/Backtrack/stat_info` | 获取回测详细统计信息 |
+| `calc_margin_allocation` | `/Strategy/calc_margin` | 计算保证金分配方案 |
 | `apply_backtest` | `/Backtrack/apply_do` | 启动回测任务 |
 
 ---
@@ -238,6 +239,108 @@ if result.get("status") == 1:
     sharp_rate = info.get("sharp_rate")    # 夏普比率
     max_loss = info.get("max_loss")        # 最大回撤
     # total_stat 中的 net_value 已被自动清理
+```
+
+---
+
+## 💰 calc_margin_allocation - 保证金分配计算
+
+**接口**: `POST /Strategy/calc_margin`
+
+### 返回数据结构
+```json
+{
+  "status": 1,
+  "msg": "success",
+  "info": {
+    "total_balance": 10000,
+    "allocations": {
+      "4300": {
+        "name": "BTC-风霆V4.2-做多",
+        "coin": "BTC", 
+        "direction": "做多",
+        "percentage": "30",
+        "amount": "3000"
+      },
+      "4679": {
+        "name": "ETH-风霆V4.2-做多",
+        "coin": "ETH",
+        "direction": "做多", 
+        "percentage": "25",
+        "amount": "2500"
+      }
+    }
+  }
+}
+```
+
+### 字段说明
+
+| 字段 | 类型 | 说明 | 示例 |
+|------|------|------|------|
+| `status` | int | 请求状态 | 1 |
+| `msg` | string | 状态消息 | "success" |
+| `info` | object | 分配方案信息 | {...} |
+| `info.total_balance` | int | 总保证金 | 10000 |
+| `info.allocations` | object | 策略分配详情 | {...} |
+| `allocations.<id>` | object | 具体策略的分配信息 | {...} |
+| `allocations.<id>.name` | string | 策略名称 | "BTC-风霆V4.2-做多" |
+| `allocations.<id>.coin` | string | 币种 | "BTC" |
+| `allocations.<id>.direction` | string | 方向 | "做多" |
+| `allocations.<id>.percentage` | string | 分配比例 | "30" |
+| `allocations.<id>.amount` | string | 保证金金额 | "3000" |
+
+### Agent 使用示例
+```python
+# 按币种分配：BTC 60%, ETH 40%
+allocation_rules = {
+    "coin_allocation": {"BTC": 60, "ETH": 40}
+}
+
+result = calc_margin_allocation(
+    token=token, 
+    strategy_ids="4300,4679,4680", 
+    allocation_rules=allocation_rules,
+    total_balance=10000
+)
+
+if result.get("status") == 1:
+    allocations = result.get("info", {}).get("allocations", {})
+    for strategy_id, allocation in allocations.items():
+        amount = allocation.get("amount")         # 分配的保证金金额
+        percentage = allocation.get("percentage") # 分配的比例
+        print(f"策略{strategy_id}: {percentage}% = {amount}保证金")
+```
+
+### 支持的分配规则
+
+#### 1. 按币种分配
+```python
+allocation_rules = {
+    "coin_allocation": {"BTC": 60, "ETH": 40}
+}
+```
+
+#### 2. 按方向分配
+```python
+allocation_rules = {
+    "direction_allocation": {"做多": 70, "做空": 30}
+}
+```
+
+#### 3. 按策略类型分配
+```python
+allocation_rules = {
+    "strategy_type_allocation": {"风霆": 80, "网格": 20}
+}
+```
+
+#### 4. 复合规则（同时满足多个约束）
+```python
+allocation_rules = {
+    "coin_allocation": {"BTC": 60, "ETH": 40},
+    "direction_allocation": {"做多": 70, "做空": 30}
+}
 ```
 
 ---

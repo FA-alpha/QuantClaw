@@ -349,6 +349,67 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
         return {"error": str(e)}
 
 
+def calc_margin_allocation(
+    token: str,
+    strategy_ids: str,
+    allocation_rules: dict = None,
+    total_balance: float = 10000
+) -> dict:
+    """
+    计算保证金分配方案
+    
+    API: POST /Strategy/calc_margin
+    
+    Args:
+        token: 用户登录 token
+        strategy_ids: 策略IDs，逗号分隔
+        allocation_rules: 分配规则字典
+        total_balance: 总保证金（默认10000）
+    
+    Returns:
+        dict: 包含每个策略具体保证金分配的响应数据
+    """
+    url = f"{API_BASE}/Strategy/calc_margin"
+    data = {
+        "usertoken": token,
+        "strategy_ids": strategy_ids,
+        "total_balance": str(total_balance),
+        "app_v": "2.0.0"
+    }
+    
+    # 添加分配规则参数
+    if allocation_rules:
+        # 按币种分配
+        if "coin_allocation" in allocation_rules:
+            data["coin_allocation"] = json.dumps(allocation_rules["coin_allocation"])
+        
+        # 按方向分配  
+        if "direction_allocation" in allocation_rules:
+            data["direction_allocation"] = json.dumps(allocation_rules["direction_allocation"])
+        
+        # 按策略类型分配
+        if "strategy_type_allocation" in allocation_rules:
+            data["strategy_type_allocation"] = json.dumps(allocation_rules["strategy_type_allocation"])
+        
+        # 自定义规则
+        if "custom_rules" in allocation_rules:
+            data["custom_rules"] = json.dumps(allocation_rules["custom_rules"])
+    
+    try:
+        resp = requests.post(url, data=data, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
+        
+        return result
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
 def format_groups(data: dict) -> str:
     """格式化策略组列表输出"""
     if "error" in data:
@@ -433,6 +494,7 @@ def main():
     parser.add_argument("--strategy-id", help="策略 ID（单策略）")
     parser.add_argument("--strategy-ids", help="策略 IDs（多策略，逗号分隔）")
     parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
+    parser.add_argument("--calc-margin", action="store_true", help="计算保证金分配方案")
     parser.add_argument("--bgn-date", help="开始日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--end-date", help="结束日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--init-balance", type=float, help="初始资金（默认10000）")
@@ -443,6 +505,12 @@ def main():
                         help="共享模式分配比例（逗号分隔，总和100），如: 40,30,30")
     parser.add_argument("--data-type", type=int, default=1,
                         help="数据类型（默认1）")
+    
+    # 保证金计算参数
+    parser.add_argument("--coin-allocation", help="按币种分配比例，JSON格式：{'BTC': 60, 'ETH': 40}")
+    parser.add_argument("--direction-allocation", help="按方向分配比例，JSON格式：{'做多': 70, '做空': 30}")
+    parser.add_argument("--strategy-type-allocation", help="按策略类型分配，JSON格式")
+    parser.add_argument("--total-balance", type=float, default=10000, help="总保证金（默认10000）")
     
     args = parser.parse_args()
     
@@ -513,6 +581,64 @@ def main():
                 print(f"最大回撤: {info.get('max_loss', 'N/A')}%")
                 print(f"胜率: {info.get('win_rate', 'N/A')}%")
                 print(f"交易次数: {info.get('trade_num', 'N/A')}")
+        return
+    
+    # 计算保证金分配
+    if args.calc_margin:
+        if not args.strategy_ids:
+            print("错误: 需要 --strategy-ids 参数")
+            sys.exit(1)
+        
+        allocation_rules = {}
+        
+        # 解析分配规则
+        if args.coin_allocation:
+            try:
+                allocation_rules["coin_allocation"] = json.loads(args.coin_allocation)
+            except json.JSONDecodeError:
+                print("错误: --coin-allocation 参数格式错误，需要有效的JSON")
+                sys.exit(1)
+        
+        if args.direction_allocation:
+            try:
+                allocation_rules["direction_allocation"] = json.loads(args.direction_allocation)
+            except json.JSONDecodeError:
+                print("错误: --direction-allocation 参数格式错误，需要有效的JSON")
+                sys.exit(1)
+        
+        if args.strategy_type_allocation:
+            try:
+                allocation_rules["strategy_type_allocation"] = json.loads(args.strategy_type_allocation)
+            except json.JSONDecodeError:
+                print("错误: --strategy-type-allocation 参数格式错误，需要有效的JSON")
+                sys.exit(1)
+        
+        # 调用保证金计算接口
+        result = calc_margin_allocation(
+            token=args.token,
+            strategy_ids=args.strategy_ids,
+            allocation_rules=allocation_rules,
+            total_balance=args.total_balance
+        )
+        
+        if args.format == "json":
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            if "error" in result:
+                print(f"错误: {result['error']}")
+            else:
+                info = result.get("info", {})
+                allocations = info.get("allocations", {})
+                print(f"保证金分配方案（总保证金: {args.total_balance}）:")
+                print(f"策略ID | 策略名称 | 币种 | 方向 | 分配比例 | 保证金金额")
+                print(f"--------|----------|------|------|----------|----------")
+                for strategy_id, allocation in allocations.items():
+                    name = allocation.get("name", "N/A")
+                    coin = allocation.get("coin", "N/A")
+                    direction = allocation.get("direction", "N/A")
+                    percentage = allocation.get("percentage", "N/A")
+                    amount = allocation.get("amount", "N/A")
+                    print(f"{strategy_id} | {name[:15]} | {coin} | {direction} | {percentage}% | {amount}")
         return
     
     # 开始回测
