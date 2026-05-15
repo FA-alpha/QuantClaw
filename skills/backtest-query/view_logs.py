@@ -35,6 +35,7 @@ def print_log_entry(entry: dict, verbose: bool = False):
     if verbose:
         response = entry.get("response")
         if response:
+            # 完整显示，不截断
             print(f"   响应: {json.dumps(response, ensure_ascii=False, indent=2)}")
     else:
         # 简要模式
@@ -43,8 +44,9 @@ def print_log_entry(entry: dict, verbose: bool = False):
         elif "response" in entry:
             resp = entry["response"]
             if isinstance(resp, dict):
-                if "count" in resp:
-                    print(f"   结果: 返回 {resp['count']} 条记录")
+                if "info" in resp and isinstance(resp["info"], list):
+                    count = len(resp["info"])
+                    print(f"   结果: 返回 {count} 条记录")
                 elif resp.get("status") == 1:
                     print(f"   结果: 成功")
                 else:

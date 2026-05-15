@@ -58,22 +58,8 @@ def log_http_request(url: str, data: dict, response: dict = None, error: str = N
     }
     
     if response is not None:
-        # 精简响应数据
-        if isinstance(response, dict):
-            if response.get("status") == 1 and "info" in response:
-                info = response["info"]
-                if isinstance(info, list):
-                    log_entry["response"] = {
-                        "status": 1,
-                        "count": len(info),
-                        "sample": info[0] if info else None,
-                    }
-                else:
-                    log_entry["response"] = response
-            else:
-                log_entry["response"] = response
-        else:
-            log_entry["response"] = str(response)[:200]  # 截断
+        # 完整记录响应数据（不截断）
+        log_entry["response"] = response
     
     if error:
         log_entry["error"] = error
