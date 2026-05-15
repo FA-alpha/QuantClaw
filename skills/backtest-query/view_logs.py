@@ -5,8 +5,9 @@
 
 import argparse
 import json
+import os
 from datetime import datetime
-from api_logger import LOG_FILE, get_recent_logs, clear_logs
+from api_logger import get_agent_id, get_log_file_path, get_recent_logs, clear_logs, LOG_BASE_DIR
 
 
 def format_timestamp(ts_str: str) -> str:
@@ -58,26 +59,34 @@ def print_log_entry(entry: dict, verbose: bool = False):
 def main():
     parser = argparse.ArgumentParser(description="查看 API 请求日志")
     parser.add_argument("-n", "--limit", type=int, default=10, help="显示最近 N 条日志")
+    parser.add_argument("-d", "--days", type=int, default=1, help="读取最近几天的日志（默认1天）")
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细信息")
     parser.add_argument("--clear", action="store_true", help="清空日志文件")
     parser.add_argument("--path", action="store_true", help="显示日志文件路径")
-    parser.add_argument("--filter", dest="filter_func", help="过滤特定函数名")
+    parser.add_argument("--filter", dest="filter_func", help="过滤特定接口（URL末尾）")
     parser.add_argument("--error-only", action="store_true", help="只显示错误日志")
+    parser.add_argument("--agent-id", dest="agent_id", help="指定 Agent ID")
     
     args = parser.parse_args()
     
+    agent_id = args.agent_id or get_agent_id()
+    
     # 显示路径
     if args.path:
-        print(f"日志文件: {LOG_FILE}")
+        log_dir = os.path.join(LOG_BASE_DIR, agent_id)
+        log_file = get_log_file_path(agent_id)
+        print(f"Agent ID: {agent_id}")
+        print(f"日志目录: {log_dir}")
+        print(f"今日日志: {log_file}")
         return
     
     # 清空日志
     if args.clear:
-        clear_logs()
+        clear_logs(agent_id)
         return
     
     # 读取日志
-    logs = get_recent_logs(limit=args.limit)
+    logs = get_recent_logs(limit=args.limit, agent_id=agent_id, days=args.days)
     
     if not logs:
         print("📭 暂无日志记录")
@@ -85,17 +94,18 @@ def main():
     
     # 过滤
     if args.filter_func:
-        logs = [log for log in logs if log.get("function") == args.filter_func]
+        logs = [log for log in logs if args.filter_func in log.get("url", "")]
     
     if args.error_only:
         logs = [log for log in logs if not log.get("success")]
     
     # 显示
-    print(f"📊 最近 {len(logs)} 条日志:")
+    print(f"📊 最近 {len(logs)} 条日志 (Agent: {agent_id}):")
     for log in logs:
         print_log_entry(log, verbose=args.verbose)
     
-    print(f"\n💾 日志文件: {LOG_FILE}")
+    log_dir = os.path.join(LOG_BASE_DIR, agent_id)
+    print(f"\n💾 日志目录: {log_dir}")
 
 
 if __name__ == "__main__":
