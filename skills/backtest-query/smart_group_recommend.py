@@ -16,6 +16,7 @@ from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from query import query_backtest, get_backtest_detail, get_version_info
 from analysis import recommend_combinations
+from api_logger import log_error, ErrorType
 
 
 # ==================== 全局日志控制 ====================
@@ -127,8 +128,12 @@ def get_user_token(agent_id: Optional[str] = None) -> Optional[str]:
         for user in users:
             if user.get('agentId') == agent_id:
                 return user.get('token')
-    except Exception:
-        pass
+    except Exception as e:
+        log_error(
+            error_msg=f"读取用户配置失败: {e}",
+            exception=e,
+            context={"function": "get_user_token", "agent_id": agent_id, "users_file": users_file}
+        )
     
     return None
 
@@ -173,19 +178,25 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         try:
             strategy_version_map = json.loads(args.strategy_version_map)
         except json.JSONDecodeError as e:
-            raise ValidationError(f"--strategy-version-map JSON 解析失败: {e}")
+            error_msg = f"--strategy-version-map JSON 解析失败: {e}"
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_version_map})
+            raise ValidationError(error_msg)
     
     if args.strategy_direction_map:
         try:
             strategy_direction_map = json.loads(args.strategy_direction_map)
         except json.JSONDecodeError as e:
-            raise ValidationError(f"--strategy-direction-map JSON 解析失败: {e}")
+            error_msg = f"--strategy-direction-map JSON 解析失败: {e}"
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_direction_map})
+            raise ValidationError(error_msg)
     
     if args.coin_pct_map:
         try:
             coin_pct_map = json.loads(args.coin_pct_map)
         except json.JSONDecodeError as e:
-            raise ValidationError(f"--coin-pct-map JSON 解析失败: {e}")
+            error_msg = f"--coin-pct-map JSON 解析失败: {e}"
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.coin_pct_map})
+            raise ValidationError(error_msg)
     
     # ==================== 第1步：获取独立参数 ====================
     
@@ -1849,6 +1860,13 @@ def main():
     try:
         validate_args(args)
     except ValidationError as e:
+        # 记录验证错误
+        log_error(
+            error_msg=str(e),
+            error_type=ErrorType.VALIDATION,
+            context={"script": "smart_group_recommend.py", "args": vars(args)}
+        )
+        
         error_result = {
             "error": "参数验证失败",
             "message": str(e),
@@ -2031,6 +2049,13 @@ if __name__ == "__main__":
         print(json.dumps(error_result, ensure_ascii=False, indent=2))
         sys.exit(1)
     except Exception as e:
+        # 记录错误日志
+        log_error(
+            error_msg=str(e),
+            exception=e,
+            context={"script": "smart_group_recommend.py", "args": sys.argv[1:]}
+        )
+        
         error_result = {
             "error": "未预期错误",
             "message": str(e),
