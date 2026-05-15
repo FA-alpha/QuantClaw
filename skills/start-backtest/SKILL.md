@@ -38,16 +38,16 @@
 
 **解决方案**：Agent在调用任何Python脚本前，必须按以下步骤操作：
 
-**步骤1：获取当前AgentID**
+**步骤1：获取当前机器人agentID**
 ```bash
-# 从当前工作目录路径获取agentID
-pwd | grep -o 'clawd-[^/]*' | head -1
+# Agent应该知道自己的agentID，直接使用
+# 例如：qc-4b04623f0831
 ```
 
 **步骤2：从users.json获取对应token**
 ```bash
-# 根据agentID查找对应的token
-cat ~/.quantclaw/users.json | jq -r --arg agent_id "qc-XXXXXXXX" '.users[] | select(.agentId == $agent_id) | .token'
+# 根据当前机器人的agentID查找对应的token
+cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人的agentID" '.users[] | select(.agentId == $agent_id) | .token'
 ```
 
 **步骤3：传递token给Python脚本**
@@ -67,9 +67,8 @@ python skills/start-backtest/start.py --list-strategies
 
 **✅ 正确做法**：
 ```bash
-# 先获取agentID和token，再传递给脚本
-AGENT_ID=$(pwd | grep -o 'clawd-[^/]*' | head -1 | sed 's/clawd-//')
-TOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "$AGENT_ID" '.users[] | select(.agentId == $agent_id) | .token')
+# Agent使用自己的agentID获取token，再传递给脚本
+TOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人的agentID" '.users[] | select(.agentId == $agent_id) | .token')
 python skills/start-backtest/start.py --token "$TOKEN" --list-strategies
 ```
 
@@ -94,8 +93,14 @@ python skills/start-backtest/start.py --token "$TOKEN" --apply --strategy-ids 43
 
 - **每次调用Python脚本都必须先获取token**
 - **不要依赖脚本的自动token获取功能**
-- **确保agentID匹配正确**
+- **Agent应该知道自己的agentID**（如qc-4b04623f0831）
+- **使用自己的agentID从users.json获取token**
 - **token获取失败时应该报错并停止执行**
+
+### 💡 AgentID说明
+- **Agent自己知道自己的身份标识**
+- **不需要从文件路径解析agentID**
+- **直接使用已知的agentID查找token**
 
 ## 🔄 回测模式识别（最重要）
 

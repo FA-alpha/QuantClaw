@@ -446,8 +446,8 @@ def main():
     
     args = parser.parse_args()
     
-    # 自动获取 token（如果未提供）
-    if not args.token:
+    # 自动获取 token（如果未提供或为空）
+    if not args.token or not args.token.strip():
         args.token = auto_get_token()
         if not args.token:
             print("错误: 无法自动获取 token，请手动提供 --token 参数")
@@ -456,6 +456,8 @@ def main():
             print("  2. templates/users.json")
             sys.exit(1)
         print(f"[INFO] 自动获取到token: {args.token[:20]}...")
+    else:
+        print(f"[INFO] 使用外部传递的token: {args.token[:20]}...")
     
     # 列出币种
     if args.list_coins:
