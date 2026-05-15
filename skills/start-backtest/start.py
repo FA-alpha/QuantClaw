@@ -303,6 +303,52 @@ def apply_backtest(
         return {"error": str(e)}
 
 
+def get_backtest_detail(token: str, back_id: int) -> dict:
+    """
+    获取回测详细统计信息
+    
+    API: POST /Backtrack/stat_info
+    
+    Args:
+        token: 用户登录 token
+        back_id: 回测记录 ID
+    
+    Returns:
+        dict: API 响应数据（已清理net_value）
+    """
+    url = f"{API_BASE}/Backtrack/stat_info"
+    data = {
+        "usertoken": token,
+        "back_id": back_id,
+        "app_v": "2.0.0"
+    }
+    
+    try:
+        resp = requests.post(url, data=data, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
+        
+        # 清理net_value参数，节省上下文窗口
+        if isinstance(result.get("info"), dict):
+            info = result["info"]
+            # 删除total_stat中的net_value
+            if "total_stat" in info and isinstance(info["total_stat"], dict):
+                info["total_stat"].pop("net_value", None)
+            
+            # 删除其他可能的大数据字段
+            info.pop("daily_stat", None)
+            info.pop("trade_details", None)
+        
+        return result
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
 def format_groups(data: dict) -> str:
     """格式化策略组列表输出"""
     if "error" in data:
@@ -382,6 +428,7 @@ def main():
     # 回测参数
     parser.add_argument("--strategy-id", help="策略 ID（单策略）")
     parser.add_argument("--strategy-ids", help="策略 IDs（多策略，逗号分隔）")
+    parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
     parser.add_argument("--bgn-date", help="开始日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--end-date", help="结束日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--init-balance", type=float, help="初始资金（默认10000）")
@@ -442,6 +489,24 @@ def main():
             print(json.dumps(result, indent=2, ensure_ascii=False))
         else:
             print(format_strategies(result))
+        return
+    
+    # 查看回测详情
+    if args.back_id:
+        result = get_backtest_detail(args.token, args.back_id)
+        if args.format == "json":
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            if "error" in result:
+                print(f"错误: {result['error']}")
+            else:
+                info = result.get("info", {})
+                print(f"回测详情 - ID: {args.back_id}")
+                print(f"年化收益率: {info.get('year_rate', 'N/A')}%")
+                print(f"夏普比率: {info.get('sharp_rate', 'N/A')}")
+                print(f"最大回撤: {info.get('max_loss', 'N/A')}%")
+                print(f"胜率: {info.get('win_rate', 'N/A')}%")
+                print(f"交易次数: {info.get('trade_num', 'N/A')}")
         return
     
     # 开始回测
