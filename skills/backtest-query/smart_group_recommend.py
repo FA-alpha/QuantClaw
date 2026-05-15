@@ -1150,12 +1150,17 @@ class SmartGroupRecommender:
                     self.log(f"   将使用 group_strategies_count 总数: {expected_total}")
                     min_strategies = expected_total
             elif coin_strategies_count:
-                # 检查是否在对冲场景误用
+                # 检查是否在"同币种多空对冲"场景误用
                 strategy_goal = intent.get('strategy_goal')
-                if strategy_goal == 'hedging' and 'direction' in self.infer_grouping_from_intent(intent):
-                    self.log(f"⚠️  警告: 对冲场景不建议使用 coin_strategies_count")
+                diversity_priority = preferences_intent.get('diversity_priority')
+                
+                # 只在同币种多空对冲时警告（diversity_priority == 'direction'）
+                if strategy_goal == 'hedging' and diversity_priority == 'direction':
+                    self.log(f"⚠️  警告: 同币种多空对冲不建议使用 coin_strategies_count")
                     self.log(f"   建议: 使用 group_strategies_count 精确控制多空比例")
                     self.log(f"   或不指定，让对冲算法自动平衡")
+                
+                # 跨币种对冲（diversity_priority == 'coin'）使用 coin_strategies_count 是合理的
                 
                 expected_total = sum(coin_strategies_count.values())
                 if expected_total != min_strategies:
