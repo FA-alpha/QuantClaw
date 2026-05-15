@@ -29,11 +29,14 @@ def print_log_entry(entry: dict, verbose: bool = False):
     print(f"\n{success} [{timestamp}] {endpoint}")
     
     # 打印参数
-    if entry.get("kwargs"):
-        print(f"   参数: {json.dumps(entry['kwargs'], ensure_ascii=False)}")
+    if entry.get("params"):
+        print(f"   参数: {json.dumps(entry['params'], ensure_ascii=False)}")
     
-    # 打印响应
+    # 打印响应或错误
     if verbose:
+        if entry.get("error"):
+            print(f"   错误: {entry['error']}")
+        
         response = entry.get("response")
         if response:
             # 完整显示，不截断
