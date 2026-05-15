@@ -1134,14 +1134,22 @@ class SmartGroupRecommender:
         # 读取 min_strategies 约束（如果有）
         min_strategies = 3  # 默认值
         coin_strategies_count = None  # 按币种指定数量（可选）
+        group_strategies_count = None  # 按分组键指定数量（可选）
         
         if intent:
             constraints = intent.get('constraints', {})
             min_strategies = constraints.get('min_strategies', 3)
             coin_strategies_count = constraints.get('coin_strategies_count')
+            group_strategies_count = constraints.get('group_strategies_count')
             
-            # 验证 coin_strategies_count 的一致性
-            if coin_strategies_count:
+            # 验证一致性（优先级：group_strategies_count > coin_strategies_count）
+            if group_strategies_count:
+                expected_total = sum(group_strategies_count.values())
+                if expected_total != min_strategies:
+                    self.log(f"⚠️  警告: group_strategies_count 总数({expected_total}) ≠ min_strategies({min_strategies})")
+                    self.log(f"   将使用 group_strategies_count 总数: {expected_total}")
+                    min_strategies = expected_total
+            elif coin_strategies_count:
                 expected_total = sum(coin_strategies_count.values())
                 if expected_total != min_strategies:
                     self.log(f"⚠️  警告: coin_strategies_count 总数({expected_total}) ≠ min_strategies({min_strategies})")
@@ -1182,12 +1190,19 @@ class SmartGroupRecommender:
         # 4. 每组筛选策略
         all_selected = []
         
-        # 读取 coin_strategies_count（按币种指定数量）
+        # 读取策略数量配置（支持两种方式）
         coin_strategies_count = None
+        group_strategies_count = None
         if intent:
-            coin_strategies_count = intent.get('constraints', {}).get('coin_strategies_count')
+            constraints = intent.get('constraints', {})
+            coin_strategies_count = constraints.get('coin_strategies_count')
+            group_strategies_count = constraints.get('group_strategies_count')
         
-        if coin_strategies_count:
+        if group_strategies_count:
+            self.log(f"\n🎯 按分组键指定数量筛选策略:")
+            for key, count in group_strategies_count.items():
+                self.log(f"   {key}: {count} 个")
+        elif coin_strategies_count:
             self.log(f"\n🎯 按币种指定数量筛选策略:")
             for coin, count in coin_strategies_count.items():
                 self.log(f"   {coin}: {count} 个")
@@ -1203,15 +1218,23 @@ class SmartGroupRecommender:
             self.log(f"\n--- {label} ({len(group_strategies)} 个策略) ---")
             
             # 确定该组要取几个策略
-            # 优先级：coin_strategies_count > top_per_group
+            # 优先级：group_strategies_count > coin_strategies_count > top_per_group
             current_top_n = top_per_group
-            if coin_strategies_count and 'coin' in group_by:
-                # 找到该组对应的币种
+            
+            # 方式1：按完整分组键匹配（最精确）
+            if group_strategies_count:
+                group_key = "_".join(str(v) for v in key)
+                if group_key in group_strategies_count:
+                    current_top_n = group_strategies_count[group_key]
+                    self.log(f"   使用指定数量: {current_top_n} 个（来自 group_strategies_count[{group_key}]）")
+            
+            # 方式2：按币种匹配（兼容旧方式）
+            elif coin_strategies_count and 'coin' in group_by:
                 coin_index = group_by.index('coin')
                 coin = key[coin_index]
                 if coin in coin_strategies_count:
                     current_top_n = coin_strategies_count[coin]
-                    self.log(f"   使用指定数量: {current_top_n} 个（来自 coin_strategies_count）")
+                    self.log(f"   使用指定数量: {current_top_n} 个（来自 coin_strategies_count[{coin}]）")
             
             top_strategies = self.get_top_by_multiple_sorts(group_strategies, top_n=current_top_n, sort_methods=sort_methods)
             self.log(f"📊 去重后选择 {len(top_strategies)} 个策略")

@@ -16,6 +16,11 @@
     "coin_strategies_count": {       // 可选：按币种指定策略数量
       "BTC": 2,                      // BTC 要 2 个策略
       "SOL": 3                       // SOL 要 3 个策略
+    },
+    "group_strategies_count": {      // 可选：按分组键指定数量（更通用）
+      "BTC_long": 2,                 // BTC做多 2个
+      "BTC_short": 1,                // BTC做空 1个
+      "SOL_long": 3                  // SOL做多 3个
     }
   },
   "preferences": {                   // 软偏好
@@ -127,10 +132,32 @@
 }
 ```
 
+### 按方向指定数量（对冲场景）
+**输入**：`"BTC对冲，做多3个，做空2个"`
+```json
+{
+  "strategy_goal": "hedging",
+  "constraints": {
+    "coins": ["BTC"],
+    "directions": ["long", "short"],
+    "min_strategies": 5,
+    "group_strategies_count": {
+      "BTC_long": 3,
+      "BTC_short": 2
+    }
+  },
+  "preferences": {
+    "risk_level": "balanced",
+    "diversity_priority": "direction"
+  }
+}
+```
+
 **注意**：
-- `coin_strategies_count` 是**可选字段**，不提供时使用 `--top-per-group` 全局配置
-- 提供时，优先使用指定的币种数量
-- `min_strategies` 应该等于所有币种数量之和
+- `coin_strategies_count`: 按币种维度指定（适用于多币种分散）
+- `group_strategies_count`: 按完整分组键指定（适用于对冲、多维度组合）
+- 两者都是**可选字段**，不提供时使用 `--top-per-group` 全局配置
+- `min_strategies` 应该等于所有指定数量之和
 
 ### 无明确意图
 **输入**：`"推荐BTC策略"`
