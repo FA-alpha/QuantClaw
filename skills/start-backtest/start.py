@@ -409,49 +409,107 @@ def calc_margin_allocation(
         "lang": "1"
     }
     
-    # 添加分配规则参数（正确格式）
+    # 根据前端逻辑构建分配参数（模仿前端calcMargin函数）
+    long_coin_pcts = []
+    short_coin_pcts = []
+    long_ai_time_pcts = []
+    short_ai_time_pcts = []
+    
+    # 构建币种分配映射（模仿show_config_margin_modal逻辑）
+    long_coin_map = {}
+    short_coin_map = {}
+    ai_time_map = {}
+    
+    for strategy in strategies:
+        coin = strategy.get("coin", "")
+        direction = strategy.get("direction", "")
+        ai_time_id = str(strategy.get("ai_time_id", ""))
+        ai_time_name = strategy.get("ai_time_name", "")
+        
+        # 按方向分组币种
+        if direction == 'short':
+            if coin not in short_coin_map:
+                short_coin_map[coin] = {"coin": coin, "pct": ""}
+        else:  # long 或其他默认为做多
+            if coin not in long_coin_map:
+                long_coin_map[coin] = {"coin": coin, "pct": ""}
+        
+        # AI时间类型分组
+        if ai_time_id:
+            if ai_time_id not in ai_time_map:
+                ai_time_map[ai_time_id] = {
+                    "ai_time_id": ai_time_id, 
+                    "name": ai_time_name, 
+                    "direction": {}
+                }
+            if direction not in ai_time_map[ai_time_id]["direction"]:
+                ai_time_map[ai_time_id]["direction"][direction] = {"pct": ""}
+    
+    # 应用用户指定的分配规则
     if allocation_rules:
-        # 按币种做多分配
+        # 处理币种做多分配
         if "coin_long_allocation" in allocation_rules:
-            long_coin_pcts = []
             for coin, pct in allocation_rules["coin_long_allocation"].items():
-                long_coin_pcts.append({"coin": coin, "pct": str(pct)})
-            data["long_coin_pcts"] = json.dumps(long_coin_pcts)
+                if coin in long_coin_map:
+                    long_coin_map[coin]["pct"] = str(pct)
         
-        # 按币种做空分配
+        # 处理币种做空分配
         if "coin_short_allocation" in allocation_rules:
-            short_coin_pcts = []
             for coin, pct in allocation_rules["coin_short_allocation"].items():
-                short_coin_pcts.append({"coin": coin, "pct": str(pct)})
-            data["short_coin_pcts"] = json.dumps(short_coin_pcts)
+                if coin in short_coin_map:
+                    short_coin_map[coin]["pct"] = str(pct)
         
-        # 按AI时间类型分配（市场行情）
+        # 处理AI时间类型分配（按ai_time_name匹配）
         if "ai_time_allocation" in allocation_rules:
-            long_ai_time_pcts = []
-            short_ai_time_pcts = []
-            
-            # 根据策略的ai_time_id分组
-            ai_time_ids = set()
-            for strategy in strategies:
-                ai_time_id = str(strategy.get("ai_time_id", ""))
-                if ai_time_id:
-                    ai_time_ids.add(ai_time_id)
-            
-            # 为每个ai_time_id设置分配比例
-            for ai_time_id in ai_time_ids:
-                # 根据ai_time_name匹配分配规则
-                matching_strategies = [s for s in strategies if str(s.get("ai_time_id", "")) == ai_time_id]
-                if matching_strategies:
-                    ai_time_name = matching_strategies[0].get("ai_time_name", "")
-                    pct = allocation_rules["ai_time_allocation"].get(ai_time_name, 50)
-                    
-                    long_ai_time_pcts.append({"ai_time_id": ai_time_id, "pct": str(pct)})
-                    short_ai_time_pcts.append({"ai_time_id": ai_time_id, "pct": str(pct)})
-            
-            if long_ai_time_pcts:
-                data["long_ai_time_pcts"] = json.dumps(long_ai_time_pcts)
-            if short_ai_time_pcts:
-                data["short_ai_time_pcts"] = json.dumps(short_ai_time_pcts)
+            for ai_time_id, ai_time_info in ai_time_map.items():
+                ai_time_name = ai_time_info["name"]
+                if ai_time_name in allocation_rules["ai_time_allocation"]:
+                    pct = str(allocation_rules["ai_time_allocation"][ai_time_name])
+                    # 为该ai_time_id的所有方向设置相同比例
+                    for direction in ai_time_info["direction"]:
+                        ai_time_info["direction"][direction]["pct"] = pct
+        
+        # 处理细分组分配（按方向+行情组合）
+        if "sub_group_allocation" in allocation_rules:
+            for ai_time_id, ai_time_info in ai_time_map.items():
+                ai_time_name = ai_time_info["name"]
+                for direction in ai_time_info["direction"]:
+                    # 构建细分组名称：如"2025年震荡做多"
+                    sub_group_name = f"{ai_time_name}{direction}"
+                    if sub_group_name in allocation_rules["sub_group_allocation"]:
+                        pct = str(allocation_rules["sub_group_allocation"][sub_group_name])
+                        ai_time_info["direction"][direction]["pct"] = pct
+    
+    # 构建最终的参数数组（模仿前端calcMargin逻辑）
+    for coin, coin_info in long_coin_map.items():
+        if coin_info["pct"]:  # 只添加有设置比例的
+            long_coin_pcts.append(coin_info)
+    
+    for coin, coin_info in short_coin_map.items():
+        if coin_info["pct"]:  # 只添加有设置比例的
+            short_coin_pcts.append(coin_info)
+    
+    for ai_time_id, ai_time_info in ai_time_map.items():
+        if "short" in ai_time_info["direction"] and ai_time_info["direction"]["short"]["pct"]:
+            short_ai_time_pcts.append({
+                "ai_time_id": ai_time_id,
+                "pct": ai_time_info["direction"]["short"]["pct"]
+            })
+        if "long" in ai_time_info["direction"] and ai_time_info["direction"]["long"]["pct"]:
+            long_ai_time_pcts.append({
+                "ai_time_id": ai_time_id,
+                "pct": ai_time_info["direction"]["long"]["pct"]
+            })
+    
+    # 添加到请求参数中
+    if long_coin_pcts:
+        data["long_coin_pcts"] = json.dumps(long_coin_pcts)
+    if short_coin_pcts:
+        data["short_coin_pcts"] = json.dumps(short_coin_pcts)
+    if long_ai_time_pcts:
+        data["long_ai_time_pcts"] = json.dumps(long_ai_time_pcts)
+    if short_ai_time_pcts:
+        data["short_ai_time_pcts"] = json.dumps(short_ai_time_pcts)
         
     try:
         resp = requests.post(url, data=data, timeout=30)
@@ -465,6 +523,126 @@ def calc_margin_allocation(
         return result
     except requests.RequestException as e:
         return {"error": str(e)}
+
+
+def parse_natural_language_allocation(user_input: str, strategies: list) -> dict:
+    """
+    解析用户的自然语言保证金分配需求
+    
+    Args:
+        user_input: 用户输入的自然语言描述
+        strategies: 策略列表
+    
+    Returns:
+        dict: 解析出的分配规则
+    """
+    allocation_rules = {}
+    
+    # 提取策略中的币种、方向和市场行情信息
+    coins = list(set([s.get("coin", "") for s in strategies if s.get("coin")]))
+    ai_time_names = list(set([s.get("ai_time_name", "") for s in strategies if s.get("ai_time_name")]))
+    directions = list(set([s.get("direction", "") for s in strategies if s.get("direction")]))
+    
+    user_input_lower = user_input.lower()
+    
+    # 解析币种分配规则
+    coin_long_allocation = {}
+    coin_short_allocation = {}
+    
+    for coin in coins:
+        coin_lower = coin.lower()
+        
+        # 匹配类似 "BTC做多40%"、"DOGE做空30%" 的模式
+        import re
+        
+        # 做多币种分配
+        long_patterns = [
+            rf'{coin_lower}.*?做多.*?(\d+)%?',
+            rf'{coin_lower}.*?long.*?(\d+)%?',
+            rf'做多.*?{coin_lower}.*?(\d+)%?',
+            rf'{coin_lower}.*?(\d+)%.*?做多',
+        ]
+        for pattern in long_patterns:
+            match = re.search(pattern, user_input_lower)
+            if match:
+                coin_long_allocation[coin] = int(match.group(1))
+                break
+        
+        # 做空币种分配
+        short_patterns = [
+            rf'{coin_lower}.*?做空.*?(\d+)%?',
+            rf'{coin_lower}.*?short.*?(\d+)%?',
+            rf'做空.*?{coin_lower}.*?(\d+)%?',
+            rf'{coin_lower}.*?(\d+)%.*?做空',
+        ]
+        for pattern in short_patterns:
+            match = re.search(pattern, user_input_lower)
+            if match:
+                coin_short_allocation[coin] = int(match.group(1))
+                break
+        
+        # 如果只提到币种和比例，没有明确方向，按照策略实际方向分配
+        if coin not in coin_long_allocation and coin not in coin_short_allocation:
+            general_patterns = [
+                rf'{coin_lower}.*?(\d+)%',
+                rf'{coin_lower}.*?占.*?(\d+)%',
+                rf'{coin_lower}.*?分配.*?(\d+)%',
+            ]
+            for pattern in general_patterns:
+                match = re.search(pattern, user_input_lower)
+                if match:
+                    pct = int(match.group(1))
+                    # 根据策略实际方向决定分配到做多还是做空
+                    coin_strategies = [s for s in strategies if s.get("coin") == coin]
+                    has_long = any("long" in s.get("direction", "").lower() or "做多" in s.get("direction", "") for s in coin_strategies)
+                    has_short = any("short" in s.get("direction", "").lower() or "做空" in s.get("direction", "") for s in coin_strategies)
+                    
+                    if has_long:
+                        coin_long_allocation[coin] = pct
+                    if has_short:
+                        coin_short_allocation[coin] = pct
+                    break
+    
+    if coin_long_allocation:
+        allocation_rules["coin_long_allocation"] = coin_long_allocation
+    if coin_short_allocation:
+        allocation_rules["coin_short_allocation"] = coin_short_allocation
+    
+    # 解析AI时间类型（市场行情）分配
+    ai_time_allocation = {}
+    for ai_time_name in ai_time_names:
+        if ai_time_name:
+            ai_time_lower = ai_time_name.lower()
+            patterns = [
+                rf'{ai_time_lower}.*?(\d+)%',
+                rf'{ai_time_lower}.*?占.*?(\d+)%',
+                rf'{ai_time_lower}.*?分配.*?(\d+)%',
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, user_input_lower)
+                if match:
+                    ai_time_allocation[ai_time_name] = int(match.group(1))
+                    break
+    
+    if ai_time_allocation:
+        allocation_rules["ai_time_allocation"] = ai_time_allocation
+    
+    # 解析细分组分配（方向+市场行情）
+    sub_group_allocation = {}
+    for ai_time_name in ai_time_names:
+        if ai_time_name:
+            # 检查类似 "2025年震荡做多40%" 的模式
+            for direction in ["做多", "做空", "long", "short"]:
+                sub_group_name = f"{ai_time_name}{direction}"
+                pattern = rf'{ai_time_name}.*?{direction}.*?(\d+)%?'
+                match = re.search(pattern, user_input_lower)
+                if match:
+                    sub_group_allocation[sub_group_name] = int(match.group(1))
+    
+    if sub_group_allocation:
+        allocation_rules["sub_group_allocation"] = sub_group_allocation
+    
+    return allocation_rules
 
 
 def get_strategies_with_grouping(token: str, strategy_ids: str) -> dict:
@@ -712,6 +890,7 @@ def main():
     parser.add_argument("--direction-allocation", help="按方向分配比例，JSON格式：{'做多': 70, '做空': 30}")
     parser.add_argument("--ai-time-allocation", help="按AI回测时间类型(市场行情)分配，JSON格式：{'震荡行情': 60, '趋势行情': 40}")
     parser.add_argument("--sub-group-allocation", help="按细分组分配，JSON格式：{'2025年震荡做多': 40, '2024年趋势做空': 30}")
+    parser.add_argument("--natural-allocation", help="自然语言分配描述，如'DOGE占40%，BTC做多60%，震荡行情70%'")
     parser.add_argument("--strategy-type-allocation", help="按策略类型分配，JSON格式")
     parser.add_argument("--total-balance", type=float, default=10000, help="总保证金（默认10000）")
     parser.add_argument("--long-pct", type=int, default=90, help="做多保证金占比（默认90）")
@@ -824,7 +1003,18 @@ def main():
         
         allocation_rules = {}
         
-        # 解析分配规则
+        # 优先处理自然语言分配
+        if getattr(args, 'natural_allocation', None):
+            # 首先获取策略信息用于自然语言解析
+            strategies_info = get_strategies_with_grouping(args.token, args.strategy_ids)
+            if "error" in strategies_info:
+                print(f"错误: {strategies_info['error']}")
+                sys.exit(1)
+            strategies = strategies_info.get("strategies", [])
+            natural_rules = parse_natural_language_allocation(args.natural_allocation, strategies)
+            allocation_rules.update(natural_rules)
+        
+        # 解析其他分配规则
         if getattr(args, 'coin_long_allocation', None):
             try:
                 allocation_rules["coin_long_allocation"] = json.loads(args.coin_long_allocation)
