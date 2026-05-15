@@ -11,6 +11,7 @@ import os
 import time
 from datetime import datetime
 import requests
+from api_logger import log_api_request
 
 # API 配置
 API_BASE = "https://www.fourieralpha.com/Mobile"
@@ -45,6 +46,7 @@ def check_auth(response: dict) -> tuple[bool, str]:
     return True, '[]'
 
 
+@log_api_request
 def get_coin_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取可用币种列表（带缓存）
@@ -90,6 +92,7 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
         return {"error": str(e)}
 
 
+@log_api_request
 def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取 AI 回测时间列表（带缓存）
@@ -135,6 +138,7 @@ def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
         return {"error": str(e)}
 
 
+@log_api_request
 def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取 AI 回测策略列表（带缓存）
@@ -180,6 +184,7 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
         return {"error": str(e)}
 
 
+@log_api_request
 def add_strategy(token: str, strategy_token: str) -> dict:
     """
     保存单个策略到策略库（收藏策略）
@@ -213,6 +218,7 @@ def add_strategy(token: str, strategy_token: str) -> dict:
         return {"error": str(e)}
 
 
+@log_api_request
 def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
     """
     创建策略组
@@ -248,6 +254,7 @@ def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
         return {"error": str(e)}
 
 
+@log_api_request
 def get_backtest_detail(token: str, back_id: int) -> dict:
     """
     获取回测详细统计信息
@@ -304,6 +311,7 @@ def get_version_info(token: str, strategy_type: int, version: str) -> dict:
     return {}
 
 
+@log_api_request
 def query_backtest(
     token: str,
     page: int = 1,
