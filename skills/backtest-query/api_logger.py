@@ -7,8 +7,7 @@ API 请求日志模块
 import json
 import os
 from datetime import datetime
-from functools import wraps
-from typing import Callable, Any
+from typing import Any
 
 # 日志配置
 LOG_DIR = os.path.expanduser("~/.quantclaw/logs")
@@ -20,93 +19,74 @@ def ensure_log_dir():
     os.makedirs(LOG_DIR, exist_ok=True)
 
 
-def mask_token(data: dict) -> dict:
-    """脱敏处理 token"""
+def mask_sensitive_data(data: dict) -> dict:
+    """脱敏处理敏感信息"""
     if not isinstance(data, dict):
         return data
     
     result = data.copy()
-    if 'usertoken' in result:
-        token = result['usertoken']
-        result['usertoken'] = f"{token[:10]}...{token[-4:]}" if len(token) > 14 else "***"
+    
+    # 脱敏 token 字段
+    for key in ['usertoken', 'token']:
+        if key in result and result[key]:
+            token = str(result[key])
+            if len(token) > 14:
+                result[key] = f"{token[:10]}...{token[-4:]}"
+            else:
+                result[key] = "***"
+    
     return result
 
 
-def log_api_request(func: Callable) -> Callable:
+def log_http_request(url: str, data: dict, response: dict = None, error: str = None):
     """
-    API 请求日志装饰器
+    记录 HTTP 请求日志
     
-    记录内容：
-    - 请求时间
-    - 函数名
-    - 请求参数（脱敏）
-    - 响应数据（可选截断）
-    - 错误信息
+    Args:
+        url: 请求 URL
+        data: 请求参数
+        response: 响应数据（可选）
+        error: 错误信息（可选）
     """
-    @wraps(func)
-    def wrapper(*args, **kwargs) -> Any:
-        ensure_log_dir()
-        
-        # 记录开始
-        timestamp = datetime.now().isoformat()
-        func_name = func.__name__
-        
-        # 脱敏参数
-        safe_kwargs = mask_token(kwargs)
-        
-        log_entry = {
-            "timestamp": timestamp,
-            "function": func_name,
-            "args": args[1:] if args else [],  # 跳过 token
-            "kwargs": safe_kwargs,
-        }
-        
-        try:
-            # 执行请求
-            result = func(*args, **kwargs)
-            
-            # 记录响应
-            if isinstance(result, dict):
-                # 如果是成功响应，截断大字段
-                if result.get("status") == 1 and "info" in result:
-                    info = result["info"]
-                    if isinstance(info, list) and len(info) > 0:
-                        log_entry["response"] = {
-                            "status": 1,
-                            "count": len(info),
-                            "sample": info[0] if info else None,
-                        }
-                    else:
-                        log_entry["response"] = result
-                elif "error" in result:
-                    log_entry["response"] = result
-                    log_entry["error"] = result["error"]
+    ensure_log_dir()
+    
+    # 构建日志条目
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "url": url,
+        "params": mask_sensitive_data(data),
+    }
+    
+    if response is not None:
+        # 精简响应数据
+        if isinstance(response, dict):
+            if response.get("status") == 1 and "info" in response:
+                info = response["info"]
+                if isinstance(info, list):
+                    log_entry["response"] = {
+                        "status": 1,
+                        "count": len(info),
+                        "sample": info[0] if info else None,
+                    }
                 else:
-                    log_entry["response"] = result
+                    log_entry["response"] = response
             else:
-                log_entry["response"] = str(result)
-            
-            log_entry["success"] = "error" not in result
-            
-        except Exception as e:
-            # 记录异常
-            log_entry["success"] = False
-            log_entry["error"] = str(e)
-            log_entry["exception"] = type(e).__name__
-            raise
-        
-        finally:
-            # 写入日志文件（追加模式）
-            try:
-                with open(LOG_FILE, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-            except Exception as log_error:
-                # 日志写入失败不影响主流程
-                print(f"⚠️  日志写入失败: {log_error}")
-        
-        return result
+                log_entry["response"] = response
+        else:
+            log_entry["response"] = str(response)[:200]  # 截断
     
-    return wrapper
+    if error:
+        log_entry["error"] = error
+        log_entry["success"] = False
+    else:
+        log_entry["success"] = True
+    
+    # 写入日志文件
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+    except Exception as log_error:
+        print(f"⚠️  日志写入失败: {log_error}")
 
 
 def get_recent_logs(limit: int = 50) -> list:
@@ -146,4 +126,6 @@ if __name__ == "__main__":
     print(f"日志文件位置: {LOG_FILE}")
     print(f"最近 10 条日志:")
     for entry in get_recent_logs(10):
-        print(f"  [{entry['timestamp']}] {entry['function']} - {'✅' if entry['success'] else '❌'}")
+        status = "✅" if entry.get('success') else "❌"
+        url = entry.get('url', '').split('/')[-1]
+        print(f"  {status} [{entry['timestamp']}] {url}")

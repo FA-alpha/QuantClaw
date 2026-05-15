@@ -21,10 +21,11 @@ def format_timestamp(ts_str: str) -> str:
 def print_log_entry(entry: dict, verbose: bool = False):
     """打印单条日志"""
     timestamp = format_timestamp(entry.get("timestamp", ""))
-    func_name = entry.get("function", "")
+    url = entry.get("url", "")
+    endpoint = url.split('/')[-1] if url else "未知"
     success = "✅" if entry.get("success") else "❌"
     
-    print(f"\n{success} [{timestamp}] {func_name}")
+    print(f"\n{success} [{timestamp}] {endpoint}")
     
     # 打印参数
     if entry.get("kwargs"):

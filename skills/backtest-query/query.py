@@ -11,7 +11,7 @@ import os
 import time
 from datetime import datetime
 import requests
-from api_logger import log_api_request
+from api_logger import log_http_request
 
 # API 配置
 API_BASE = "https://www.fourieralpha.com/Mobile"
@@ -46,7 +46,6 @@ def check_auth(response: dict) -> tuple[bool, str]:
     return True, '[]'
 
 
-@log_api_request
 def get_coin_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取可用币种列表（带缓存）
@@ -77,6 +76,9 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
         resp.raise_for_status()
         result = resp.json()
         
+        # 记录日志
+        log_http_request(url, data, response=result)
+        
         # 检查认证状态
         ok, msg = check_auth(result)
         if not ok:
@@ -89,10 +91,11 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
         
         return result
     except requests.RequestException as e:
-        return {"error": str(e)}
+        error_msg = str(e)
+        log_http_request(url, data, error=error_msg)
+        return {"error": error_msg}
 
 
-@log_api_request
 def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取 AI 回测时间列表（带缓存）
@@ -123,6 +126,9 @@ def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
         resp.raise_for_status()
         result = resp.json()
         
+        # 记录日志
+        log_http_request(url, data, response=result)
+        
         # 检查认证状态
         ok, msg = check_auth(result)
         if not ok:
@@ -135,10 +141,11 @@ def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
         
         return result
     except requests.RequestException as e:
-        return {"error": str(e)}
+        error_msg = str(e)
+        log_http_request(url, data, error=error_msg)
+        return {"error": error_msg}
 
 
-@log_api_request
 def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
     """
     获取 AI 回测策略列表（带缓存）
@@ -169,6 +176,9 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
         resp.raise_for_status()
         result = resp.json()
         
+        # 记录日志
+        log_http_request(url, data, response=result)
+        
         # 检查认证状态
         ok, msg = check_auth(result)
         if not ok:
@@ -181,10 +191,11 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
         
         return result
     except requests.RequestException as e:
-        return {"error": str(e)}
+        error_msg = str(e)
+        log_http_request(url, data, error=error_msg)
+        return {"error": error_msg}
 
 
-@log_api_request
 def add_strategy(token: str, strategy_token: str) -> dict:
     """
     保存单个策略到策略库（收藏策略）
@@ -208,6 +219,9 @@ def add_strategy(token: str, strategy_token: str) -> dict:
         resp.raise_for_status()
         result = resp.json()
         
+        # 记录日志
+        log_http_request(url, data, response=result)
+        
         # 检查认证状态
         ok, msg = check_auth(result)
         if not ok:
@@ -215,10 +229,11 @@ def add_strategy(token: str, strategy_token: str) -> dict:
         
         return result
     except requests.RequestException as e:
-        return {"error": str(e)}
+        error_msg = str(e)
+        log_http_request(url, data, error=error_msg)
+        return {"error": error_msg}
 
 
-@log_api_request
 def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
     """
     创建策略组
@@ -244,6 +259,9 @@ def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
         resp.raise_for_status()
         result = resp.json()
         
+        # 记录日志
+        log_http_request(url, data, response=result)
+        
         # 检查认证状态
         ok, msg = check_auth(result)
         if not ok:
@@ -251,10 +269,11 @@ def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
         
         return result
     except requests.RequestException as e:
-        return {"error": str(e)}
+        error_msg = str(e)
+        log_http_request(url, data, error=error_msg)
+        return {"error": error_msg}
 
 
-@log_api_request
 def get_backtest_detail(token: str, back_id: int) -> dict:
     """
     获取回测详细统计信息
@@ -278,6 +297,9 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
         resp.raise_for_status()
         result = resp.json()
         
+        # 记录日志
+        log_http_request(url, data, response=result)
+        
         # 检查认证状态
         ok, msg = check_auth(result)
         if not ok:
@@ -285,7 +307,9 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
         
         return result
     except requests.RequestException as e:
-        return {"error": str(e)}
+        error_msg = str(e)
+        log_http_request(url, data, error=error_msg)
+        return {"error": error_msg}
 
 
 def get_version_info(token: str, strategy_type: int, version: str) -> dict:
@@ -311,7 +335,6 @@ def get_version_info(token: str, strategy_type: int, version: str) -> dict:
     return {}
 
 
-@log_api_request
 def query_backtest(
     token: str,
     page: int = 1,
@@ -427,6 +450,9 @@ def query_backtest(
         resp.raise_for_status()
         result = resp.json()
         
+        # 记录日志
+        log_http_request(url, data, response=result)
+        
         # 检查认证状态
         ok, msg = check_auth(result)
         if not ok:
@@ -438,7 +464,9 @@ def query_backtest(
         
         return result
     except requests.RequestException as e:
-        return {"error": str(e)}
+        error_msg = str(e)
+        log_http_request(url, data, error=error_msg)
+        return {"error": error_msg}
 
 
 def format_result(data: dict, output_format: str = "table") -> str:
