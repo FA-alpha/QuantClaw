@@ -1150,6 +1150,13 @@ class SmartGroupRecommender:
                     self.log(f"   将使用 group_strategies_count 总数: {expected_total}")
                     min_strategies = expected_total
             elif coin_strategies_count:
+                # 检查是否在对冲场景误用
+                strategy_goal = intent.get('strategy_goal')
+                if strategy_goal == 'hedging' and 'direction' in self.infer_grouping_from_intent(intent):
+                    self.log(f"⚠️  警告: 对冲场景不建议使用 coin_strategies_count")
+                    self.log(f"   建议: 使用 group_strategies_count 精确控制多空比例")
+                    self.log(f"   或不指定，让对冲算法自动平衡")
+                
                 expected_total = sum(coin_strategies_count.values())
                 if expected_total != min_strategies:
                     self.log(f"⚠️  警告: coin_strategies_count 总数({expected_total}) ≠ min_strategies({min_strategies})")
@@ -1228,13 +1235,21 @@ class SmartGroupRecommender:
                     current_top_n = group_strategies_count[group_key]
                     self.log(f"   使用指定数量: {current_top_n} 个（来自 group_strategies_count[{group_key}]）")
             
-            # 方式2：按币种匹配（兼容旧方式）
+            # 方式2：按币种匹配（需要特殊处理多维度分组）
             elif coin_strategies_count and 'coin' in group_by:
                 coin_index = group_by.index('coin')
                 coin = key[coin_index]
                 if coin in coin_strategies_count:
-                    current_top_n = coin_strategies_count[coin]
-                    self.log(f"   使用指定数量: {current_top_n} 个（来自 coin_strategies_count[{coin}]）")
+                    # 检查是否是多维度分组（如 coin + direction）
+                    if len(group_by) > 1:
+                        # 多维度分组（如对冲模式）：扩大候选池，让后续算法决定
+                        # 取 coin_strategies_count 的 2-3 倍作为候选池
+                        current_top_n = max(top_per_group, coin_strategies_count[coin] * 2)
+                        self.log(f"   扩大候选池: {current_top_n} 个（{coin} 总需求 {coin_strategies_count[coin]} 个，多维度分组）")
+                    else:
+                        # 单维度分组（纯按币种）：直接使用指定数量
+                        current_top_n = coin_strategies_count[coin]
+                        self.log(f"   使用指定数量: {current_top_n} 个（来自 coin_strategies_count[{coin}]）")
             
             top_strategies = self.get_top_by_multiple_sorts(group_strategies, top_n=current_top_n, sort_methods=sort_methods)
             self.log(f"📊 去重后选择 {len(top_strategies)} 个策略")

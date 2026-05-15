@@ -132,7 +132,7 @@
 }
 ```
 
-### 按方向指定数量（对冲场景）
+### 按方向指定数量（对冲场景 - 精确控制）
 **输入**：`"BTC对冲，做多3个，做空2个"`
 ```json
 {
@@ -142,8 +142,8 @@
     "directions": ["long", "short"],
     "min_strategies": 5,
     "group_strategies_count": {
-      "BTC_long": 3,
-      "BTC_short": 2
+      "long_BTC": 3,
+      "short_BTC": 2
     }
   },
   "preferences": {
@@ -153,9 +153,28 @@
 }
 ```
 
+### 对冲场景 - 自动平衡
+**输入**：`"BTC对冲，要5个策略"`（不指定具体多空比例）
+```json
+{
+  "strategy_goal": "hedging",
+  "constraints": {
+    "coins": ["BTC"],
+    "directions": ["long", "short"],
+    "min_strategies": 5
+  },
+  "preferences": {
+    "risk_level": "balanced",
+    "diversity_priority": "direction"
+  }
+}
+```
+**说明**：不使用 `group_strategies_count`，让对冲算法自动决定多空比例（如3:2或2:3）
+
 **注意**：
-- `coin_strategies_count`: 按币种维度指定（适用于多币种分散）
-- `group_strategies_count`: 按完整分组键指定（适用于对冲、多维度组合）
+- `coin_strategies_count`: 按币种维度指定，**仅适用于单维度分组**（如纯多币种分散）
+- `group_strategies_count`: 按完整分组键指定，**适用于多维度分组**（如对冲的 direction+coin）
+- **对冲场景不要用 coin_strategies_count**，会导致每个方向都取相同数量
 - 两者都是**可选字段**，不提供时使用 `--top-per-group` 全局配置
 - `min_strategies` 应该等于所有指定数量之和
 
