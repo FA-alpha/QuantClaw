@@ -4,6 +4,8 @@
 
 🚨 **强制规则：每次回测必须询问时间范围！绝对不要使用历史对话中的时间信息！** 🚨
 
+🚨 **强制规则：调用Python脚本前必须获取并传递token参数！** 🚨
+
 ## ⚠️ 重要：策略组回测 = 多策略回测
 
 **策略组回测规则：**
@@ -27,6 +29,73 @@
 - 除非用户在当前请求中已明确指定参数
 
 启动新的回测任务，支持查看策略组列表、策略列表，以及开始回测。
+
+## 🔑 Token 获取和传递规则（重要）
+
+### ⚠️ Python脚本调用前的必要步骤
+
+**问题**：Python脚本有时无法自动识别当前工作区，导致token获取失败
+
+**解决方案**：Agent在调用任何Python脚本前，必须按以下步骤操作：
+
+**步骤1：获取当前AgentID**
+```bash
+# 从当前工作目录路径获取agentID
+pwd | grep -o 'clawd-[^/]*' | head -1
+```
+
+**步骤2：从users.json获取对应token**
+```bash
+# 根据agentID查找对应的token
+cat ~/.quantclaw/users.json | jq -r --arg agent_id "qc-XXXXXXXX" '.users[] | select(.agentId == $agent_id) | .token'
+```
+
+**步骤3：传递token给Python脚本**
+```bash
+# 必须使用--token参数传递，不要依赖脚本自动获取
+TOKEN="获取到的token"
+python skills/start-backtest/start.py --token "$TOKEN" [其他参数]
+```
+
+### 🚨 强制执行格式
+
+**❌ 错误做法**：
+```bash
+# 不要直接调用，可能无法获取token
+python skills/start-backtest/start.py --list-strategies
+```
+
+**✅ 正确做法**：
+```bash
+# 先获取agentID和token，再传递给脚本
+AGENT_ID=$(pwd | grep -o 'clawd-[^/]*' | head -1 | sed 's/clawd-//')
+TOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "$AGENT_ID" '.users[] | select(.agentId == $agent_id) | .token')
+python skills/start-backtest/start.py --token "$TOKEN" --list-strategies
+```
+
+### 📋 适用的所有Python脚本调用
+
+**必须使用token传递的命令**：
+```bash
+# 查看策略组列表
+python skills/start-backtest/start.py --token "$TOKEN" --list-groups
+
+# 查看策略列表  
+python skills/start-backtest/start.py --token "$TOKEN" --list-strategies
+
+# 查看回测详情
+python skills/start-backtest/start.py --token "$TOKEN" --detail 5906
+
+# 启动回测
+python skills/start-backtest/start.py --token "$TOKEN" --apply --strategy-ids 4300,4679 --bgn-date 2024-01-01 --end-date 2024-12-31 --leverage 10
+```
+
+### ⚠️ 重要提醒
+
+- **每次调用Python脚本都必须先获取token**
+- **不要依赖脚本的自动token获取功能**
+- **确保agentID匹配正确**
+- **token获取失败时应该报错并停止执行**
 
 ## 🔄 回测模式识别（最重要）
 
