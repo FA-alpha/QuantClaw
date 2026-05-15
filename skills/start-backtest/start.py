@@ -405,7 +405,7 @@ def calc_margin_allocation(
         "long_pct": str(long_pct),
         "short_pct": str(short_pct),
         "usertoken": token,
-        "app_v": "2.0.0",
+        "app_v": "1.0.1",
         "lang": "1"
     }
     
@@ -519,6 +519,10 @@ def calc_margin_allocation(
         data["short_ai_time_pcts"] = json.dumps(short_ai_time_pcts)
         
     try:
+        print(f"[DEBUG] calc_margin接口请求参数:")
+        for key, value in data.items():
+            print(f"  {key}: {value}")
+        
         resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
@@ -547,20 +551,64 @@ def get_strategies_with_grouping(token: str, strategy_ids: str) -> dict:
             "sub_groups": {...}            # 细分组信息
         }
     """
-    # 首先获取策略列表来获得策略详细信息
-    strategies_result = get_strategy_lists(token, limit=1000)  # 获取大量策略用于匹配
-    
-    if "error" in strategies_result:
-        return {"error": strategies_result["error"]}
-    
-    all_strategies = strategies_result.get("info", [])
     strategy_id_list = [sid.strip() for sid in strategy_ids.split(",") if sid.strip()]
-    
-    # 过滤出指定的策略
     target_strategies = []
-    for strategy in all_strategies:
-        if str(strategy.get("strategy_id", "")) in strategy_id_list or str(strategy.get("id", "")) in strategy_id_list:
-            target_strategies.append(strategy)
+    
+    # 方案1: 先从策略组获取包含ai_time_id的完整信息
+    groups_result = get_group_lists(token, limit=100)
+    
+    if "error" not in groups_result:
+        groups = groups_result.get("info", [])
+        for group in groups:
+            strategy_lists = group.get("strategy_lists", [])
+            for strategy in strategy_lists:
+                strategy_id = str(strategy.get("id", ""))
+                if strategy_id in strategy_id_list:
+                    target_strategies.append(strategy)
+    
+    # 方案2: 从策略列表接口查找（如果策略组没找全）
+    found_ids = {str(s.get("id", "")) for s in target_strategies}
+    missing_ids = [sid for sid in strategy_id_list if sid not in found_ids]
+    
+    if missing_ids:
+        strategies_result = get_strategy_lists(token, limit=1000)
+        if "error" not in strategies_result:
+            all_strategies = strategies_result.get("info", [])
+            for strategy in all_strategies:
+                strategy_id = str(strategy.get("id", ""))
+                if strategy_id in missing_ids:
+                    # 策略列表接口没有ai_time_id，需要设置默认值或从其他地方获取
+                    if not strategy.get("ai_time_id"):
+                        # 从策略名称中提取ai_time信息
+                        name = strategy.get("name", "")
+                        if "2025年震荡" in name:
+                            strategy["ai_time_id"] = "-6"
+                            strategy["ai_time_name"] = "2025年震荡"
+                        elif "2025年牛市" in name:
+                            strategy["ai_time_id"] = "-5"
+                            strategy["ai_time_name"] = "2025年牛市"
+                        elif "2025年熊市" in name:
+                            strategy["ai_time_id"] = "-4"
+                            strategy["ai_time_name"] = "2025年熊市"
+                        elif "最近1年" in name:
+                            strategy["ai_time_id"] = "365"
+                            strategy["ai_time_name"] = "最近1年"
+                        elif "最近90天" in name:
+                            strategy["ai_time_id"] = "90"
+                            strategy["ai_time_name"] = "最近90天"
+                        else:
+                            strategy["ai_time_id"] = "365"  # 默认值
+                            strategy["ai_time_name"] = "最近1年"
+                    target_strategies.append(strategy)
+    
+    # 最终去重处理
+    unique_strategies = {}
+    for strategy in target_strategies:
+        strategy_id = str(strategy.get("id", ""))
+        if strategy_id not in unique_strategies:
+            unique_strategies[strategy_id] = strategy
+    
+    target_strategies = list(unique_strategies.values())
     
     # 对策略进行分组
     grouped = group_strategies_by_market_direction(target_strategies)
