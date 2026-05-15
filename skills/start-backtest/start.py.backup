@@ -377,90 +377,51 @@ def calc_margin_allocation(
         dict: 包含每个策略具体保证金分配的响应数据
     """
     url = f"{API_BASE}/Strategy/calc_margin"
-    
-    # 首先获取策略详细信息
-    strategies_info = get_strategies_with_grouping(token, strategy_ids)
-    if "error" in strategies_info:
-        return strategies_info
-    
-    strategies = strategies_info.get("strategies", [])
-    if not strategies:
-        return {"error": "未找到指定的策略"}
-    
-    # 构建strategys_json参数（正确的接口格式）
-    strategys_json = []
-    for strategy in strategies:
-        strategys_json.append({
-            "id": str(strategy.get("id", strategy.get("strategy_id", ""))),
-            "direction": strategy.get("direction", ""),
-            "multiple_num": strategy.get("multiple_num", 1),
-            "ai_time_id": str(strategy.get("ai_time_id", "")),
-            "coin": strategy.get("coin", "")
-        })
-    
-    # 基本参数（正确格式）
     data = {
-        "strategys_json": json.dumps(strategys_json),
+        "usertoken": token,
+        "strategy_ids": strategy_ids,
+        "total_balance": str(total_balance),
+        "app_v": "2.0.0",
         "leverage": str(leverage),
         "long_pct": str(long_pct),
-        "short_pct": str(short_pct),
-        "usertoken": token,
-        "app_v": "2.0.0",
-        "lang": "1"
+        "short_pct": str(short_pct)
     }
     
-    # 添加分配规则参数（正确格式）
+    # 添加分配规则参数
     if allocation_rules:
         # 按币种做多分配
         if "coin_long_allocation" in allocation_rules:
-            long_coin_pcts = []
-            for coin, pct in allocation_rules["coin_long_allocation"].items():
-                long_coin_pcts.append({"coin": coin, "pct": str(pct)})
-            data["long_coin_pcts"] = json.dumps(long_coin_pcts)
+            data["coin_long_allocation"] = json.dumps(allocation_rules["coin_long_allocation"])
         
         # 按币种做空分配
         if "coin_short_allocation" in allocation_rules:
-            short_coin_pcts = []
-            for coin, pct in allocation_rules["coin_short_allocation"].items():
-                short_coin_pcts.append({"coin": coin, "pct": str(pct)})
-            data["short_coin_pcts"] = json.dumps(short_coin_pcts)
+            data["coin_short_allocation"] = json.dumps(allocation_rules["coin_short_allocation"])
         
-        # 按AI时间类型分配（市场行情）
+        # 按方向分配  
+        if "direction_allocation" in allocation_rules:
+            data["direction_allocation"] = json.dumps(allocation_rules["direction_allocation"])
+        
+        # 按AI回测时间类型分配（市场行情）
         if "ai_time_allocation" in allocation_rules:
-            long_ai_time_pcts = []
-            short_ai_time_pcts = []
-            
-            # 根据策略的ai_time_id分组
-            ai_time_ids = set()
-            for strategy in strategies:
-                ai_time_id = str(strategy.get("ai_time_id", ""))
-                if ai_time_id:
-                    ai_time_ids.add(ai_time_id)
-            
-            # 为每个ai_time_id设置分配比例
-            for ai_time_id in ai_time_ids:
-                # 根据ai_time_name匹配分配规则
-                matching_strategies = [s for s in strategies if str(s.get("ai_time_id", "")) == ai_time_id]
-                if matching_strategies:
-                    ai_time_name = matching_strategies[0].get("ai_time_name", "")
-                    pct = allocation_rules["ai_time_allocation"].get(ai_time_name, 50)
-                    
-                    long_ai_time_pcts.append({"ai_time_id": ai_time_id, "pct": str(pct)})
-                    short_ai_time_pcts.append({"ai_time_id": ai_time_id, "pct": str(pct)})
-            
-            if long_ai_time_pcts:
-                data["long_ai_time_pcts"] = json.dumps(long_ai_time_pcts)
-            if short_ai_time_pcts:
-                data["short_ai_time_pcts"] = json.dumps(short_ai_time_pcts)
+            data["ai_time_allocation"] = json.dumps(allocation_rules["ai_time_allocation"])
+        
+        # 按细分组分配（方向+市场行情组合）
+        if "sub_group_allocation" in allocation_rules:
+            data["sub_group_allocation"] = json.dumps(allocation_rules["sub_group_allocation"])
+        
+        # 按策略类型分配
+        if "strategy_type_allocation" in allocation_rules:
+            data["strategy_type_allocation"] = json.dumps(allocation_rules["strategy_type_allocation"])
         
     try:
         resp = requests.post(url, data=data, timeout=30)
         resp.raise_for_status()
         result = resp.json()
         
-        # 检查返回状态
-        if result.get("status") != 1:
-            return {"error": f"接口调用失败: {result.get('msg', '未知错误')}"}
+        # 检查认证状态
+        ok, msg = check_auth(result)
+        if not ok:
+            return {"error": msg}
         
         return result
     except requests.RequestException as e:
@@ -886,20 +847,18 @@ def main():
             if "error" in result:
                 print(f"错误: {result['error']}")
             else:
-                info = result.get("info", [])
+                info = result.get("info", {})
+                allocations = info.get("allocations", {})
                 print(f"保证金分配方案（总保证金: {args.total_balance}）:")
-                print(f"策略ID | 币种 | 方向 | 杠杆 | 保证金金额")
-                print(f"-------|------|------|------|----------")
-                if isinstance(info, list):
-                    for allocation in info:
-                        strategy_id = allocation.get("id", "N/A")
-                        coin = allocation.get("coin", "N/A")
-                        direction = allocation.get("direction", "N/A")
-                        multiple_num = allocation.get("multiple_num", "N/A")
-                        margin = allocation.get("margin", "N/A")
-                        print(f"{strategy_id} | {coin} | {direction} | {multiple_num} | {margin}")
-                else:
-                    print("返回数据格式异常")
+                print(f"策略ID | 策略名称 | 币种 | 方向 | 分配比例 | 保证金金额")
+                print(f"--------|----------|------|------|----------|----------")
+                for strategy_id, allocation in allocations.items():
+                    name = allocation.get("name", "N/A")
+                    coin = allocation.get("coin", "N/A")
+                    direction = allocation.get("direction", "N/A")
+                    percentage = allocation.get("percentage", "N/A")
+                    amount = allocation.get("amount", "N/A")
+                    print(f"{strategy_id} | {name[:15]} | {coin} | {direction} | {percentage}% | {amount}")
         return
     
     # 开始回测
