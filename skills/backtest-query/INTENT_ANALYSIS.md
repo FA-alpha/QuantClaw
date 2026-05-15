@@ -12,7 +12,11 @@
   "constraints": {                   // 硬约束
     "coins": ["BTC", "SOL"],
     "directions": ["long", "short"], // null=不限制
-    "min_strategies": 4
+    "min_strategies": 4,
+    "coin_strategies_count": {       // 可选：按币种指定策略数量
+      "BTC": 2,                      // BTC 要 2 个策略
+      "SOL": 3                       // SOL 要 3 个策略
+    }
   },
   "preferences": {                   // 软偏好
     "risk_level": "balanced",        // aggressive | balanced | conservative
@@ -101,6 +105,32 @@
   }
 }
 ```
+
+### 按币种指定数量（新功能）
+**输入**：`"给我生成策略组，风霆V4.3，SOL要2个，BCH要3个"`
+```json
+{
+  "strategy_goal": "diversification",
+  "constraints": {
+    "coins": ["SOL", "BCH"],
+    "directions": null,
+    "min_strategies": 5,
+    "coin_strategies_count": {
+      "SOL": 2,
+      "BCH": 3
+    }
+  },
+  "preferences": {
+    "risk_level": "balanced",
+    "diversity_priority": "coin"
+  }
+}
+```
+
+**注意**：
+- `coin_strategies_count` 是**可选字段**，不提供时使用 `--top-per-group` 全局配置
+- 提供时，优先使用指定的币种数量
+- `min_strategies` 应该等于所有币种数量之和
 
 ### 无明确意图
 **输入**：`"推荐BTC策略"`
