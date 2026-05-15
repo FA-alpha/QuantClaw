@@ -459,15 +459,22 @@ def calc_margin_allocation(
                 if coin in short_coin_map:
                     short_coin_map[coin]["pct"] = str(pct)
         
-        # 处理AI时间类型分配（按ai_time_name匹配）
-        if "ai_time_allocation" in allocation_rules:
+        # 处理AI时间类型分配（按方向分别处理）
+        if "ai_time_long_allocation" in allocation_rules:
             for ai_time_id, ai_time_info in ai_time_map.items():
                 ai_time_name = ai_time_info["name"]
-                if ai_time_name in allocation_rules["ai_time_allocation"]:
-                    pct = str(allocation_rules["ai_time_allocation"][ai_time_name])
-                    # 为该ai_time_id的所有方向设置相同比例
-                    for direction in ai_time_info["direction"]:
-                        ai_time_info["direction"][direction]["pct"] = pct
+                if ai_time_name in allocation_rules["ai_time_long_allocation"]:
+                    pct = str(allocation_rules["ai_time_long_allocation"][ai_time_name])
+                    if "long" in ai_time_info["direction"]:
+                        ai_time_info["direction"]["long"]["pct"] = pct
+        
+        if "ai_time_short_allocation" in allocation_rules:
+            for ai_time_id, ai_time_info in ai_time_map.items():
+                ai_time_name = ai_time_info["name"]
+                if ai_time_name in allocation_rules["ai_time_short_allocation"]:
+                    pct = str(allocation_rules["ai_time_short_allocation"][ai_time_name])
+                    if "short" in ai_time_info["direction"]:
+                        ai_time_info["direction"]["short"]["pct"] = pct
         
         # 处理细分组分配（按方向+行情组合）
         if "sub_group_allocation" in allocation_rules:
@@ -768,7 +775,8 @@ def main():
     parser.add_argument("--coin-long-allocation", help="按币种做多分配比例，JSON格式：{'BTC': 40, 'ETH': 30, 'SOL': 30}")
     parser.add_argument("--coin-short-allocation", help="按币种做空分配比例，JSON格式：{'BTC': 50, 'ETH': 50}")
     parser.add_argument("--direction-allocation", help="按方向分配比例，JSON格式：{'做多': 70, '做空': 30}")
-    parser.add_argument("--ai-time-allocation", help="按AI回测时间类型(市场行情)分配，JSON格式：{'震荡行情': 60, '趋势行情': 40}")
+    parser.add_argument("--ai-time-long-allocation", help="按AI回测时间类型(市场行情)做多分配，JSON格式：{'2025年震荡': 50, '2025年牛市': 30}")
+    parser.add_argument("--ai-time-short-allocation", help="按AI回测时间类型(市场行情)做空分配，JSON格式：{'2025年震荡': 50, '2025年牛市': 30}")
     parser.add_argument("--sub-group-allocation", help="按细分组分配，JSON格式：{'2025年震荡做多': 40, '2024年趋势做空': 30}")
     parser.add_argument("--strategy-type-allocation", help="按策略类型分配，JSON格式")
     parser.add_argument("--total-balance", type=float, default=10000, help="总保证金（默认10000）")
@@ -898,11 +906,18 @@ def main():
                 print("错误: --coin-short-allocation 参数格式错误，需要有效的JSON")
                 sys.exit(1)
         
-        if getattr(args, 'ai_time_allocation', None):
+        if getattr(args, 'ai_time_long_allocation', None):
             try:
-                allocation_rules["ai_time_allocation"] = json.loads(args.ai_time_allocation)
+                allocation_rules["ai_time_long_allocation"] = json.loads(args.ai_time_long_allocation)
             except json.JSONDecodeError:
-                print("错误: --ai-time-allocation 参数格式错误，需要有效的JSON")
+                print("错误: --ai-time-long-allocation 参数格式错误，需要有效的JSON")
+                sys.exit(1)
+        
+        if getattr(args, 'ai_time_short_allocation', None):
+            try:
+                allocation_rules["ai_time_short_allocation"] = json.loads(args.ai_time_short_allocation)
+            except json.JSONDecodeError:
+                print("错误: --ai-time-short-allocation 参数格式错误，需要有效的JSON")
                 sys.exit(1)
         
         if getattr(args, 'sub_group_allocation', None):
