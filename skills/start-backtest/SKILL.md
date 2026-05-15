@@ -516,30 +516,47 @@ python skills/start-backtest/start.py \
 - ✅ **必须调用 calc_margin 接口**
 - ✅ **根据接口返回的数据进行分配**
 
+**⚠️ 完整的保证金配置参数：**
+
+当用户采用保证金分配方案方式时，需要配置以下参数：
+
+**必填参数：**
+1. **各币种做多保证金占比** (`coin_long_allocation`)
+2. **各币种做空保证金占比** (`coin_short_allocation`)  
+3. **AI回测时间类型占比** (`ai_time_allocation`) - 按市场行情分配
+
+**已有默认值参数：**
+4. **做多保证金占比** (`long_pct`) - 默认90
+5. **做空保证金占比** (`short_pct`) - 默认20
+6. **保证金对应杠杆** (`leverage`) - 默认1.5
+
 **接口调用示例：**
 ```bash
-# 按币种分配：DOGE占40%，BTC占60%
+# 完整的保证金配置
 python skills/start-backtest/start.py \
   --calc-margin \
   --strategy-ids 4300,4679,4680,4681 \
-  --coin-allocation '{"DOGE": 40, "BTC": 60}' \
-  --total-balance 10000
-
-# 按方向分配：做多70%，做空30%
-python skills/start-backtest/start.py \
-  --calc-margin \
-  --strategy-ids 4300,4679,4680,4681 \
+  --coin-long-allocation '{"BTC": 40, "ETH": 30, "SOL": 30}' \
+  --coin-short-allocation '{"BTC": 60, "ETH": 40}' \
+  --ai-time-allocation '{"震荡行情": 60, "趋势行情": 40}' \
   --direction-allocation '{"做多": 70, "做空": 30}' \
-  --total-balance 10000
+  --total-balance 10000 \
+  --long-pct 90 \
+  --short-pct 20 \
+  --leverage 1.5
 
-# 复合分配：同时按币种和方向
+# 按市场行情分配示例
 python skills/start-backtest/start.py \
   --calc-margin \
   --strategy-ids 4300,4679,4680,4681 \
-  --coin-allocation '{"BTC": 60, "ETH": 40}' \
-  --direction-allocation '{"做多": 70, "做空": 30}' \
+  --ai-time-allocation '{"震荡行情": 70, "趋势行情": 30}' \
   --total-balance 10000
 ```
+
+**🔍 市场行情分类说明：**
+- 根据策略的 `ai_time_id` 参数进行分类
+- 市场行情名称取自策略的 `ai_time_name` 参数
+- 如："震荡行情"、"趋势行情"、"单边行情"等
 
 **默认配置:**
 - 杠杆：1.5倍  

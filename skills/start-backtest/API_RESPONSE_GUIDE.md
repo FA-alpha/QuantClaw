@@ -322,32 +322,48 @@ if result.get("status") == 1:
 
 ### 支持的分配规则
 
-#### 1. 按币种分配
+#### 1. 按币种做多分配
 ```python
 allocation_rules = {
-    "coin_allocation": {"BTC": 60, "ETH": 40}
+    "coin_long_allocation": {"BTC": 40, "ETH": 30, "SOL": 30}
 }
 ```
 
-#### 2. 按方向分配
+#### 2. 按币种做空分配
+```python
+allocation_rules = {
+    "coin_short_allocation": {"BTC": 50, "ETH": 50}
+}
+```
+
+#### 3. 按方向分配
 ```python
 allocation_rules = {
     "direction_allocation": {"做多": 70, "做空": 30}
 }
 ```
 
-#### 3. 按策略类型分配
+#### 4. 按AI回测时间类型分配（市场行情）
+```python
+allocation_rules = {
+    "ai_time_allocation": {"震荡行情": 60, "趋势行情": 40}
+}
+```
+
+#### 5. 按策略类型分配
 ```python
 allocation_rules = {
     "strategy_type_allocation": {"风霆": 80, "网格": 20}
 }
 ```
 
-#### 4. 复合规则（同时满足多个约束）
+#### 6. 复合规则（同时满足多个约束）
 ```python
 allocation_rules = {
-    "coin_allocation": {"BTC": 60, "ETH": 40},
-    "direction_allocation": {"做多": 70, "做空": 30}
+    "coin_long_allocation": {"BTC": 40, "ETH": 30, "SOL": 30},
+    "coin_short_allocation": {"BTC": 60, "ETH": 40},
+    "direction_allocation": {"做多": 70, "做空": 30},
+    "ai_time_allocation": {"震荡行情": 60, "趋势行情": 40}
 }
 ```
 
