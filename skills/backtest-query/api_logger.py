@@ -38,6 +38,30 @@ def mask_sensitive_data(data: dict) -> dict:
     return result
 
 
+def simplify_backtest_item(item: dict) -> dict:
+    """
+    精简单个回测记录，只保留关键字段
+    避免 config/metrics 等超大字段导致日志文件过大
+    """
+    return {
+        "id": item.get("id"),
+        "back_id": item.get("back_id"),
+        "name": item.get("name"),
+        "coin": item.get("coin"),
+        "strategy_type": item.get("strategy_type"),
+        "year_rate": item.get("year_rate"),
+        "sharp_rate": item.get("sharp_rate"),
+        "max_loss": item.get("max_loss"),
+        "win_rate": item.get("win_rate"),
+        "strategy_token": item.get("strategy_token"),
+        "version": item.get("version"),
+        "leverage": item.get("leverage"),
+        "direction": item.get("direction"),
+        "amt_type": item.get("amt_type"),
+        "status": item.get("status"),
+    }
+
+
 def log_http_request(url: str, data: dict, response: dict = None, error: str = None):
     """
     记录 HTTP 请求日志
@@ -58,8 +82,24 @@ def log_http_request(url: str, data: dict, response: dict = None, error: str = N
     }
     
     if response is not None:
-        # 完整记录响应数据（不截断）
-        log_entry["response"] = response
+        # 针对 Backtrack/lists 接口做精简处理
+        if "Backtrack/lists" in url and isinstance(response, dict):
+            if "info" in response and isinstance(response["info"], list):
+                simplified_info = [simplify_backtest_item(item) for item in response["info"]]
+                # 移除 None 值
+                simplified_info = [
+                    {k: v for k, v in item.items() if v is not None}
+                    for item in simplified_info
+                ]
+                log_entry["response"] = {
+                    **response,
+                    "info": simplified_info
+                }
+            else:
+                log_entry["response"] = response
+        else:
+            # 其他接口完整记录
+            log_entry["response"] = response
     
     if error:
         log_entry["error"] = error
