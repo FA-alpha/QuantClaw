@@ -3,7 +3,7 @@
 """
 
 import itertools
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from .correlation import build_correlation_matrix, get_avg_correlation
 from .risk_analyzer import analyze_drawdown_overlap, calculate_portfolio_risk
 

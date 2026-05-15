@@ -389,12 +389,16 @@ def format_strategies(data: dict) -> str:
     amt_type_map = {1: "现货", 2: "合约"}
     
     for item in info:
+        name = item.get('name', '')
+        # 确保name不是None，如果是None则使用空字符串
+        if name is None:
+            name = ''
         lines.append(
             f"| {item.get('id', '')} "
             f"| {item.get('strategy_id', '')[:15]}... "
-            f"| {item.get('name', '')[:20]} "
+            f"| {name[:20]} "
             f"| {item.get('coin', '')} "
-            f"| {amt_type_map.get(item.get('amt_type'), '')} "
+            f"| {amt_type_map.get(item.get('amt_type', ''), '')} "
             f"| {item.get('direction', '')} |"
         )
     
