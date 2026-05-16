@@ -410,7 +410,7 @@ def calc_margin_allocation(
         "long_pct": str(long_pct),
         "short_pct": str(short_pct),
         "usertoken": token,
-        "app_v": "1.0.1",
+        "app_v": "2.0.0",
         "lang": "1"
     }
     
