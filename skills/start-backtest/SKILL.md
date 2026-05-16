@@ -701,21 +701,30 @@ Agent处理：
      --coin-long-allocation '{"DOGE": 40, "BTC": 35, "HYPE": 25}'
 ```
 
+**🚨 Agent重要原则：**
+- ❌ **绝对不能**自动调整用户明确指定的百分比
+- ✅ **必须严格按照**用户说的比例设置参数
+- ✅ **总和超过100%**是正常的，接口会自动按比例分配
+- ❌ **不要过度**"智能化"处理用户的明确需求
+
 **复杂分配示例：**
 ```
-用户："DOGE做多30%，BTC做空40%，震荡行情做多占50%，震荡行情做空占30%"
+用户："BTC占50%，其他币种都是40%，震荡做多80%，做空50%"
 
 Agent处理：
-1. 识别为复合分配（币种+方向+市场行情）
-2. 提取: DOGE做多=30%, BTC做空=40%, 震荡做多=50%, 震荡做空=30%
+1. 识别为复合分配（币种+AI时间分配）
+2. 提取: BTC=50%, 其他币种=40%, 震荡做多=80%, 震荡做空=50%
 3. 构建命令:
    python skills/start-backtest/start.py \
      --calc-margin \
-     --strategy-ids 4812,4929,50594,50652 \
-     --coin-long-allocation '{"DOGE": 30}' \
-     --coin-short-allocation '{"BTC": 40}' \
-     --ai-time-long-allocation '{"2025年震荡": 50}' \
-     --ai-time-short-allocation '{"2025年震荡": 30}'
+     --strategy-ids 4812,4929,50594,50652,50719,50720,50721 \
+     --coin-long-allocation '{"BTC": 50, "DOGE": 40, "HYPE": 40}' \
+     --coin-short-allocation '{"BTC": 50, "BCH": 40, "DOGE": 40, "HYPE": 40}' \
+     --ai-time-long-allocation '{"2025年震荡": 80}' \
+     --ai-time-short-allocation '{"2025年震荡": 50}'
+
+⚠️ 注意：BTC=50% + 其他=40%的总和超过100%是正常的！
+接口会自动按比例分配，Agent不需要调整用户明确指定的比例。
 ```
 
 **默认配置:**
