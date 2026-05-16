@@ -390,11 +390,16 @@ def calc_margin_allocation(
     # 构建strategys_json参数（正确的接口格式）
     strategys_json = []
     for strategy in strategies:
+        # 确保ai_time_id存在且不为空
+        ai_time_id = str(strategy.get("ai_time_id", ""))
+        if not ai_time_id:
+            print(f"[WARNING] 策略 {strategy.get('id')} 缺少ai_time_id，可能导致分配错误")
+        
         strategys_json.append({
             "id": str(strategy.get("id", strategy.get("strategy_id", ""))),
             "direction": strategy.get("direction", ""),
             "multiple_num": strategy.get("multiple_num", 1),
-            "ai_time_id": str(strategy.get("ai_time_id", "")),
+            "ai_time_id": ai_time_id,
             "coin": strategy.get("coin", "")
         })
     
@@ -577,28 +582,8 @@ def get_strategies_with_grouping(token: str, strategy_ids: str) -> dict:
             for strategy in all_strategies:
                 strategy_id = str(strategy.get("id", ""))
                 if strategy_id in missing_ids:
-                    # 策略列表接口没有ai_time_id，需要设置默认值或从其他地方获取
-                    if not strategy.get("ai_time_id"):
-                        # 从策略名称中提取ai_time信息
-                        name = strategy.get("name", "")
-                        if "2025年震荡" in name:
-                            strategy["ai_time_id"] = "-6"
-                            strategy["ai_time_name"] = "2025年震荡"
-                        elif "2025年牛市" in name:
-                            strategy["ai_time_id"] = "-5"
-                            strategy["ai_time_name"] = "2025年牛市"
-                        elif "2025年熊市" in name:
-                            strategy["ai_time_id"] = "-4"
-                            strategy["ai_time_name"] = "2025年熊市"
-                        elif "最近1年" in name:
-                            strategy["ai_time_id"] = "365"
-                            strategy["ai_time_name"] = "最近1年"
-                        elif "最近90天" in name:
-                            strategy["ai_time_id"] = "90"
-                            strategy["ai_time_name"] = "最近90天"
-                        else:
-                            strategy["ai_time_id"] = "365"  # 默认值
-                            strategy["ai_time_name"] = "最近1年"
+                    # 策略列表接口可能没有ai_time_id，需要通过其他方式获取
+                    # 注意：ai_time_id应该从策略的实际配置中获取，不能随意假设
                     target_strategies.append(strategy)
     
     # 最终去重处理
