@@ -451,25 +451,41 @@ Agent高效流程：
 ### 查看策略组列表
 
 ```bash
-# 查看所有策略组
+# 🎯 用户查询时：简化信息（仅ID+名称+策略数量，节省Agent上下文）
 python skills/start-backtest/backtest_monitor.py --list-groups --token <token>
 
-# 查看指定策略组（只返回该组信息，避免信息过载）
+# 🎯 指定策略组简化查询
 python skills/start-backtest/backtest_monitor.py --list-groups --strategy-group-id "115" --token <token>
+
+# 🔧 回测时：详细信息（包含所有策略参数，用于analyze_strategies_for_allocation）
+python skills/start-backtest/backtest_monitor.py --list-groups --strategy-group-id "115" --detailed --token <token>
 ```
 
 ### 查看策略列表
 
 ```bash
-# 查看所有策略
+# 🎯 用户查询时：简化信息（仅ID+名称+币种+方向+类型+状态）
 python skills/start-backtest/backtest_monitor.py --list-strategies --token <token>
 
-# 查看指定策略（只返回指定策略信息）
-python skills/start-backtest/backtest_monitor.py --list-strategies --strategy-ids "4637,50737,50738" --token <token>
+# 🎯 指定策略简化查询
+python skills/start-backtest/backtest_monitor.py --list-strategies --strategy-ids "4637,50737" --token <token>
 
-# 按条件筛选策略
+# 🔧 回测时：详细信息（包含所有参数）
+python skills/start-backtest/backtest_monitor.py --list-strategies --strategy-ids "4637,50737" --detailed --token <token>
+
+# 按条件筛选策略（简化信息）
 python skills/start-backtest/backtest_monitor.py --list-strategies --coin BTC --amt-type 2 --token <token>
 ```
+
+### 🚨 Agent使用原则
+
+**查询阶段（用户询问"我有哪些策略"）：**
+- ✅ 使用简化模式：只返回ID+名称等关键信息
+- ✅ 避免Agent上下文被大量参数占用
+
+**回测阶段（用户指定策略要回测）：**
+- ✅ 使用详细模式：获取完整参数用于analyze_strategies_for_allocation
+- ✅ 确保有足够信息进行参数分析
 
 ### 单策略回测
 

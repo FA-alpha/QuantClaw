@@ -387,8 +387,9 @@ def main():
     parser.add_argument("--daemon", action="store_true", help="后台守护模式")
     
     # 新增接口查询选项
-    parser.add_argument("--list-groups", action="store_true", help="查询用户策略组列表")
-    parser.add_argument("--list-strategies", action="store_true", help="查询用户策略列表")
+    parser.add_argument("--list-groups", action="store_true", help="查询用户策略组列表（简化版：仅ID+名称）")
+    parser.add_argument("--list-strategies", action="store_true", help="查询用户策略列表（简化版：仅ID+名称）")
+    parser.add_argument("--detailed", action="store_true", help="返回详细信息（用于回测时获取完整参数）")
     parser.add_argument("--page", type=int, default=1, help="页码（默认1）")
     parser.add_argument("--limit", type=int, default=-1, help="每页数量（默认-1，获取全部）")
     
@@ -428,7 +429,7 @@ def main():
             print(f"❌ 获取策略组列表失败: {result.get('msg', '未知错误')}")
             return
         
-        # 如果指定了策略组ID，只返回该策略组信息
+        # 如果指定了策略组ID，返回该策略组信息（详细或简化）
         if args.strategy_group_id:
             target_group = None
             for group in result.get("info", []):
@@ -437,18 +438,55 @@ def main():
                     break
             
             if target_group:
-                filtered_result = {
-                    "status": result.get("status"),
-                    "msg": result.get("msg"),
-                    "info": [target_group]
-                }
-                print(f"[INFO] 查询指定策略组ID: {args.strategy_group_id}")
+                if args.detailed:
+                    # 回测时需要详细信息
+                    filtered_result = {
+                        "status": result.get("status"),
+                        "msg": result.get("msg"),
+                        "info": [target_group]
+                    }
+                    print(f"[INFO] 查询指定策略组详细信息: {args.strategy_group_id}")
+                else:
+                    # 查询时只返回简化信息
+                    simplified_group = {
+                        "id": target_group.get("id"),
+                        "name": target_group.get("name"),
+                        "strategy_count": len(target_group.get("strategy_lists", [])),
+                        "strategy_ids": target_group.get("strategy_ids")
+                    }
+                    filtered_result = {
+                        "status": result.get("status"),
+                        "msg": result.get("msg"),
+                        "info": [simplified_group]
+                    }
+                    print(f"[INFO] 查询指定策略组简化信息: {args.strategy_group_id}")
+                
                 print(json.dumps(filtered_result, indent=2, ensure_ascii=False))
             else:
                 print(f"❌ 未找到策略组ID: {args.strategy_group_id}")
         else:
-            print(f"[INFO] 查询策略组列表（第{args.page}页，每页{args.limit}条）")
-            print(json.dumps(result, indent=2, ensure_ascii=False))
+            # 查询所有策略组时，默认返回简化信息
+            if args.detailed:
+                print(f"[INFO] 查询策略组详细列表（第{args.page}页，每页{args.limit}条）")
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            else:
+                # 简化信息：只返回ID、名称、策略数量
+                simplified_groups = []
+                for group in result.get("info", []):
+                    simplified_groups.append({
+                        "id": group.get("id"),
+                        "name": group.get("name"),
+                        "strategy_count": len(group.get("strategy_lists", [])),
+                        "strategy_ids": group.get("strategy_ids")
+                    })
+                
+                simplified_result = {
+                    "status": result.get("status"),
+                    "msg": result.get("msg"),
+                    "info": simplified_groups
+                }
+                print(f"[INFO] 查询策略组简化列表（第{args.page}页，每页{args.limit}条）")
+                print(json.dumps(simplified_result, indent=2, ensure_ascii=False))
         return
         
     if args.list_strategies:
@@ -466,7 +504,7 @@ def main():
             print(f"❌ 获取策略列表失败: {result.get('msg', '未知错误')}")
             return
         
-        # 如果指定了策略ID，只返回指定的策略信息
+        # 如果指定了策略ID，返回指定的策略信息（详细或简化）
         if args.strategy_ids:
             strategy_ids = [sid.strip() for sid in args.strategy_ids.split(",")]
             target_strategies = []
@@ -475,16 +513,60 @@ def main():
                 if str(strategy.get("id")) in strategy_ids:
                     target_strategies.append(strategy)
             
-            filtered_result = {
-                "status": result.get("status"),
-                "msg": result.get("msg"),
-                "info": target_strategies
-            }
-            print(f"[INFO] 查询指定策略ID: {args.strategy_ids}")
+            if args.detailed:
+                # 回测时需要详细信息
+                filtered_result = {
+                    "status": result.get("status"),
+                    "msg": result.get("msg"),
+                    "info": target_strategies
+                }
+                print(f"[INFO] 查询指定策略详细信息: {args.strategy_ids}")
+            else:
+                # 查询时只返回简化信息
+                simplified_strategies = []
+                for strategy in target_strategies:
+                    simplified_strategies.append({
+                        "id": strategy.get("id"),
+                        "name": strategy.get("name"),
+                        "coin": strategy.get("coin"),
+                        "direction": strategy.get("direction"),
+                        "type_name": strategy.get("type_name"),
+                        "status": strategy.get("status")
+                    })
+                
+                filtered_result = {
+                    "status": result.get("status"),
+                    "msg": result.get("msg"),
+                    "info": simplified_strategies
+                }
+                print(f"[INFO] 查询指定策略简化信息: {args.strategy_ids}")
+                
             print(json.dumps(filtered_result, indent=2, ensure_ascii=False))
         else:
-            print(f"[INFO] 查询策略列表（第{args.page}页，每页{args.limit}条）")
-            print(json.dumps(result, indent=2, ensure_ascii=False))
+            # 查询所有策略时，默认返回简化信息
+            if args.detailed:
+                print(f"[INFO] 查询策略详细列表（第{args.page}页，每页{args.limit}条）")
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            else:
+                # 简化信息：只返回ID、名称、币种、方向、类型、状态
+                simplified_strategies = []
+                for strategy in result.get("info", []):
+                    simplified_strategies.append({
+                        "id": strategy.get("id"),
+                        "name": strategy.get("name"),
+                        "coin": strategy.get("coin"),
+                        "direction": strategy.get("direction"),
+                        "type_name": strategy.get("type_name"),
+                        "status": strategy.get("status")
+                    })
+                
+                simplified_result = {
+                    "status": result.get("status"),
+                    "msg": result.get("msg"),
+                    "info": simplified_strategies
+                }
+                print(f"[INFO] 查询策略简化列表（第{args.page}页，每页{args.limit}条）")
+                print(json.dumps(simplified_result, indent=2, ensure_ascii=False))
         return
         
     # 保证金分配方案完整性检查
