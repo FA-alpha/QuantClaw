@@ -855,17 +855,79 @@ def analyze_strategies_for_allocation(strategy_ids: List[str], token: str,
             # 策略组数据就足够了，不需要再查询策略详情
             print(f"💡 使用策略组数据，无需查询策略详情")
         
-        # 最后才使用策略列表查询（效率较低）
+        # 多策略查询：根据场景选择查询方式
         else:
-            strategies_result = get_user_strategies(token, limit=-1)
-            if strategies_result.get("status") != 1:
-                raise Exception(f"获取策略列表失败: {strategies_result.get('msg', '未知错误')}")
+            print(f"🔍 查找目标策略ID: {strategy_ids}")
+            
+            # 优先尝试从策略组中查找（包含完整AI时间参数）
+            print(f"[DEBUG] 尝试策略组查询获取AI时间参数")
+            groups_result = get_group_lists(token, page=1, limit=100)
+            found_from_groups = []
+            
+            if groups_result.get("status") == 1:
+                print(f"[DEBUG] 策略组查询结果状态: {groups_result.get('status')}")
+                groups = groups_result.get("info", [])
+                print(f"[DEBUG] 获取到 {len(groups)} 个策略组")
                 
-            all_strategies = strategies_result.get("info", [])
-            for strategy in all_strategies:
-                if str(strategy.get("id")) in strategy_ids:
-                    selected_strategies.append(strategy)
-            print(f"🔍 从策略列表查询获取数据，策略数量: {len(selected_strategies)}")
+                # 遍历策略组，查找目标策略
+                for group in groups:
+                    strategy_lists = group.get("strategy_lists", [])
+                    for strategy in strategy_lists:
+                        if str(strategy.get("id")) in strategy_ids:
+                            found_from_groups.append(strategy)
+                            print(f"[DEBUG] 在策略组中找到策略: {strategy.get('id')}")
+                
+            # 如果在策略组中找到了所有策略，优先使用策略组数据（包含AI时间参数）
+            if len(found_from_groups) == len(strategy_ids):
+                selected_strategies = found_from_groups
+                print(f"✅ 策略组查询完成，找到所有策略")
+            else:
+                print(f"[DEBUG] 策略组中未找到的策略ID: {[sid for sid in strategy_ids if sid not in [str(s.get('id')) for s in found_from_groups]]}")
+                
+                # 策略组中找不全，使用策略列表查询
+                print(f"[DEBUG] 策略列表查询 - 页码:1, limit:{100 if len(strategy_ids) > 20 else 20}")
+                strategies_result = get_user_strategies(token, limit=100 if len(strategy_ids) > 20 else 20)
+                
+                if strategies_result.get("status") != 1:
+                    print(f"[DEBUG] 策略列表查询失败: {strategies_result.get('msg', '未知错误')}")
+                    # 增加limit重新查询
+                    limit = 40
+                    attempts = 0
+                    max_attempts = 5
+                    
+                    while attempts < max_attempts:
+                        print(f"[DEBUG] 增加limit重新查询: {limit}")
+                        print(f"[DEBUG] 策略列表查询 - 页码:1, limit:{limit}")
+                        strategies_result = get_user_strategies(token, page=1, limit=limit)
+                        
+                        if strategies_result.get("status") == 1:
+                            print(f"[DEBUG] 策略列表查询结果状态: {strategies_result.get('status')}")
+                            break
+                        
+                        limit = min(limit * 2, 100)
+                        attempts += 1
+                        
+                        if limit >= 100:
+                            print(f"[DEBUG] 策略列表查询已达到最大limit")
+                            break
+                
+                if strategies_result.get("status") != 1:
+                    raise Exception(f"获取策略列表失败: {strategies_result.get('msg', '未知错误')}")
+                    
+                all_strategies = strategies_result.get("info", [])
+                print(f"[DEBUG] 获取到 {len(all_strategies)} 个策略")
+                
+                for strategy in all_strategies:
+                    if str(strategy.get("id")) in strategy_ids:
+                        selected_strategies.append(strategy)
+                        
+            print(f"[DEBUG] 最终找到策略数量: {len(selected_strategies)}")
+            print(f"[DEBUG] 找到的策略ID: {[str(s.get('id')) for s in selected_strategies]}")
+            
+            if len(selected_strategies) == 0:
+                print(f"[DEBUG] 查询失败，分析失败原因...")
+                print(f"[DEBUG] API接口正常，尝试扩大查询范围...")
+                raise Exception(f"未找到指定的策略ID: {','.join(strategy_ids)}\n请确认:\n1. 策略ID是否正确\n2. 策略是否属于当前账号\n3. 策略是否处于可用状态\n\n如果策略ID有误，请提供正确的策略ID")
         
         if not selected_strategies:
             raise Exception("未找到选中的策略")
