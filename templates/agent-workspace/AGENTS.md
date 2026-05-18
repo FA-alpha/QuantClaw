@@ -1,10 +1,25 @@
 # QuantClaw 量化工作区
 
+## ⚡ 性能优化：Skills 路径规范
+
+**本工作区已通过软链接安装 QuantClaw skills**：
+- 本地路径：`./skills/` → `/home/ubuntu/work/QuantClaw/skills`
+
+**强制规则（避免性能损耗）**：
+1. ✅ **使用技能时，始终优先使用本地路径**：`./skills/<skill-name>/`
+2. ✅ **读取 SKILL.md**：`./skills/<skill-name>/SKILL.md`
+3. ✅ **执行脚本**：`./skills/<skill-name>/<script>.py`
+4. ❌ **禁止使用全局路径**：`/home/ubuntu/.npm-global/...`（慢，会浪费时间）
+
+**为什么重要**：Clawdbot 默认会先扫描 npm-global 目录，非常慢。使用本地路径可以**立即访问技能**。
+
+---
+
 ## 项目结构
 - `strategies/` - 交易策略代码与笔记
 - `data/` - 市场数据与分析文件
 - `backtests/` - 回测结果与报告
-- `skills/` - 量化技能模块（链接自 QuantClaw）
+- `skills/` - 量化技能模块（软链接自 QuantClaw）⚡
 - `analysis/` - 深度分析报告
 
 ## 使用说明
@@ -37,6 +52,10 @@ read memory/strategy_types.md
 
 ### backtest-query - 智能推荐策略组合
 
+**⚡ 技能路径**（必须使用本地路径）：
+- 📄 SKILL.md: `./skills/backtest-query/SKILL.md`
+- 🐍 脚本: `./skills/backtest-query/query.py`
+
 **何时使用**：
 - 用户询问"AI 回测"/"查询回测"/"回测结果"
 - 用户询问"推荐策略"/"组合"/"对冲"/"分散"
@@ -58,11 +77,23 @@ read memory/strategy_types.md
 - 网格策略：`7`（网格）
 - 趋势策略：其他所有
 
-**详细文档**：查看 `skills/backtest-query/SKILL.md`
+**使用示例**：
+```bash
+# ✅ 正确：使用本地路径读取技能
+read ./skills/backtest-query/SKILL.md
+exec python3 ./skills/backtest-query/query.py --coin BTC
+
+# ❌ 错误：不要用全局路径（慢）
+read /home/ubuntu/.npm-global/lib/node_modules/clawdbot/skills/backtest-query/SKILL.md
+```
 
 ---
 
 ### start-backtest - 启动回测任务
+
+**⚡ 技能路径**（必须使用本地路径）：
+- 📄 SKILL.md: `./skills/start-backtest/SKILL.md`
+- 🐍 脚本: `./skills/start-backtest/start.py`
 
 **何时使用**：
 - 用户说"回测"/"启动回测"/"开始回测"
@@ -89,7 +120,15 @@ read memory/strategy_types.md
 - 🚨 **回测成功后不要询问是否等待** - 直接告知结果
 - ⚠️ **每次回测都是独立任务** - 不要查询历史回测
 
-**详细文档**：查看 `skills/start-backtest/SKILL.md`
+**使用示例**：
+```bash
+# ✅ 正确：使用本地路径
+read ./skills/start-backtest/SKILL.md
+exec python3 ./skills/start-backtest/start.py --mode single --strategy 42
+
+# ❌ 错误：不要用全局路径
+read /home/ubuntu/.npm-global/.../start-backtest/SKILL.md
+```
 
 ## 注意事项
 - 所有分析需要注明数据来源
