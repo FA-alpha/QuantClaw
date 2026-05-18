@@ -60,6 +60,7 @@ class AllocationRequirement:
     coin_short_pairs: List[str]    # 需要的币种做空组合
     ai_time_long_types: List[str]  # 需要的AI时间做多类型，如["2025年震荡", "最近1年"]
     ai_time_short_types: List[str] # 需要的AI时间做空类型，如["2025年震荡", "最近1年"]
+    ai_time_id_mapping: Dict[str, str]  # ai_time_name到ai_time_id的映射
     has_ai_time: bool              # 是否包含AI时间参数
 
 @dataclass
@@ -421,14 +422,36 @@ def main():
     
     # 处理新增的接口查询
     if args.list_groups:
-        print(f"[INFO] 查询策略组列表（第{args.page}页，每页{args.limit}条）")
         result = get_strategy_groups(args.token, args.page, args.limit)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        
+        if result.get("status") != 1:
+            print(f"❌ 获取策略组列表失败: {result.get('msg', '未知错误')}")
+            return
+        
+        # 如果指定了策略组ID，只返回该策略组信息
+        if args.strategy_group_id:
+            target_group = None
+            for group in result.get("info", []):
+                if str(group.get("id")) == str(args.strategy_group_id):
+                    target_group = group
+                    break
+            
+            if target_group:
+                filtered_result = {
+                    "status": result.get("status"),
+                    "msg": result.get("msg"),
+                    "info": [target_group]
+                }
+                print(f"[INFO] 查询指定策略组ID: {args.strategy_group_id}")
+                print(json.dumps(filtered_result, indent=2, ensure_ascii=False))
+            else:
+                print(f"❌ 未找到策略组ID: {args.strategy_group_id}")
+        else:
+            print(f"[INFO] 查询策略组列表（第{args.page}页，每页{args.limit}条）")
+            print(json.dumps(result, indent=2, ensure_ascii=False))
         return
         
     if args.list_strategies:
-        print(f"[INFO] 查询策略列表（第{args.page}页，每页{args.limit}条）")
-        # 只传递用户明确指定的参数，不额外制造参数
         result = get_user_strategies(
             token=args.token,
             page=args.page, 
@@ -438,7 +461,30 @@ def main():
             amt_type=args.amt_type if args.amt_type else None,
             search_status=args.status if args.status else None
         )
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        
+        if result.get("status") != 1:
+            print(f"❌ 获取策略列表失败: {result.get('msg', '未知错误')}")
+            return
+        
+        # 如果指定了策略ID，只返回指定的策略信息
+        if args.strategy_ids:
+            strategy_ids = [sid.strip() for sid in args.strategy_ids.split(",")]
+            target_strategies = []
+            
+            for strategy in result.get("info", []):
+                if str(strategy.get("id")) in strategy_ids:
+                    target_strategies.append(strategy)
+            
+            filtered_result = {
+                "status": result.get("status"),
+                "msg": result.get("msg"),
+                "info": target_strategies
+            }
+            print(f"[INFO] 查询指定策略ID: {args.strategy_ids}")
+            print(json.dumps(filtered_result, indent=2, ensure_ascii=False))
+        else:
+            print(f"[INFO] 查询策略列表（第{args.page}页，每页{args.limit}条）")
+            print(json.dumps(result, indent=2, ensure_ascii=False))
         return
         
     # 保证金分配方案完整性检查
@@ -516,6 +562,7 @@ def main():
                 "coin_short_pairs": requirement.coin_short_pairs,
                 "ai_time_long_types": requirement.ai_time_long_types,
                 "ai_time_short_types": requirement.ai_time_short_types,
+                "ai_time_id_mapping": requirement.ai_time_id_mapping,
                 "has_ai_time": requirement.has_ai_time
             },
             "missing": missing,
@@ -684,6 +731,7 @@ def analyze_strategies_for_allocation(strategy_ids: List[str], token: str,
         coin_short_set = set()  
         ai_time_long_set = set()
         ai_time_short_set = set()
+        ai_time_id_mapping = {}  # ai_time_name -> ai_time_id 映射
         has_ai_time = False
         
         for strategy in selected_strategies:
@@ -701,6 +749,10 @@ def analyze_strategies_for_allocation(strategy_ids: List[str], token: str,
                 ai_time_match = re.search(r'\(([^)]+年[^)]*)\)', name)
                 if ai_time_match:
                     ai_time_name = ai_time_match.group(1)
+            
+            # 收集AI时间ID映射关系
+            if ai_time_id and ai_time_name:
+                ai_time_id_mapping[ai_time_name] = str(ai_time_id)
             
             # 收集币种和方向组合（支持中英文）
             if "做多" in direction or "long" in direction.lower():
@@ -721,18 +773,20 @@ def analyze_strategies_for_allocation(strategy_ids: List[str], token: str,
         
         print(f"📊 分析结果: 币种做多{list(coin_long_set)}, 币种做空{list(coin_short_set)}")
         print(f"📊 AI时间做多{list(ai_time_long_set)}, AI时间做空{list(ai_time_short_set)}")
+        print(f"📊 AI时间ID映射: {ai_time_id_mapping}")
         
         return AllocationRequirement(
             coin_long_pairs=sorted(list(coin_long_set)),
             coin_short_pairs=sorted(list(coin_short_set)),
             ai_time_long_types=sorted(list(ai_time_long_set)),
             ai_time_short_types=sorted(list(ai_time_short_set)),
+            ai_time_id_mapping=ai_time_id_mapping,
             has_ai_time=has_ai_time
         )
         
     except Exception as e:
         print(f"❌ 策略分析失败: {e}")
-        return AllocationRequirement([], [], [], False)
+        return AllocationRequirement([], [], [], [], {}, False)
 
 
 def check_allocation_completeness(requirement: AllocationRequirement, 

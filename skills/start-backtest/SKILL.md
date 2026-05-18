@@ -100,7 +100,9 @@ python skills/start-backtest/backtest_monitor.py \
 📊 策略分析结果:
   币种做多需求: ['DOGE', 'SOL']
   币种做空需求: ['BTC', 'SOL'] 
-  AI时间类型需求: ['2025年震荡', '最近1年']
+  AI时间做多需求: ['2025年震荡']
+  AI时间做空需求: ['2025年震荡', '最近1年']
+  📊 AI时间ID映射: {"2025年震荡": "-6", "最近1年": "365"}
   是否需要AI时间参数: True
 ```
 
@@ -449,13 +451,23 @@ Agent高效流程：
 ### 查看策略组列表
 
 ```bash
+# 查看所有策略组
 python skills/start-backtest/backtest_monitor.py --list-groups --token <token>
+
+# 查看指定策略组（只返回该组信息，避免信息过载）
+python skills/start-backtest/backtest_monitor.py --list-groups --strategy-group-id "115" --token <token>
 ```
 
 ### 查看策略列表
 
 ```bash
+# 查看所有策略
 python skills/start-backtest/backtest_monitor.py --list-strategies --token <token>
+
+# 查看指定策略（只返回指定策略信息）
+python skills/start-backtest/backtest_monitor.py --list-strategies --strategy-ids "4637,50737,50738" --token <token>
+
+# 按条件筛选策略
 python skills/start-backtest/backtest_monitor.py --list-strategies --coin BTC --amt-type 2 --token <token>
 ```
 
