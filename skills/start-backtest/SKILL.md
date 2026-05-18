@@ -78,21 +78,48 @@ python skills/start-backtest/start.py --token "$TOKEN" --apply --strategy-ids 43
 **当用户选择共享保证金模式时，Agent必须严格按以下流程执行：**
 
 **步骤1：分析策略参数需求并询问分配方案**
-```
-Agent必须先分析策略需要的参数：
-1. 调用analyze_strategies_for_allocation方法分析选中策略
-2. 确定calc_margin接口需要的具体参数类型
-3. 根据分析结果针对性询问用户
 
-示例分析结果：
-- 策略包含：BTC做多、DOGE做空、SOL做多
-- 策略包含ai_time_id参数：需要AI时间类型分配
-- Agent询问："根据您选择的策略分析，需要以下分配参数：
-  📊 BTC做多占比：？%
-  📊 DOGE做空占比：？%  
-  📊 SOL做多占比：？%
-  📊 2025年震荡行情占比：？%"
+**🚨 重要：每次策略变更都必须重新分析参数需求**
+
+```bash
+# 优先使用策略组分析（包含完整AI时间信息）
+python skills/start-backtest/backtest_monitor.py \
+  --check-allocation \
+  --strategy-group-id "115" \
+  --token <token>
+
+# 或使用策略ID列表分析
+python skills/start-backtest/backtest_monitor.py \
+  --check-allocation \
+  --strategy-ids "50737,50738,4637" \
+  --token <token>
 ```
+
+**分析结果示例：**
+```
+📊 策略分析结果:
+  币种做多需求: ['DOGE', 'SOL']
+  币种做空需求: ['BTC', 'SOL'] 
+  AI时间类型需求: ['2025年震荡', '最近1年']
+  是否需要AI时间参数: True
+```
+
+**Agent询问模板：**
+```
+"根据策略分析，需要以下分配参数：
+📊 DOGE做多占比：？%
+📊 SOL做多占比：？%  
+📊 BTC做空占比：？%
+📊 SOL做空占比：？%
+📊 2025年震荡占比：？%
+📊 最近1年占比：？%"
+```
+
+**🔄 策略变更触发重新分析：**
+- 用户添加/删除策略组中的策略
+- 用户更换策略组
+- 用户从策略组改为多个策略
+- 用户从多个策略改为单个策略
 
 **步骤2：验证参数完整性并调用calc_margin接口**
 ```
@@ -254,22 +281,24 @@ Agent高效处理：
 **🎯 用户指定策略+给出比例时的高效处理：**
 
 ```bash
-用户："回测我这n条策略，币资金占比是50%"
+用户："回测策略组115，币资金占比是50%"
 
 Agent高效流程：
-1. 直接使用用户指定的策略ID（不重复查询策略库）
-2. 调用策略分析：
+1. 使用策略组ID分析参数需求：
    python skills/start-backtest/backtest_monitor.py \
-     --check-allocation --strategy-ids "用户指定ID" --token <token>
+     --check-allocation --strategy-group-id "115" --token <token>
      
-3. 获取分析结果后，将50%应用到所有币种方向：
-   - BTC做多: 50%, SOL做空: 50%, SOL做多: 50%
+2. 获取分析结果（包含AI时间信息）：
+   - 币种做多需求: ['DOGE', 'SOL']
+   - 币种做空需求: ['BTC', 'SOL']
+   - AI时间类型需求: ['2025年震荡', '最近1年']
    
-4. 检查AI时间参数需求：
-   - has_ai_time=true → 询问"AI时间类型占比？"
-   - has_ai_time=false → 询问"回测时间范围？"
+3. 将50%应用到所有币种方向：
+   - DOGE做多: 50%, SOL做多: 50%, BTC做空: 50%, SOL做空: 50%
    
-5. 参数完整后直接执行回测
+4. 检查AI时间参数：has_ai_time=true → 询问AI时间类型占比
+   
+5. 用户补充AI时间占比后执行回测
 ```
 
 **🚨 效率原则：**

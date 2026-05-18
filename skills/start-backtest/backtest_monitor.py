@@ -58,7 +58,8 @@ class AllocationRequirement:
     """保证金分配方案需求"""
     coin_long_pairs: List[str]     # 需要的币种做多组合，如["BTC", "DOGE", "SOL"]
     coin_short_pairs: List[str]    # 需要的币种做空组合
-    ai_time_types: List[str]       # 需要的AI时间类型，如["2025年震荡", "2025年牛市"]
+    ai_time_long_types: List[str]  # 需要的AI时间做多类型，如["2025年震荡", "最近1年"]
+    ai_time_short_types: List[str] # 需要的AI时间做空类型，如["2025年震荡", "最近1年"]
     has_ai_time: bool              # 是否包含AI时间参数
 
 @dataclass
@@ -393,9 +394,11 @@ def main():
     # 保证金分配方案检查
     parser.add_argument("--check-allocation", action="store_true", help="检查保证金分配方案完整性")
     parser.add_argument("--strategy-ids", help="策略ID列表，逗号分隔")
+    parser.add_argument("--strategy-group-id", help="策略组ID（优先使用策略组数据）")
     parser.add_argument("--coin-long-allocation", help="币种做多分配JSON")
     parser.add_argument("--coin-short-allocation", help="币种做空分配JSON") 
-    parser.add_argument("--ai-time-allocation", help="AI时间分配JSON")
+    parser.add_argument("--ai-time-long-allocation", help="AI时间做多分配JSON")
+    parser.add_argument("--ai-time-short-allocation", help="AI时间做空分配JSON")
     parser.add_argument("--name", help="策略名称搜索")
     parser.add_argument("--coin", help="币种筛选")
     parser.add_argument("--amt-type", help="类型筛选: 1现货 2合约")
@@ -440,21 +443,31 @@ def main():
         
     # 保证金分配方案完整性检查
     if args.check_allocation:
-        if not args.strategy_ids or not args.token:
-            print("❌ --check-allocation 需要 --strategy-ids 和 --token 参数")
+        if not args.token:
+            print("❌ --check-allocation 需要 --token 参数")
+            return
+        if not args.strategy_ids and not args.strategy_group_id:
+            print("❌ --check-allocation 需要 --strategy-ids 或 --strategy-group-id 参数")
             return
             
-        strategy_ids = [sid.strip() for sid in args.strategy_ids.split(",")]
+        strategy_ids = [sid.strip() for sid in args.strategy_ids.split(",")] if args.strategy_ids else []
         
         print(f"🔍 分析策略ID: {strategy_ids}")
+        if args.strategy_group_id:
+            print(f"🔍 使用策略组ID: {args.strategy_group_id}")
         
         # 分析策略需求
-        requirement = analyze_strategies_for_allocation(strategy_ids, args.token)
+        requirement = analyze_strategies_for_allocation(
+            strategy_ids, 
+            args.token, 
+            strategy_group_id=args.strategy_group_id
+        )
         
         print(f"\n📊 策略分析结果:")
         print(f"  币种做多需求: {requirement.coin_long_pairs}")
         print(f"  币种做空需求: {requirement.coin_short_pairs}")  
-        print(f"  AI时间类型需求: {requirement.ai_time_types}")
+        print(f"  AI时间做多需求: {requirement.ai_time_long_types}")
+        print(f"  AI时间做空需求: {requirement.ai_time_short_types}")
         print(f"  是否需要AI时间参数: {requirement.has_ai_time}")
         
         # 解析用户提供的分配方案
@@ -474,11 +487,18 @@ def main():
                 print("❌ coin_short_allocation JSON格式错误")
                 return
                 
-        if args.ai_time_allocation:
+        if args.ai_time_long_allocation:
             try:
-                user_allocation["ai_time_allocation"] = json.loads(args.ai_time_allocation)
+                user_allocation["ai_time_long_allocation"] = json.loads(args.ai_time_long_allocation)
             except json.JSONDecodeError:
-                print("❌ ai_time_allocation JSON格式错误")
+                print("❌ ai_time_long_allocation JSON格式错误")
+                return
+                
+        if args.ai_time_short_allocation:
+            try:
+                user_allocation["ai_time_short_allocation"] = json.loads(args.ai_time_short_allocation)
+            except json.JSONDecodeError:
+                print("❌ ai_time_short_allocation JSON格式错误")
                 return
         
         # 检查完整性
@@ -494,7 +514,8 @@ def main():
             "requirement": {
                 "coin_long_pairs": requirement.coin_long_pairs,
                 "coin_short_pairs": requirement.coin_short_pairs,
-                "ai_time_types": requirement.ai_time_types,
+                "ai_time_long_types": requirement.ai_time_long_types,
+                "ai_time_short_types": requirement.ai_time_short_types,
                 "has_ai_time": requirement.has_ai_time
             },
             "missing": missing,
@@ -602,31 +623,58 @@ def get_strategy_groups(token: str, page: int = 1, limit: int = -1) -> dict:
         return {"status": "error", "message": error_msg}
 
 
-def analyze_strategies_for_allocation(strategy_ids: List[str], token: str) -> AllocationRequirement:
+def analyze_strategies_for_allocation(strategy_ids: List[str], token: str, 
+                                   strategy_group_id: str = None, 
+                                   strategy_data: List[dict] = None) -> AllocationRequirement:
     """
     分析选中的策略，确定保证金分配方案需要的参数
     
     Args:
         strategy_ids: 策略ID列表
         token: 用户token
+        strategy_group_id: 策略组ID（可选）
+        strategy_data: 直接传入的策略数据（可选，来自策略组查询）
         
     Returns:
         AllocationRequirement: 保证金分配方案需求
     """
     try:
-        # 获取策略详情
-        strategies_result = get_user_strategies(token, limit=-1)
-        
-        if strategies_result.get("status") != 1:
-            raise Exception(f"获取策略列表失败: {strategies_result.get('msg', '未知错误')}")
-            
-        all_strategies = strategies_result.get("info", [])
-        
-        # 筛选出选中的策略
         selected_strategies = []
-        for strategy in all_strategies:
-            if str(strategy.get("id")) in strategy_ids:
-                selected_strategies.append(strategy)
+        
+        # 优先使用直接传入的策略数据（来自策略组）
+        if strategy_data:
+            selected_strategies = strategy_data
+            print(f"🔍 使用策略组数据直接分析，策略数量: {len(selected_strategies)}")
+        
+        # 如果有策略组ID，直接查询策略组获取完整数据
+        elif strategy_group_id:
+            groups_result = get_strategy_groups(token, limit=-1)
+            if groups_result.get("status") != 1:
+                raise Exception(f"获取策略组列表失败: {groups_result.get('msg', '未知错误')}")
+                
+            target_group = None
+            for group in groups_result.get("info", []):
+                if str(group.get("id")) == str(strategy_group_id):
+                    target_group = group
+                    break
+                    
+            if not target_group:
+                raise Exception(f"未找到策略组ID: {strategy_group_id}")
+                
+            selected_strategies = target_group.get("strategy_lists", [])
+            print(f"🔍 从策略组{strategy_group_id}获取策略数据，策略数量: {len(selected_strategies)}")
+        
+        # 最后才使用策略列表查询（效率较低）
+        else:
+            strategies_result = get_user_strategies(token, limit=-1)
+            if strategies_result.get("status") != 1:
+                raise Exception(f"获取策略列表失败: {strategies_result.get('msg', '未知错误')}")
+                
+            all_strategies = strategies_result.get("info", [])
+            for strategy in all_strategies:
+                if str(strategy.get("id")) in strategy_ids:
+                    selected_strategies.append(strategy)
+            print(f"🔍 从策略列表查询获取数据，策略数量: {len(selected_strategies)}")
         
         if not selected_strategies:
             raise Exception("未找到选中的策略")
@@ -634,32 +682,51 @@ def analyze_strategies_for_allocation(strategy_ids: List[str], token: str) -> Al
         # 解析策略参数
         coin_long_set = set()
         coin_short_set = set()  
-        ai_time_set = set()
+        ai_time_long_set = set()
+        ai_time_short_set = set()
         has_ai_time = False
         
         for strategy in selected_strategies:
             coin = strategy.get("coin", "").upper()
             direction = strategy.get("direction", "")
+            name = strategy.get("name", "")
+            
+            # 检查AI时间参数（支持多种获取方式）
+            ai_time_id = strategy.get("ai_time_id")
+            ai_time_name = strategy.get("ai_time_name")
+            
+            # 从策略名称中提取AI时间信息（如：策略名(2025年震荡)）
+            if not ai_time_name and "(" in name and ")" in name:
+                import re
+                ai_time_match = re.search(r'\(([^)]+年[^)]*)\)', name)
+                if ai_time_match:
+                    ai_time_name = ai_time_match.group(1)
             
             # 收集币种和方向组合（支持中英文）
             if "做多" in direction or "long" in direction.lower():
                 coin_long_set.add(coin)
+                # AI时间做多
+                if ai_time_id or ai_time_name:
+                    has_ai_time = True
+                    if ai_time_name:
+                        ai_time_long_set.add(ai_time_name)
+                        
             elif "做空" in direction or "short" in direction.lower():
                 coin_short_set.add(coin)
-                
-            # 检查是否有AI时间参数
-            ai_time_id = strategy.get("ai_time_id")
-            ai_time_name = strategy.get("ai_time_name") 
-            
-            if ai_time_id or ai_time_name:
-                has_ai_time = True
-                if ai_time_name:
-                    ai_time_set.add(ai_time_name)
+                # AI时间做空
+                if ai_time_id or ai_time_name:
+                    has_ai_time = True
+                    if ai_time_name:
+                        ai_time_short_set.add(ai_time_name)
+        
+        print(f"📊 分析结果: 币种做多{list(coin_long_set)}, 币种做空{list(coin_short_set)}")
+        print(f"📊 AI时间做多{list(ai_time_long_set)}, AI时间做空{list(ai_time_short_set)}")
         
         return AllocationRequirement(
             coin_long_pairs=sorted(list(coin_long_set)),
             coin_short_pairs=sorted(list(coin_short_set)),
-            ai_time_types=sorted(list(ai_time_set)),
+            ai_time_long_types=sorted(list(ai_time_long_set)),
+            ai_time_short_types=sorted(list(ai_time_short_set)),
             has_ai_time=has_ai_time
         )
         
@@ -679,7 +746,8 @@ def check_allocation_completeness(requirement: AllocationRequirement,
             {
                 "coin_long_allocation": {"BTC": 40, "DOGE": 60},
                 "coin_short_allocation": {"BTC": 50, "DOGE": 50},  
-                "ai_time_allocation": {"2025年震荡": 70, "2025年牛市": 30}
+                "ai_time_long_allocation": {"2025年震荡": 70, "最近1年": 30},
+                "ai_time_short_allocation": {"2025年震荡": 80, "最近1年": 20}
             }
             
     Returns:
@@ -687,14 +755,16 @@ def check_allocation_completeness(requirement: AllocationRequirement,
             {
                 "missing_coin_long": ["SOL"],
                 "missing_coin_short": ["ETH"], 
-                "missing_ai_time": ["2025年牛市"],
+                "missing_ai_time_long": ["2025年震荡"],
+                "missing_ai_time_short": ["最近1年"],
                 "errors": ["需要AI时间参数但未提供"]
             }
     """
     missing = {
         "missing_coin_long": [],
         "missing_coin_short": [],
-        "missing_ai_time": [],
+        "missing_ai_time_long": [],
+        "missing_ai_time_short": [],
         "errors": []
     }
     
@@ -708,14 +778,23 @@ def check_allocation_completeness(requirement: AllocationRequirement,
     coin_short_required = set(requirement.coin_short_pairs)
     missing["missing_coin_short"] = sorted(list(coin_short_required - coin_short_provided))
     
-    # 检查AI时间类型分配
-    if requirement.has_ai_time:
-        ai_time_provided = set(user_allocation.get("ai_time_allocation", {}).keys())
-        ai_time_required = set(requirement.ai_time_types)
-        missing["missing_ai_time"] = sorted(list(ai_time_required - ai_time_provided))
+    # 检查AI时间做多分配
+    if requirement.has_ai_time and requirement.ai_time_long_types:
+        ai_time_long_provided = set(user_allocation.get("ai_time_long_allocation", {}).keys())
+        ai_time_long_required = set(requirement.ai_time_long_types)
+        missing["missing_ai_time_long"] = sorted(list(ai_time_long_required - ai_time_long_provided))
         
-        if not user_allocation.get("ai_time_allocation"):
-            missing["errors"].append("策略包含AI时间参数，需要提供ai_time_allocation")
+        if not user_allocation.get("ai_time_long_allocation") and requirement.ai_time_long_types:
+            missing["errors"].append("策略包含AI时间做多参数，需要提供ai_time_long_allocation")
+    
+    # 检查AI时间做空分配
+    if requirement.has_ai_time and requirement.ai_time_short_types:
+        ai_time_short_provided = set(user_allocation.get("ai_time_short_allocation", {}).keys())
+        ai_time_short_required = set(requirement.ai_time_short_types)
+        missing["missing_ai_time_short"] = sorted(list(ai_time_short_required - ai_time_short_provided))
+        
+        if not user_allocation.get("ai_time_short_allocation") and requirement.ai_time_short_types:
+            missing["errors"].append("策略包含AI时间做空参数，需要提供ai_time_short_allocation")
     
     return missing
 
@@ -751,11 +830,22 @@ def format_missing_params_message(requirement: AllocationRequirement,
             message_parts.append(f"  - {coin}做空占比：？%")
         message_parts.append("")
             
-    # AI时间类型缺失
-    if missing["missing_ai_time"] or missing["errors"]:
-        message_parts.append(f"📊 AI时间类型分配缺失：")
-        for ai_time in missing["missing_ai_time"]:
-            message_parts.append(f"  - {ai_time}占比：？%")
+    # AI时间做多缺失
+    if missing["missing_ai_time_long"]:
+        message_parts.append(f"📊 AI时间做多分配缺失：")
+        for ai_time in missing["missing_ai_time_long"]:
+            message_parts.append(f"  - {ai_time}做多占比：？%")
+        message_parts.append("")
+        
+    # AI时间做空缺失
+    if missing["missing_ai_time_short"]:
+        message_parts.append(f"📊 AI时间做空分配缺失：")
+        for ai_time in missing["missing_ai_time_short"]:
+            message_parts.append(f"  - {ai_time}做空占比：？%")
+        message_parts.append("")
+        
+    # 错误信息
+    if missing["errors"]:
         for error in missing["errors"]:
             message_parts.append(f"  - {error}")
         message_parts.append("")
@@ -766,8 +856,10 @@ def format_missing_params_message(requirement: AllocationRequirement,
         message_parts.append(f"  币种做多：{', '.join(requirement.coin_long_pairs)}")
     if requirement.coin_short_pairs:
         message_parts.append(f"  币种做空：{', '.join(requirement.coin_short_pairs)}")
-    if requirement.has_ai_time and requirement.ai_time_types:
-        message_parts.append(f"  AI时间类型：{', '.join(requirement.ai_time_types)}")
+    if requirement.has_ai_time and requirement.ai_time_long_types:
+        message_parts.append(f"  AI时间做多：{', '.join(requirement.ai_time_long_types)}")
+    if requirement.has_ai_time and requirement.ai_time_short_types:
+        message_parts.append(f"  AI时间做空：{', '.join(requirement.ai_time_short_types)}")
     
     return "\n".join(message_parts)
 
