@@ -234,7 +234,7 @@ def apply_backtest(
     参数说明:
     - strategy_id: 策略 ID（单个或多个逗号分隔）
     - margin_mode: 保证金模式（exclusive=独占, shared=共享）
-    - margin_allocation: 共享模式分配比例（逗号分隔，总和100）
+    - margin_allocation: 共享模式分配金额（逗号分隔，来自calc_margin计算结果）
     - data_type: 数据类型（默认1）
     """
     url = f"{API_BASE}/Backtrack/apply_do"
@@ -269,7 +269,7 @@ def apply_backtest(
             "global_margin_limit": 10000 if init_balance is None else init_balance,
         }
         
-        # 如果有分配比例，添加到 strategy_margin_limit
+        # 如果有分配金额（来自calc_margin计算结果），添加到 strategy_margin_limit
         if margin_allocation and margin_mode == "shared":
             # 需要知道策略 ID，从 strategy_ids 中提取
             if strategy_id:
@@ -278,9 +278,8 @@ def apply_backtest(
                 strategy_margin_limit = {}
                 for i, (sid, alloc) in enumerate(zip(strategy_ids, allocations)):
                     try:
-                        # 计算实际保证金：比例 * 总额 / 100
-                        total_margin = 10000 if init_balance is None else init_balance
-                        actual_margin = float(alloc) * total_margin / 100
+                        # 直接使用calc_margin计算出的具体金额（不再是百分比）
+                        actual_margin = float(alloc)
                         strategy_margin_limit[sid.strip()] = str(int(actual_margin))
                     except:
                         pass
@@ -557,34 +556,104 @@ def get_strategies_with_grouping(token: str, strategy_ids: str) -> dict:
         }
     """
     strategy_id_list = [sid.strip() for sid in strategy_ids.split(",") if sid.strip()]
+    print(f"[DEBUG] 查找目标策略ID: {strategy_id_list}")
     target_strategies = []
     
-    # 方案1: 先从策略组获取包含ai_time_id的完整信息
-    groups_result = get_group_lists(token, limit=100)
+    # 方案1: 分页查询策略组（默认limit=20，逐步增加）
+    page = 1
+    limit = 20
+    max_attempts = 10  # 最大尝试次数，防止无限循环
+    attempts = 0
     
-    if "error" not in groups_result:
+    while len(target_strategies) < len(strategy_id_list) and attempts < max_attempts:
+        print(f"[DEBUG] 策略组查询 - 页码:{page}, limit:{limit}")
+        groups_result = get_group_lists(token, page=page, limit=limit)
+        
+        print(f"[DEBUG] 策略组查询结果状态: {groups_result.get('status', 'unknown')}")
+        if "error" in groups_result or groups_result.get("status") != 1:
+            print(f"[DEBUG] 策略组查询失败: {groups_result}")
+            break
+            
         groups = groups_result.get("info", [])
+        print(f"[DEBUG] 获取到 {len(groups)} 个策略组")
+        
+        found_in_this_page = False
         for group in groups:
             strategy_lists = group.get("strategy_lists", [])
             for strategy in strategy_lists:
                 strategy_id = str(strategy.get("id", ""))
                 if strategy_id in strategy_id_list:
-                    target_strategies.append(strategy)
+                    # 检查是否已存在（去重）
+                    if not any(str(s.get("id")) == strategy_id for s in target_strategies):
+                        target_strategies.append(strategy)
+                        found_in_this_page = True
+                        print(f"[DEBUG] 在策略组中找到策略: {strategy_id}")
+        
+        # 如果找齐了所有策略，退出
+        found_ids = {str(s.get("id")) for s in target_strategies}
+        if all(sid in found_ids for sid in strategy_id_list):
+            print(f"[DEBUG] 策略组查询完成，找到所有策略")
+            break
+            
+        # 如果这一页没找到任何目标策略
+        if not found_in_this_page:
+            if limit < 100:
+                limit = min(100, limit * 2)  # 增加limit
+                page = 1  # 重新开始
+                print(f"[DEBUG] 增加limit重新查询: {limit}")
+            else:
+                print(f"[DEBUG] 策略组查询已达到最大limit，跳出")
+                break
+        else:
+            page += 1
+        
+        attempts += 1
     
-    # 方案2: 从策略列表接口查找（如果策略组没找全）
-    found_ids = {str(s.get("id", "")) for s in target_strategies}
+    # 方案2: 如果策略组里没找全，查策略列表
+    found_ids = {str(s.get("id")) for s in target_strategies}
     missing_ids = [sid for sid in strategy_id_list if sid not in found_ids]
     
     if missing_ids:
-        strategies_result = get_strategy_lists(token, limit=1000)
-        if "error" not in strategies_result:
+        print(f"[DEBUG] 策略组中未找到的策略ID: {missing_ids}")
+        
+        # 分页查询策略列表
+        page = 1
+        limit = 20
+        attempts = 0
+        
+        while missing_ids and attempts < max_attempts:
+            print(f"[DEBUG] 策略列表查询 - 页码:{page}, limit:{limit}")
+            strategies_result = get_strategy_lists(token, page=page, limit=limit)
+            
+            print(f"[DEBUG] 策略列表查询结果状态: {strategies_result.get('status', 'unknown')}")
+            if "error" in strategies_result or strategies_result.get("status") != 1:
+                print(f"[DEBUG] 策略列表查询失败: {strategies_result}")
+                break
+                
             all_strategies = strategies_result.get("info", [])
+            print(f"[DEBUG] 获取到 {len(all_strategies)} 个策略")
+            
+            found_in_this_page = False
             for strategy in all_strategies:
                 strategy_id = str(strategy.get("id", ""))
                 if strategy_id in missing_ids:
-                    # 策略列表接口可能没有ai_time_id，需要通过其他方式获取
-                    # 注意：ai_time_id应该从策略的实际配置中获取，不能随意假设
                     target_strategies.append(strategy)
+                    missing_ids.remove(strategy_id)
+                    found_in_this_page = True
+                    print(f"[DEBUG] 在策略列表中找到策略: {strategy_id}")
+            
+            if not found_in_this_page:
+                if limit < 100:
+                    limit = min(100, limit * 2)
+                    page = 1
+                    print(f"[DEBUG] 增加limit重新查询: {limit}")
+                else:
+                    print(f"[DEBUG] 策略列表查询已达到最大limit")
+                    break
+            else:
+                page += 1
+            
+            attempts += 1
     
     # 最终去重处理
     unique_strategies = {}
@@ -592,6 +661,87 @@ def get_strategies_with_grouping(token: str, strategy_ids: str) -> dict:
         strategy_id = str(strategy.get("id", ""))
         if strategy_id not in unique_strategies:
             unique_strategies[strategy_id] = strategy
+    
+    target_strategies = list(unique_strategies.values())
+    
+    print(f"[DEBUG] 最终找到策略数量: {len(target_strategies)}")
+    print(f"[DEBUG] 找到的策略ID: {[str(s.get('id')) for s in target_strategies]}")
+    
+    # 分析查询失败的原因并提供解决方案
+    if len(target_strategies) == 0:
+        print("[DEBUG] 查询失败，分析失败原因...")
+        
+        # 检查API响应状态，分析具体问题
+        error_details = []
+        
+        # 再次测试策略组接口，获取详细错误信息
+        test_groups = get_group_lists(token, page=1, limit=1)
+        if "error" in test_groups:
+            error_details.append(f"策略组接口错误: {test_groups.get('error')}")
+        elif test_groups.get("status") != 1:
+            error_details.append(f"策略组接口返回状态异常: {test_groups.get('msg', '未知错误')}")
+        elif test_groups.get("info") is None or len(test_groups.get("info", [])) == 0:
+            error_details.append("策略组接口返回空数据，可能该账号没有策略组")
+        
+        # 再次测试策略列表接口
+        test_strategies = get_strategy_lists(token, page=1, limit=1)
+        if "error" in test_strategies:
+            error_details.append(f"策略列表接口错误: {test_strategies.get('error')}")
+        elif test_strategies.get("status") != 1:
+            error_details.append(f"策略列表接口返回状态异常: {test_strategies.get('msg', '未知错误')}")
+        elif test_strategies.get("info") is None or len(test_strategies.get("info", [])) == 0:
+            error_details.append("策略列表接口返回空数据，可能该账号没有策略")
+        
+        # 根据错误类型返回不同的处理建议
+        if error_details:
+            error_msg = "查询策略失败，具体问题:\n" + "\n".join(error_details)
+            error_msg += f"\n\n请检查以下事项:"
+            error_msg += f"\n1. Token是否正确且有效"
+            error_msg += f"\n2. 策略ID是否属于当前账号: {strategy_ids}"
+            error_msg += f"\n3. 策略是否已被删除或处于不可用状态"
+            
+            return {"error": error_msg}
+        else:
+            # API正常但找不到策略，可能是策略ID问题
+            # 尝试扩大查询范围最后一次
+            print("[DEBUG] API接口正常，尝试扩大查询范围...")
+            
+            # 查询更多策略组
+            large_groups = get_group_lists(token, page=1, limit=500)
+            if "error" not in large_groups and large_groups.get("status") == 1:
+                groups = large_groups.get("info", [])
+                for group in groups:
+                    strategy_lists = group.get("strategy_lists", [])
+                    for strategy in strategy_lists:
+                        strategy_id = str(strategy.get("id", ""))
+                        if strategy_id in strategy_id_list:
+                            target_strategies.append(strategy)
+                            print(f"[DEBUG] 扩大范围后找到策略: {strategy_id}")
+            
+            # 查询更多策略
+            if len(target_strategies) == 0:
+                large_strategies = get_strategy_lists(token, page=1, limit=500)
+                if "error" not in large_strategies and large_strategies.get("status") == 1:
+                    all_strategies = large_strategies.get("info", [])
+                    for strategy in all_strategies:
+                        strategy_id = str(strategy.get("id", ""))
+                        if strategy_id in strategy_id_list:
+                            target_strategies.append(strategy)
+                            print(f"[DEBUG] 扩大范围后找到策略: {strategy_id}")
+            
+            # 去重处理
+            if len(target_strategies) > 0:
+                unique_strategies = {}
+                for strategy in target_strategies:
+                    strategy_id = str(strategy.get("id", ""))
+                    if strategy_id not in unique_strategies:
+                        unique_strategies[strategy_id] = strategy
+                target_strategies = list(unique_strategies.values())
+                print(f"[DEBUG] 扩大范围后找到策略数量: {len(target_strategies)}")
+            
+            # 最终还是找不到，询问用户确认
+            if len(target_strategies) == 0:
+                return {"error": f"未找到指定的策略ID: {strategy_ids}\n\n请确认:\n1. 策略ID是否正确\n2. 策略是否属于当前账号\n3. 策略是否处于可用状态\n\n如果策略ID有误，请提供正确的策略ID"}
     
     target_strategies = list(unique_strategies.values())
     
@@ -800,7 +950,7 @@ def main():
     parser.add_argument("--margin-mode", choices=["exclusive", "shared"],
                         help="保证金模式: exclusive=独占, shared=共享")
     parser.add_argument("--margin-allocation",
-                        help="共享模式分配比例（逗号分隔，总和100），如: 40,30,30")
+                        help="共享模式分配金额（逗号分隔，来自calc_margin接口计算结果），如: 3000,2000,5000")
     parser.add_argument("--data-type", type=int, default=1,
                         help="数据类型（默认1）")
     
@@ -1066,7 +1216,7 @@ def main():
                 mode_text = "独占模式" if args.margin_mode == "exclusive" else "共享模式"
                 print(f"   保证金模式: {mode_text}")
                 if args.margin_allocation:
-                    print(f"   分配比例: {args.margin_allocation}")
+                    print(f"   分配金额: {args.margin_allocation}")
             if args.leverage:
                 print(f"   杠杆倍数: {args.leverage}x")
             print(f"\n查询状态: python skills/backtest-query/query.py --token {args.token} --detail {back_id}")

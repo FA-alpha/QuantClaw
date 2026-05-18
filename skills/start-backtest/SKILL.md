@@ -66,11 +66,38 @@ python skills/start-backtest/start.py --token "$TOKEN" [其他参数]
 # ❌ start.py 不支持 --strategy-group-id 参数！
 ```
 
-### 🚨 Agent常见错误
+### 🚨 Agent常见错误和处理
 - ❌ **错误**: `python start.py --strategy-group-id "XXX"` → 报错
 - ✅ **正确**: `python backtest_monitor.py --strategy-group-id "XXX"`
 - ❌ **错误**: `python backtest_monitor.py --apply` → 报错  
 - ✅ **正确**: `python start.py --apply`
+
+### 📊 策略查询失败处理规则
+
+**当查询策略失败时，Agent必须：**
+
+1. **分析错误原因** - 检查API返回的具体错误信息
+2. **识别问题参数** - 确定是token、策略ID还是其他参数问题
+3. **询问用户确认** - 不要盲目重试，而是询问用户确认参数
+
+**查询策略的分页策略：**
+- **默认limit=20** - 首次查询使用小limit
+- **找不到时增加limit** - 逐步增加到50、100
+- **分页查询** - 如果单页找不到，查询下一页
+- **最大尝试10次** - 防止无限循环
+
+**错误处理示例：**
+```
+如果返回"未找到指定的策略ID: 50007,50008"
+
+Agent应该询问:
+"查询策略失败，请确认:
+1. 策略ID是否正确: 50007,50008,50009,50010,50011
+2. 这些策略是否属于当前账号
+3. 策略是否处于可用状态
+
+如果策略ID有误，请提供正确的策略ID"
+```
 
 ### 📋 适用的所有Python脚本调用
 
@@ -635,7 +662,7 @@ python skills/start-backtest/start.py \
   --apply \
   --strategy-ids id1,id2,id3 \
   --margin-mode shared \
-  --margin-allocation 40,30,30 \
+  --margin-allocation 3000,2000,5000 \
   --bgn-date YYYY-MM-DD \
   --end-date YYYY-MM-DD \
   --leverage 10
