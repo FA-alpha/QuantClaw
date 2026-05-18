@@ -8,6 +8,14 @@
 
 🚨 **强制规则：共享保证金模式必须先获取分配方案！** 🚨
 
+## 📋 查询接口统一说明
+
+**🔍 策略和策略组查询：**
+- ✅ **推荐使用**: `backtest_monitor.py --list-groups` 和 `--list-strategies`
+- ✅ **支持筛选**: 按币种、名称、类型等筛选条件
+- ✅ **默认获取全部**: limit=-1 获取所有数据
+- ⚠️ **start.py 参数**: 虽然存在 --list-groups/--list-strategies，但功能有限，推荐使用 backtest_monitor.py
+
 ## ⚠️ 重要：策略组回测 = 多策略回测
 
 **策略组回测规则：**
@@ -64,14 +72,14 @@ python skills/start-backtest/start.py --token "$TOKEN" [其他参数]
 **❌ 错误做法**：
 ```bash
 # 不要直接调用，可能无法获取token
-python skills/start-backtest/start.py --list-strategies
+python skills/start-backtest/backtest_monitor.py --list-strategies
 ```
 
 **✅ 正确做法**：
 ```bash
 # Agent使用自己的agentID获取token，再传递给脚本
 TOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人的agentID" '.users[] | select(.agentId == $agent_id) | .token')
-python skills/start-backtest/start.py --token "$TOKEN" --list-strategies
+python skills/start-backtest/backtest_monitor.py --token "$TOKEN" --list-strategies
 ```
 
 ### 📋 适用的所有Python脚本调用
@@ -79,10 +87,10 @@ python skills/start-backtest/start.py --token "$TOKEN" --list-strategies
 **必须使用token传递的命令**：
 ```bash
 # 查看策略组列表
-python skills/start-backtest/start.py --token "$TOKEN" --list-groups
+python skills/start-backtest/backtest_monitor.py --token "$TOKEN" --list-groups
 
 # 查看策略列表  
-python skills/start-backtest/start.py --token "$TOKEN" --list-strategies
+python skills/start-backtest/backtest_monitor.py --token "$TOKEN" --list-strategies
 
 # 查看回测详情
 python skills/start-backtest/start.py --token "$TOKEN" --detail 5906
@@ -444,14 +452,14 @@ Step 4: 用户回复时间范围后，执行回测
 ### 查看策略组列表
 
 ```bash
-python skills/start-backtest/start.py --list-groups
+python skills/start-backtest/backtest_monitor.py --list-groups --token <token>
 ```
 
 ### 查看策略列表
 
 ```bash
-python skills/start-backtest/start.py --list-strategies
-python skills/start-backtest/start.py --list-strategies --coin BTC --amt-type 2
+python skills/start-backtest/backtest_monitor.py --list-strategies --token <token>
+python skills/start-backtest/backtest_monitor.py --list-strategies --coin BTC --amt-type 2 --token <token>
 ```
 
 ### 单策略回测
@@ -755,10 +763,10 @@ python skills/start-backtest/start.py \
 
 ## 参数说明
 
-| 参数 | 说明 |
-|-----|-----|
-| `--list-groups` | 查看策略组列表 |
-| `--list-strategies` | 查看策略列表 |
+| 参数 | 说明 | 推荐使用 |
+|-----|-----|----------|
+| `--list-groups` | 查看策略组列表 | ⚠️ 使用backtest_monitor.py |
+| `--list-strategies` | 查看策略列表 | ⚠️ 使用backtest_monitor.py |
 | `--apply` | 启动回测 |
 | `--strategy-id` | 单策略的 ID |
 | `--strategy-ids` | 多策略的 IDs，逗号分隔 |
