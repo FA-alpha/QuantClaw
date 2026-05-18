@@ -801,7 +801,7 @@ python skills/start-backtest/start.py \
 | `--margin-allocation` | 策略组/多策略共享模式：各策略保证金分配比例，按顺序对应 |
 | `--bgn-date` | 开始日期 YYYY-MM-DD (系统自动转换用户的文字描述) |
 | `--end-date` | 结束日期 YYYY-MM-DD (系统自动转换用户的文字描述) |
-| `--leverage` | 杠杆倍数（合约必填，默认1.5） |
+| `--leverage` | 杠杆倍数（支持小数，如1.5、2.3等，默认1.5） |
 | `--init-balance` | 初始资金（默认10000） |
 | `--coin` | 筛选币种 |
 | `--amt-type` | 类型：1现货 2合约 |

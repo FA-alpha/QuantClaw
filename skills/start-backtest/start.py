@@ -221,7 +221,7 @@ def apply_backtest(
     bgn_date: str = None,
     end_date: str = None,
     init_balance: float = None,
-    leverage: int = None,
+    leverage: float = None,
     margin_mode: str = None,
     margin_allocation: str = None,
     data_type: int = 1,
@@ -796,7 +796,7 @@ def main():
     parser.add_argument("--bgn-date", help="开始日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--end-date", help="结束日期 YYYY-MM-DD（回测必填）")
     parser.add_argument("--init-balance", type=float, help="初始资金（默认10000）")
-    parser.add_argument("--leverage", type=int, help="杠杆倍数（合约必填）")
+    parser.add_argument("--leverage", type=float, help="杠杆倍数（支持小数，如1.5）")
     parser.add_argument("--margin-mode", choices=["exclusive", "shared"],
                         help="保证金模式: exclusive=独占, shared=共享")
     parser.add_argument("--margin-allocation",
@@ -980,7 +980,7 @@ def main():
             strategy_ids=args.strategy_ids,
             allocation_rules=allocation_rules,
             total_balance=args.total_balance,
-            leverage=1.5,  # 使用固定默认值
+            leverage=getattr(args, 'leverage', 1.5),  # 使用用户指定的杠杆倍数，默认1.5
             long_pct=args.long_pct,
             short_pct=args.short_pct
         )
