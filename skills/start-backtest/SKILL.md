@@ -39,6 +39,39 @@ TOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agent
 python skills/start-backtest/start.py --token "$TOKEN" [其他参数]
 ```
 
+## 🚨 参数与文件对应关系（Agent必须遵守）
+
+### backtest_monitor.py 专用参数
+```bash
+# ✅ 只能用于 backtest_monitor.py
+--list-groups          # 查询策略组列表  
+--list-strategies      # 查询策略列表
+--check-allocation     # 参数完整性检查
+--strategy-group-id    # 策略组ID（仅用于backtest_monitor.py）
+--detailed            # 详细信息模式
+
+# ❌ 不要用于 start.py - 会报错！
+```
+
+### start.py 专用参数  
+```bash
+# ✅ 只能用于 start.py
+--apply               # 启动回测
+--strategy-id         # 单个策略ID
+--strategy-ids        # 多个策略ID（逗号分隔）
+--bgn-date           # 开始日期
+--end-date           # 结束日期
+--leverage           # 杠杆倍数
+
+# ❌ start.py 不支持 --strategy-group-id 参数！
+```
+
+### 🚨 Agent常见错误
+- ❌ **错误**: `python start.py --strategy-group-id "XXX"` → 报错
+- ✅ **正确**: `python backtest_monitor.py --strategy-group-id "XXX"`
+- ❌ **错误**: `python backtest_monitor.py --apply` → 报错  
+- ✅ **正确**: `python start.py --apply`
+
 ### 📋 适用的所有Python脚本调用
 
 **必须使用token传递的命令**：
@@ -53,7 +86,7 @@ python skills/start-backtest/backtest_monitor.py --token "$TOKEN" --list-strateg
 python skills/start-backtest/start.py --token "$TOKEN" --detail 5906
 
 # 启动回测
-python skills/start-backtest/start.py --token "$TOKEN" --apply --strategy-ids 4300,4679 --bgn-date 2024-01-01 --end-date 2024-12-31 --leverage 10
+python skills/start-backtest/start.py --token "$TOKEN" --apply --strategy-ids ID列表 --bgn-date YYYY-MM-DD --end-date YYYY-MM-DD --leverage X
 ```
 
 ### ⚠️ 重要提醒
@@ -85,7 +118,7 @@ python skills/start-backtest/start.py --token "$TOKEN" --apply --strategy-ids 43
 # 优先使用策略组分析（包含完整AI时间信息）
 python skills/start-backtest/backtest_monitor.py \
   --check-allocation \
-  --strategy-group-id "115" \
+  --strategy-group-id "策略组ID" \
   --token <token>
 
 # 或使用策略ID列表分析
@@ -100,9 +133,9 @@ python skills/start-backtest/backtest_monitor.py \
 📊 策略分析结果:
   币种做多需求: ['DOGE', 'SOL']
   币种做空需求: ['BTC', 'SOL'] 
-  AI时间做多需求: ['2025年震荡']
-  AI时间做空需求: ['2025年震荡', '最近1年']
-  📊 AI时间ID映射: {"2025年震荡": "-6", "最近1年": "365"}
+  AI时间做多需求: ['{AI时间类型}']
+  AI时间做空需求: ['{AI时间类型}', '{AI时间类型}']
+  📊 AI时间ID映射: {"{AI时间类型}": "-6", "{AI时间类型}": "365"}
   是否需要AI时间参数: True
 ```
 
@@ -113,8 +146,8 @@ python skills/start-backtest/backtest_monitor.py \
 📊 SOL做多占比：？%  
 📊 BTC做空占比：？%
 📊 SOL做空占比：？%
-📊 2025年震荡占比：？%
-📊 最近1年占比：？%"
+📊 {AI时间类型}占比：？%
+📊 {AI时间类型}占比：？%"
 ```
 
 **🔄 策略变更触发重新分析：**
@@ -260,19 +293,19 @@ Agent高效处理：
    - 示例：BTC做空50%，DOGE做空50%，SOL做空20%
 
 3. **AI回测时间类型占比**
-   - 示例：2025年震荡70%，2025年牛市30%，最近1年40%
+   - 示例：{AI时间类型}70%，{AI时间类型}30%，{AI时间类型}40%
 
 **参数缺失时的询问流程：**
 ```
 我需要完整的保证金分配参数才能为您计算方案。
 
 当前策略涉及的币种：[BTC, DOGE, SOL]
-当前策略的时间类型：[2025年震荡, 2025年牛市]
+当前策略的时间类型：[{AI时间类型}, {AI时间类型}]
 
 请提供：
 📊 币种做多分配：BTC做多？%, DOGE做多？%, SOL做多？%
 📊 币种做空分配：BTC做空？%, DOGE做空？%, SOL做空？%  
-📊 时间类型分配：2025年震荡？%, 2025年牛市？%
+📊 时间类型分配：{AI时间类型}？%, {AI时间类型}？%
 ⏰ 回测时间范围：？（如2025年全年）
 
 所有参数收集完整后，我将调用calc_margin接口计算具体分配。
@@ -283,17 +316,17 @@ Agent高效处理：
 **🎯 用户指定策略+给出比例时的高效处理：**
 
 ```bash
-用户："回测策略组115，币资金占比是50%"
+用户："回测策略组XXX，币资金占比是XX%"
 
 Agent高效流程：
 1. 使用策略组ID分析参数需求：
    python skills/start-backtest/backtest_monitor.py \
-     --check-allocation --strategy-group-id "115" --token <token>
+     --check-allocation --strategy-group-id "策略组ID" --token <token>
      
 2. 获取分析结果（包含AI时间信息）：
    - 币种做多需求: ['DOGE', 'SOL']
    - 币种做空需求: ['BTC', 'SOL']
-   - AI时间类型需求: ['2025年震荡', '最近1年']
+   - AI时间类型需求: ['{AI时间类型}', '{AI时间类型}']
    
 3. 将50%应用到所有币种方向：
    - DOGE做多: 50%, SOL做多: 50%, BTC做空: 50%, SOL做空: 50%
@@ -372,9 +405,9 @@ Agent高效流程：
 - `最近2年` / `近2年` / `2年内`
 
 **具体日期范围:**
-- `2024-01-01 到 2024-12-31`
-- `2024-01-01至2024-12-31`
-- `从2024-01-01到2024-12-31`
+- `YYYY-MM-DD 到 YYYY-MM-DD`
+- `YYYY-MM-DD至YYYY-MM-DD`
+- `从YYYY-MM-DD到YYYY-MM-DD`
 
 ### 时间范围询问标准话术
 
@@ -384,7 +417,7 @@ Agent高效流程：
 
 📅 **支持以下格式:**
 • 文字描述：最近7天、最近30天、最近3个月、最近半年等
-• 具体日期：2024-01-01 到 2024-12-31
+• 具体日期：YYYY-MM-DD 到 YYYY-MM-DD
 
 请选择或输入您需要的时间范围：
 ```
@@ -395,7 +428,7 @@ Agent高效流程：
 
 📅 **支持格式:**
 1️⃣ **相对时间** - 最近7天、最近30天、最近3个月、最近半年
-2️⃣ **具体日期** - 2024-01-01 到 2024-12-31
+2️⃣ **具体日期** - YYYY-MM-DD 到 YYYY-MM-DD
 
 请输入您需要的时间范围：
 ```
@@ -410,16 +443,16 @@ Agent高效流程：
 **示例转换:**
 ```
 用户输入: "最近30天"
-当前日期: 2026-05-09
-转换结果: --bgn-date 2026-04-09 --end-date 2026-05-09
+当前日期: YYYY-MM-DD
+转换结果: --bgn-date 2026-04-09 --end-date YYYY-MM-DD
 
 用户输入: "最近3个月" 
-当前日期: 2026-05-09
-转换结果: --bgn-date 2026-02-09 --end-date 2026-05-09
+当前日期: YYYY-MM-DD
+转换结果: --bgn-date YYYY-MM-DD --end-date YYYY-MM-DD
 
 用户输入: "最近半年"
-当前日期: 2026-05-09  
-转换结果: --bgn-date 2025-11-09 --end-date 2026-05-09
+当前日期: YYYY-MM-DD  
+转换结果: --bgn-date YYYY-MM-DD --end-date YYYY-MM-DD
 ```
 
 **⚠️ 重要规则:**
@@ -463,9 +496,9 @@ Agent高效流程：
 
 **步骤1: 构建搜索关键词**
 ```
-用户："帮我用xx策略去回测25年下跌行情"
+用户："帮我用xx策略去回测XX年下跌行情"
 
-搜索关键词: "2025年 BTC ETH SOL DOGE 加密货币 下跌 暴跌 时间段 日期"
+搜索关键词: "{年份} BTC ETH SOL DOGE 加密货币 下跌 暴跌 时间段 日期"
 ```
 
 **步骤2: 主流币种列表**
@@ -497,23 +530,19 @@ Agent高效流程：
 
 **Agent搜索后展示格式:**
 ```
-🔍 根据搜索结果，2025年主要下跌行情时间段：
+🔍 根据搜索结果，{年份}年主要{行情类型}时间段：
 
-📉 **2025年下跌时间段选项：**
+📉 **{年份}年{行情类型}时间段选项：**
 
-1️⃣ **2025年2月15日-3月10日** (BTC跌幅约25%)
-   - 触发事件：监管政策变化
-   - 主要币种表现：BTC 95K→71K, ETH 3200→2400
+1️⃣ **YYYY年MM月DD日-MM月DD日** (主要币种跌幅约XX%)
+   - 触发事件：具体事件说明
+   - 主要币种表现：币种价格变化
 
-2️⃣ **2025年6月20日-7月15日** (BTC跌幅约18%)  
-   - 触发事件：市场调整
-   - 主要币种表现：BTC 88K→72K, SOL 180→145
+2️⃣ **YYYY年MM月DD日-MM月DD日** (主要币种跌幅约XX%)  
+   - 触发事件：具体事件说明
+   - 主要币种表现：币种价格变化
 
-3️⃣ **2025年9月5日-10月1日** (BTC跌幅约22%)
-   - 触发事件：宏观经济影响
-   - 主要币种表现：BTC 92K→72K, ETH 3100→2400
-
-请选择您要使用的回测时间段（回复数字1、2或3），或者您可以指定具体的日期范围。
+请选择您要使用的回测时间段（回复数字），或者您可以指定具体的日期范围。
 ```
 
 ### 🚨 Agent处理流程
@@ -544,10 +573,10 @@ Agent高效流程：
 python skills/start-backtest/backtest_monitor.py --list-groups --token <token>
 
 # 🎯 指定策略组简化查询
-python skills/start-backtest/backtest_monitor.py --list-groups --strategy-group-id "115" --token <token>
+python skills/start-backtest/backtest_monitor.py --list-groups --strategy-group-id "策略组ID" --token <token>
 
 # 🔧 回测时：详细信息（包含所有策略参数，用于analyze_strategies_for_allocation）
-python skills/start-backtest/backtest_monitor.py --list-groups --strategy-group-id "115" --detailed --token <token>
+python skills/start-backtest/backtest_monitor.py --list-groups --strategy-group-id "策略组ID" --detailed --token <token>
 ```
 
 ### 查看策略列表
@@ -557,10 +586,10 @@ python skills/start-backtest/backtest_monitor.py --list-groups --strategy-group-
 python skills/start-backtest/backtest_monitor.py --list-strategies --token <token>
 
 # 🎯 指定策略简化查询
-python skills/start-backtest/backtest_monitor.py --list-strategies --strategy-ids "4637,50737" --token <token>
+python skills/start-backtest/backtest_monitor.py --list-strategies --strategy-ids "策略ID列表" --token <token>
 
 # 🔧 回测时：详细信息（包含所有参数）
-python skills/start-backtest/backtest_monitor.py --list-strategies --strategy-ids "4637,50737" --detailed --token <token>
+python skills/start-backtest/backtest_monitor.py --list-strategies --strategy-ids "策略ID列表" --detailed --token <token>
 
 # 按条件筛选策略（简化信息）
 python skills/start-backtest/backtest_monitor.py --list-strategies --coin BTC --amt-type 2 --token <token>
@@ -582,8 +611,8 @@ python skills/start-backtest/backtest_monitor.py --list-strategies --coin BTC --
 python skills/start-backtest/start.py \
   --apply \
   --strategy-id <策略ID> \
-  --bgn-date 2024-01-01 \
-  --end-date 2024-12-31 \
+  --bgn-date YYYY-MM-DD \
+  --end-date YYYY-MM-DD \
   --leverage 10
 ```
 
@@ -594,8 +623,8 @@ python skills/start-backtest/start.py \
   --apply \
   --strategy-ids id1,id2,id3 \
   --margin-mode exclusive \
-  --bgn-date 2024-01-01 \
-  --end-date 2024-12-31 \
+  --bgn-date YYYY-MM-DD \
+  --end-date YYYY-MM-DD \
   --leverage 10
 ```
 
@@ -607,8 +636,8 @@ python skills/start-backtest/start.py \
   --strategy-ids id1,id2,id3 \
   --margin-mode shared \
   --margin-allocation 40,30,30 \
-  --bgn-date 2024-01-01 \
-  --end-date 2024-12-31 \
+  --bgn-date YYYY-MM-DD \
+  --end-date YYYY-MM-DD \
   --leverage 10
 ```
 
@@ -634,8 +663,8 @@ python skills/start-backtest/start.py \
   --apply \
   --strategy-ids id1,id2,id3,id4,id5,id6 \
   --margin-mode exclusive \
-  --bgn-date 2024-01-01 \
-  --end-date 2024-12-31 \
+  --bgn-date YYYY-MM-DD \
+  --end-date YYYY-MM-DD \
   --leverage 1.5
 ```
 
@@ -715,12 +744,12 @@ python skills/start-backtest/start.py \
 **第二步：按方向进行大组分类**
 ```
 📊 做多方向组
-  └─ 2025年震荡做多: 3个策略 (BTC, ETH, SOL)
+  └─ {AI时间类型}做多: 3个策略 (BTC, ETH, SOL)
   └─ 2024年震荡做多: 2个策略 (BTC, ETH)
   └─ 2025年趋势做多: 1个策略 (BTC)
 
 📊 做空方向组  
-  └─ 2025年震荡做空: 2个策略 (ETH, SOL)
+  └─ {AI时间类型}做空: 2个策略 (ETH, SOL)
   └─ 2024年趋势做空: 1个策略 (BTC)
 ```
 
@@ -735,12 +764,12 @@ python skills/start-backtest/start.py \
 python skills/start-backtest/start.py \
   --calc-margin \
   --strategy-ids 4300,4679,4680,4681 \
-  --sub-group-allocation '{"2025年震荡做多": 40, "2025年震荡做空": 30, "2024年趋势做多": 30}'
+  --sub-group-allocation '{"{AI时间类型}做多": 40, "{AI时间类型}做空": 30, "2024年趋势做多": 30}'
 ```
 
 **分组命名规则：**
 - 格式：`{时间}+{行情类型}+{方向}`
-- 示例：`2025年震荡做多`、`2024年趋势做空`
+- 示例：`{AI时间类型}做多`、`2024年趋势做空`
 
 ### 🗣️ Agent自然语言保证金分配解析规则
 
@@ -768,18 +797,18 @@ Agent解析为：
 
 **3. 按市场行情分配**
 ```
-用户："2025年震荡占60%，2025年牛市占40%"
+用户："{AI时间类型}占60%，{AI时间类型}占40%"
 
 Agent解析为：
---ai-time-allocation '{"2025年震荡": 60, "2025年牛市": 40}'
+--ai-time-allocation '{"{AI时间类型}": 60, "{AI时间类型}": 40}'
 ```
 
 **4. 按细分组分配**
 ```
-用户："2025年震荡做多40%，2025年震荡做空30%，2025年牛市做多30%"
+用户："{AI时间类型}做多40%，{AI时间类型}做空30%，{AI时间类型}做多30%"
 
 Agent解析为：
---sub-group-allocation '{"2025年震荡做多": 40, "2025年震荡做空": 30, "2025年牛市做多": 30}'
+--sub-group-allocation '{"{AI时间类型}做多": 40, "{AI时间类型}做空": 30, "{AI时间类型}做多": 30}'
 ```
 
 **🚨 Agent处理流程：**
@@ -800,7 +829,7 @@ Agent解析为：
 - **币种**: "BTC", "ETH", "DOGE", "SOL", "HYPE", "BCH", "XRP"等
 - **方向**: "做多", "做空", "long", "short"
 - **比例**: 数字+"%", "占", "分配"等
-- **市场行情**: "震荡", "牛市", "熊市", "2025年", "2024年", "最近1年"等
+- **市场行情**: "震荡", "牛市", "熊市", "2025年", "2024年", "{AI时间类型}"等
 
 **解析步骤：**
 1. **提取币种和比例**: 使用正则匹配"币种+数字+%"
@@ -842,8 +871,8 @@ Agent处理：
      --strategy-ids 4812,4929,50594,50652,50719,50720,50721 \
      --coin-long-allocation '{"BTC": 50, "DOGE": 40, "HYPE": 40}' \
      --coin-short-allocation '{"BTC": 50, "BCH": 40, "DOGE": 40, "HYPE": 40}' \
-     --ai-time-long-allocation '{"2025年震荡": 80}' \
-     --ai-time-short-allocation '{"2025年震荡": 50}'
+     --ai-time-long-allocation '{"{AI时间类型}": 80}' \
+     --ai-time-short-allocation '{"{AI时间类型}": 50}'
 
 ⚠️ 注意：BTC=50% + 其他=40%的总和超过100%是正常的！
 接口会自动按比例分配，Agent不需要调整用户明确指定的比例。
@@ -861,8 +890,8 @@ python skills/start-backtest/start.py \
   --strategy-ids id1,id2,id3,id4,id5,id6 \
   --margin-mode shared \
   --margin-allocation 18.5,14.8,11.1,14.8,18.5,22.2 \
-  --bgn-date 2024-01-01 \
-  --end-date 2024-12-31 \
+  --bgn-date YYYY-MM-DD \
+  --end-date YYYY-MM-DD \
   --leverage 1.5
 ```
 
@@ -956,56 +985,13 @@ python skills/start-backtest/start.py \
 ✅ 回测已提交
    回测ID: 5745
    策略: BTC/ETH/SOL 风霆V4.4-做多
-   时间范围: 2026-01-27 ~ 2026-04-27
+   时间范围: YYYY-MM-DD ~ YYYY-MM-DD
    保证金模式: 独占
 
 **回测已开始执行，请等待完成。**
 ```
 
 ⚠️ **回复完上述内容后必须立即停止，不要添加任何其他内容或询问！**
-
-**🔍 自动监控功能：**
-
-**触发关键词：**
-用户说出以下任何一个词时，才会去启动监控：
-- "需要" （回复"需要我等回测完成后帮你查看结果吗？"时）
-- "自动查看结果"
-- "帮我监控回测"
-- "回测完成后通知我"  
-- "自动监控"
-- "等回测完成后告诉我"
-- "监控"
-- "通知我"
-- "告诉我结果"
-
-**启动监控的完整流程：**
-
-当用户说"需要"、"监控"等关键词时：
-
-1. **立即回复：**
-```
-🔍 好的，我来为您监控回测 #<回测ID> 的状态！
-
-正在启动自动监控...
-```
-
-2. **执行监控脚本：**
-```bash
-# 使用相对路径调用当前技能目录下的脚本
-python skills/start-backtest/backtest_monitor.py --token <用户token> --back-id <回测ID> --daemon
-```
-
-3. **确认启动成功：**
-```
-✅ 监控已启动！
-• 每5秒检查一次回测状态  
-• 回测完成后会自动通知您结果
-• 包含详细的收益率、夏普比率、回撤等数据
-
-请耐心等待，我会在回测完成时第一时间通知您！
-```
-
-⚠️ **注意：监控脚本会在后台运行，完成后自动通过聊天通知用户结果**
 
 ---
 
@@ -1017,11 +1003,11 @@ python skills/start-backtest/backtest_monitor.py --token <用户token> --back-id
 
 **示例场景A：行情时间搜索**
 ```
-用户："帮我用策略组115回测2024年下跌行情"
+用户："帮我用策略组XXX回测某年下跌行情"
 
 Agent处理流程：
-1. ✅ 识别关键词：2024年 + 下跌行情
-2. ✅ 构建搜索关键词："2024年 BTC ETH SOL DOGE 加密货币 下跌 暴跌 时间段 日期"
+1. ✅ 识别关键词：年份 + 下跌行情
+2. ✅ 构建搜索关键词："{年份} BTC ETH SOL DOGE 加密货币 下跌 暴跌 时间段 日期"
 3. ✅ 执行websearch搜索相关时间段
 4. ✅ 分析搜索结果，提取具体时间段
 5. ✅ 格式化展示多个时间段选项给用户
@@ -1037,17 +1023,18 @@ Agent处理流程：
 
 **示例场景B：高效处理**
 ```
-用户："回测我这5条策略（策略ID: 4637,50722,50723,50724,50725），币资金占比是50%"
+用户："回测我这几条策略，币资金占比是XX%"
 
 Agent高效处理：
-1. ✅ 直接使用策略ID: 4637,50722,50723,50724,50725
-2. ✅ 调用analyze_strategies_for_allocation分析这些策略
-3. ✅ 发现需要：BTC做多、SOL做空、SOL做多参数
-4. ✅ 将50%应用到所有参数：BTC做多50%、SOL做空50%、SOL做多50%
-5. ✅ 检查AI时间参数：若有则询问AI时间占比，若无则询问回测时间
-6. ✅ 直接执行回测
+1. ✅ 直接使用用户指定的策略ID（不重复查询策略库）
+2. ✅ 调用analyze_strategies_for_allocation分析策略参数需求
+3. ✅ 将用户给的占比应用到所有分析出的参数上
+4. ✅ 检查是否需要AI时间参数：
+   - 如果有ai_time_id → 询问AI时间类型占比
+   - 如果没有 → 直接询问回测时间范围
+5. ✅ 执行回测
 
-❌ 错误做法：重新查询用户的策略库找策略
+❌ 错误做法：反复查询用户策略库造成token浪费
 ```
 
 **示例场景C：参数不明确时才详细询问**
@@ -1064,7 +1051,7 @@ Agent正确处理：
 - BTC做多占比：？%（策略包含BTC做多）
 - DOGE做空占比：？%（策略包含DOGE做空）  
 - SOL做多占比：？%（策略包含SOL做多）
-- 2025年震荡行情占比：？%（策略包含ai_time_id参数）
+- {AI时间类型}行情占比：？%（策略包含ai_time_id参数）
 
 ⏰ 回测时间范围：？
 
@@ -1084,13 +1071,13 @@ Agent正确处理：
 
 **❌ 错误的过度询问：**
 ```
-用户："回测策略组114，DOGE占60%，其他10%，震荡做多70%做空20%，2025年全年"
+用户："回测策略组XXX，DOGE占60%，其他10%，震荡做多70%做空20%，2025年全年"
 Agent错误回复："参数已收集完整，请确认是否现在开始回测？"  # 错误！
 ```
 
 **✅ 正确的直接执行：**
 ```
-用户："回测策略组114，DOGE占60%，其他10%，震荡做多70%做空20%，2025年全年"
+用户："回测策略组XXX，DOGE占60%，其他10%，震荡做多70%做空20%，2025年全年"
 Agent正确处理：
 1. ✅ 立即调用calc_margin获取分配方案
 2. ✅ 简要显示分配结果
