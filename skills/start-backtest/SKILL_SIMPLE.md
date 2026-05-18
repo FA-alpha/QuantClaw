@@ -11,10 +11,11 @@
 - ❌ 绝对不要使用历史对话中的时间信息
 - ✅ 每次回测都必须问用户要什么时间范围
 
-### 规则3：保证金分配不要拒绝用户输入
-- ❌ 不要说"总和超过100%"
-- ❌ 不要说"比例必须等于100%"
-- ✅ 用户输入什么比例就用什么比例
+### 规则3：智能处理保证金分配
+- ✅ **参数完整时直接执行**：不要反复询问"是否确认"
+- ✅ **参数不明确时主动询问**：提供已理解参数作为默认值
+- ✅ **理解自然语言**：将用户描述转换为具体参数
+- ❌ **不要制造参数**：只传递用户明确指定的参数
 
 ---
 
@@ -42,23 +43,34 @@
 
 ---
 
-## 🔢 保证金分配处理（重要）
+## 🔢 共享保证金分配处理（最新规则）
 
-### 用户输入保证金分配时的处理步骤：
+### 新的共享模式处理流程：
 
-**步骤1：接收用户输入**
-- 用户可能输入：50,50 或 100,100 或 60,40
-- ❌ 不要检查总和是否等于100%
-- ✅ 直接接受用户的输入
+**步骤1：理解用户自然语言**
+- 用户："BTC占60%，其他币种各20%"
+- 用户："DOGE多一点，SOL少一点" ← 需要询问具体数值
+- 用户："震荡做多70%，做空30%"
 
-**步骤2：理解含义**
-- 100,100 = 第1个策略10000保证金，第2个策略10000保证金
-- 50,50 = 第1个策略5000保证金，第2个策略5000保证金
-- 60,40 = 第1个策略6000保证金，第2个策略4000保证金
+**步骤2：判断参数完整性**
+- ✅ **参数完整**：直接调用calc_margin接口计算分配
+- ❌ **参数不明确**：询问具体数值（已理解的参数作为默认值）
 
-**步骤3：直接执行**
-- ❌ 不要说"总和超过100%"
-- ✅ 直接执行回测
+**步骤3：调用calc_margin接口**
+```bash
+python skills/start-backtest/start.py \
+  --calc-margin \
+  --strategy-ids 4920,50722,50723 \
+  --coin-long-allocation '{"DOGE": 60, "SOL": 20, "XRP": 20}' \
+  --coin-short-allocation '{"DOGE": 60, "SOL": 20, "XRP": 20}' \
+  --ai-time-long-allocation '{"2025年震荡": 70}' \
+  --ai-time-short-allocation '{"2025年震荡": 30}' \
+  --total-balance 10000
+```
+
+**步骤4：显示分配结果并执行回测**
+- ✅ 显示每个策略的具体保证金金额
+- ✅ 直接执行apply_backtest（不再询问"是否确认"）
 
 ---
 
@@ -85,16 +97,31 @@ python skills/start-backtest/start.py \
   --leverage 10
 ```
 
-### 多策略回测（共享）：
+### 多策略回测（共享，新流程）：
+
+**第1步：计算保证金分配**
+```bash
+python skills/start-backtest/start.py \
+  --calc-margin \
+  --strategy-ids id1,id2,id3 \
+  --coin-long-allocation '{"BTC": 60, "ETH": 40}' \
+  --ai-time-long-allocation '{"2025年震荡": 70}' \
+  --ai-time-short-allocation '{"2025年震荡": 30}' \
+  --total-balance 10000
+```
+
+**第2步：执行回测**
 ```bash
 python skills/start-backtest/start.py \
   --apply \
   --strategy-ids id1,id2,id3 \
   --margin-mode shared \
-  --margin-allocation 60,40 \
   --bgn-date 2024-01-01 \
   --end-date 2024-12-31 \
-  --leverage 10
+  --leverage 10 \
+  --coin-long-allocation '{"BTC": 60, "ETH": 40}' \
+  --ai-time-long-allocation '{"2025年震荡": 70}' \
+  --total-balance 10000
 ```
 
 ---
@@ -141,34 +168,73 @@ python skills/start-backtest/start.py \
 如果用户选1 → 跳过分配，直接问时间范围
 ```
 
-### 模板3：保证金分配
+### 模板3：智能保证金分配
+
+**情况1：用户提供完整参数**
 ```
-用户选择了共享模式后：
+用户："策略组114，DOGE占60%，其他10%，震荡做多70%做空30%，2025年全年"
+
+处理：
+1. ✅ 立即调用calc_margin接口
+2. ✅ 显示分配结果
+3. ✅ 直接执行回测（不询问确认）
+```
+
+**情况2：用户参数不明确**
+```
+用户："共享模式，BTC多一点，其他少一点"
 
 回复：
-请为策略分配保证金比例：
-- 策略4300：？%
-- 策略4679：？%
+已理解的参数：
+- 策略组：最新策略组114
+- 保证金模式：共享模式
 
-格式：60,40 或 100,100 或 50,50
+需要明确的参数：
+- BTC具体占比？（建议：40%, 50%, 60%）
+- 其他币种具体占比？
+- 市场行情分配？（震荡做多：？%, 震荡做空：？%）
+- 回测时间范围？
 
-用户输入任何数字 → 直接接受，不要检查总和
+等用户补充完整参数后 → 直接执行
 ```
 
 ---
 
+## 🔍 新增接口使用
+
+### 查询策略组列表：
+```bash
+python skills/start-backtest/backtest_monitor.py --list-groups --token <token>
+```
+
+### 查询策略列表：
+```bash
+# 查询所有策略
+python skills/start-backtest/backtest_monitor.py --list-strategies --token <token>
+
+# 按币种筛选
+python skills/start-backtest/backtest_monitor.py --list-strategies --coin BTC --token <token>
+
+# 按名称搜索
+python skills/start-backtest/backtest_monitor.py --list-strategies --name "做多" --token <token>
+```
+
 ## ❌ 绝对禁止的行为
 
 1. ❌ 说"总和必须为100%"
-2. ❌ 说"总和超过100%，请重新输入"
+2. ❌ 说"请确认是否开始回测？"（参数完整时）
 3. ❌ 问"需要我等回测完成吗？"
 4. ❌ 使用历史对话中的时间范围
-5. ❌ 在回测成功后继续询问任何问题
+5. ❌ 额外制造用户未提及的参数
+6. ❌ 在回测成功后继续询问任何问题
 
 ## ✅ 必须执行的行为
 
 1. ✅ 每次都询问时间范围
 2. ✅ 多策略必须询问保证金模式
-3. ✅ 接受用户的所有保证金分配输入
-4. ✅ 回测成功后立即结束对话
-5. ✅ 使用strategy-id参数（不是strategy-token）
+3. ✅ **参数完整立即执行**，不过度询问
+4. ✅ **参数不明确主动询问**，提供已理解参数
+5. ✅ 共享模式先调用calc_margin计算分配
+6. ✅ 回测成功后立即结束对话
+7. ✅ 使用strategy-id参数（不是strategy-token）
+8. ✅ 只传递用户明确指定的参数
