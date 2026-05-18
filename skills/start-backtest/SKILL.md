@@ -86,7 +86,65 @@ python skills/start-backtest/start.py --token "$TOKEN" [其他参数]
 - **分页查询** - 如果单页找不到，查询下一页
 - **最大尝试10次** - 防止无限循环
 
+**策略组查询优化：**
+- **策略组ID优先** - 使用策略组ID时，只查询Strategy/group_lists接口
+- **无需策略详情** - 策略组数据包含所需的ai_time_id等参数，无需再查询策略详情
+- **分页查询策略组** - 避免新建策略组在后面页数查不到
+- **用户友好提示** - 查询100条都没找到时，询问用户是扩大搜索还是策略组ID有误
+
+## 🚨 策略组回测优化规则（Agent必须遵守）
+
+### ✅ **Strategy/group_lists 接口已包含完整信息**
+
+**重要：Strategy/group_lists接口默认返回完整的strategy_lists详细信息！**
+
+**包含保证金配置所需的所有参数：**
+```json
+{
+  "id": "策略ID",
+  "coin": "币种 (BTC/ETH/SOL等)",
+  "direction": "方向 (long/short)",
+  "multiple_num": "杠杆倍数 (3)",
+  "ai_time_id": "AI时间ID (-6)",
+  "ai_time_name": "AI时间名称 (2025年震荡)",
+  "fst_capital": "首次资金",
+  "each_capital": "每次资金"
+}
+```
+
+### 🔧 **Agent优化策略**
+
+**✅ 正确做法：策略组回测时**
+1. **只调用一次** `backtest_monitor.py --list-groups --strategy-group-id "XXX"`
+2. **直接使用** 返回的strategy_lists数据进行保证金分配分析
+3. **不要再查询** 策略详情或策略列表接口
+
+**❌ 错误做法：重复查询**
+```bash
+# ❌ 错误：不要这样重复查询
+backtest_monitor.py --list-groups --strategy-group-id "113"  # 第1次
+backtest_monitor.py --list-strategies --strategy-ids "4929,50652,..."  # ❌ 多余的第2次查询！
+```
+
+**✅ 正确做法：一次查询**
+```bash
+# ✅ 正确：只需要一次查询
+backtest_monitor.py --list-groups --strategy-group-id "113"  # 已包含完整信息
+# 直接使用strategy_lists数据，不需要再查询！
+```
+
+### 📊 **效率对比**
+
+| 方式 | API调用次数 | 效率 |
+|------|------------|------|
+| ❌ 旧方式 | 1次策略组 + 1次策略详情 = 2次 | 低效 |
+| ✅ 优化方式 | 1次策略组 = 1次 | 高效 |
+
+**节省50%的API调用次数，提高回测启动速度！**
+
 **错误处理示例：**
+
+**策略ID查询失败：**
 ```
 如果返回"未找到指定的策略ID:"
 
@@ -97,6 +155,18 @@ Agent应该询问:
 3. 策略是否处于可用状态
 
 如果策略ID有误，请提供正确的策略ID"
+```
+
+**策略组ID查询失败：**
+```
+如果系统提示"查询了10页策略组仍未找到策略组ID: XXX"
+
+系统会询问:
+"请选择操作: 
+1) 扩大搜索范围(查询更多策略组)
+2) 重新确认策略组ID"
+
+Agent应该等待用户选择，不要自动重试
 ```
 
 ### 📋 适用的所有Python脚本调用

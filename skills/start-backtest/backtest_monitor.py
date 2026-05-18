@@ -775,23 +775,85 @@ def analyze_strategies_for_allocation(strategy_ids: List[str], token: str,
             selected_strategies = strategy_data
             print(f"🔍 使用策略组数据直接分析，策略数量: {len(selected_strategies)}")
         
-        # 如果有策略组ID，直接查询策略组获取完整数据
+        # 如果有策略组ID，优化查询策略组
         elif strategy_group_id:
-            groups_result = get_strategy_groups(token, limit=-1)
-            if groups_result.get("status") != 1:
-                raise Exception(f"获取策略组列表失败: {groups_result.get('msg', '未知错误')}")
-                
+            # 分页查询策略组，避免一次查询过多数据
+            page = 1
+            limit = 20
+            max_attempts = 10
+            attempts = 0
             target_group = None
-            for group in groups_result.get("info", []):
-                if str(group.get("id")) == str(strategy_group_id):
-                    target_group = group
+            
+            print(f"🔍 查询策略组ID: {strategy_group_id}")
+            
+            while not target_group and attempts < max_attempts:
+                print(f"[DEBUG] 策略组查询 - 页码:{page}, limit:{limit}")
+                groups_result = get_group_lists(token, page=page, limit=limit)
+                
+                if groups_result.get("status") != 1:
+                    print(f"[DEBUG] 策略组查询失败: {groups_result.get('msg', '未知错误')}")
                     break
                     
-            if not target_group:
+                groups = groups_result.get("info", [])
+                print(f"[DEBUG] 获取到 {len(groups)} 个策略组")
+                
+                # 查找目标策略组
+                for group in groups:
+                    if str(group.get("id")) == str(strategy_group_id):
+                        target_group = group
+                        print(f"[DEBUG] 找到目标策略组: {strategy_group_id}")
+                        break
+                
+                # 如果找到了目标策略组，退出循环
+                if target_group:
+                    break
+                
+                # 如果这一页没找到，尝试下一页或增加limit
+                if len(groups) == 0:
+                    # 没有更多数据了
+                    break
+                elif len(groups) < limit:
+                    # 已经是最后一页了
+                    break
+                else:
+                    # 还有更多数据，查询下一页
+                    page += 1
+                
+                attempts += 1
+            
+            # 如果查询了很多页还没找到，询问用户
+            if not target_group and attempts >= max_attempts:
+                print(f"\n❌ 查询了 {max_attempts} 页策略组仍未找到策略组ID: {strategy_group_id}")
+                print(f"📋 请确认:")
+                print(f"   1. 策略组ID是否正确: {strategy_group_id}")
+                print(f"   2. 该策略组是否属于当前账号")
+                print(f"   3. 是否需要扩大搜索范围(查询更多页)")
+                
+                # 询问用户是否扩大搜索范围
+                user_choice = input("\n请选择操作: \n1) 扩大搜索范围(查询更多策略组)\n2) 重新确认策略组ID\n请输入 1 或 2: ").strip()
+                
+                if user_choice == "1":
+                    print("🔄 扩大搜索范围，查询更多策略组...")
+                    groups_result = get_group_lists(token, page=1, limit=500)
+                    if groups_result.get("status") == 1:
+                        groups = groups_result.get("info", [])
+                        for group in groups:
+                            if str(group.get("id")) == str(strategy_group_id):
+                                target_group = group
+                                print(f"✅ 扩大范围后找到策略组: {strategy_group_id}")
+                                break
+                
+                if not target_group:
+                    raise Exception(f"未找到策略组ID: {strategy_group_id}，请检查策略组ID是否正确")
+                
+            elif not target_group:
                 raise Exception(f"未找到策略组ID: {strategy_group_id}")
                 
             selected_strategies = target_group.get("strategy_lists", [])
-            print(f"🔍 从策略组{strategy_group_id}获取策略数据，策略数量: {len(selected_strategies)}")
+            print(f"✅ 从策略组{strategy_group_id}获取策略数据，策略数量: {len(selected_strategies)}")
+            
+            # 策略组数据就足够了，不需要再查询策略详情
+            print(f"💡 使用策略组数据，无需查询策略详情")
         
         # 最后才使用策略列表查询（效率较低）
         else:
@@ -998,6 +1060,28 @@ def format_missing_params_message(requirement: AllocationRequirement,
         message_parts.append(f"  AI时间做空：{', '.join(requirement.ai_time_short_types)}")
     
     return "\n".join(message_parts)
+
+
+def get_group_lists(token: str, page: int = 1, limit: int = 10) -> dict:
+    """
+    查看策略组列表
+    
+    API: POST /Strategy/group_lists
+    """
+    url = f"{API_BASE}/Strategy/group_lists"
+    data = {
+        "usertoken": token,
+        "page": page,
+        "limit": limit,
+        "app_v": "2.0.0"
+    }
+    
+    try:
+        resp = requests.post(url, data=data, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        return {"error": str(e)}
 
 
 def get_user_strategies(token: str, page: int = 1, limit: int = -1, search_val: str = None, 
