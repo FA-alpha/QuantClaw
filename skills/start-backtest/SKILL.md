@@ -82,9 +82,13 @@ python skills/start-backtest/start.py --token "$TOKEN" [其他参数]
 **🔥 重要：回测必须分两步执行，不能跳过任何步骤！**
 
 **步骤1️⃣：计算保证金分配（必须先执行）**
+
+**🔥 重要：Agent必须使用从策略组查询返回的实际策略ID！**
+
 ```bash
+# 例如：策略组查询返回的实际ID是 50737,50738,4637,50739,50740
 python3 skills/start-backtest/start.py --calc-margin \
-  --strategy-ids "策略ID列表" \
+  --strategy-ids "50737,50738,4637,50739,50740" \  # 必须使用查询返回的实际ID！
   --coin-long-allocation '{"BTC": 30, "ETH": 40}' \
   --coin-short-allocation '{"SOL": 50}' \
   --ai-time-long-allocation '{"某时间类型": 60}' \
@@ -207,6 +211,31 @@ python3 skills/start-backtest/start.py --apply \
 
 ## 🚨 策略组回测优化规则（Agent必须遵守）
 
+### ⚠️ **策略ID使用规则（绝对不能犯错！）**
+
+**🔥 关键规则：Agent必须使用从查询结果返回的实际策略ID！**
+
+**✅ 正确流程：**
+1. **查询策略组** → 获取`strategy_lists`中的实际ID
+2. **提取策略ID** → 从返回结果中提取`id`字段  
+3. **使用提取的ID** → 在保证金计算中使用这些ID
+
+**❌ 绝对禁止：**
+- ❌ 使用记忆中的策略ID
+- ❌ 使用之前对话的策略ID  
+- ❌ 自己编造或猜测策略ID
+- ❌ 使用不是当前查询返回的任何ID
+
+**🔧 实际示例：**
+```bash
+# ✅ 正确：使用查询返回的实际ID
+策略组115返回: {"strategy_lists": [{"id": "50737"}, {"id": "50738"}, {"id": "4637"}...]}
+Agent使用: --strategy-ids "50737,50738,4637,50739,50740"
+
+# ❌ 错误：使用不存在的ID  
+Agent错误使用: --strategy-ids "51732,51733,51734,51735,51736"  # 这些ID不存在！
+```
+
 ### ✅ **Strategy/group_lists 接口已包含完整信息**
 
 **重要：Strategy/group_lists接口默认返回完整的strategy_lists详细信息！**
@@ -303,6 +332,23 @@ Agent必须：
 Agent必须使用：
 --ai-time-long-allocation '{"做多时间类型": 占比}'
 --ai-time-short-allocation '{"做空时间类型": 占比}'
+```
+
+**🚨 策略ID不存在错误（最常见）：**
+```
+如果报错"未找到指定的策略ID: 51732,51733,51734,51735,51736"
+
+❌ 原因：Agent使用了错误的策略ID，这些ID不存在于当前账号
+
+✅ 解决方案：
+1. 重新查询策略组获取正确的策略ID
+2. 从strategy_lists中提取实际的id字段
+3. 使用提取的实际ID，不要使用记忆或缓存的ID
+
+正确流程：
+步骤1：查询策略组 → 获取 {"strategy_lists": [{"id": "50737"}...]}
+步骤2：提取ID → ["50737", "50738", "4637", "50739", "50740"]  
+步骤3：使用实际ID → --strategy-ids "50737,50738,4637,50739,50740"
 ```
 
 ### 📋 适用的所有Python脚本调用
