@@ -372,7 +372,7 @@ def main():
     parser.add_argument("--list-groups", action="store_true", help="查询用户策略组列表")
     parser.add_argument("--list-strategies", action="store_true", help="查询用户策略列表")
     parser.add_argument("--page", type=int, default=1, help="页码（默认1）")
-    parser.add_argument("--limit", type=int, default=1000, help="每页数量（默认1000，不限制）")
+    parser.add_argument("--limit", type=int, default=-1, help="每页数量（默认-1，获取全部）")
     parser.add_argument("--name", help="策略名称搜索")
     parser.add_argument("--coin", help="币种筛选")
     parser.add_argument("--amt-type", help="类型筛选: 1现货 2合约")
@@ -473,7 +473,7 @@ def main():
 # 新增接口函数：Strategy/group_lists 和 Strategy/lists
 # ========================================
 
-def get_strategy_groups(token: str, page: int = 1, limit: int = 1000) -> dict:
+def get_strategy_groups(token: str, page: int = 1, limit: int = -1) -> dict:
     """
     查询用户当前策略组列表 - Strategy/group_lists接口
     
@@ -513,7 +513,7 @@ def get_strategy_groups(token: str, page: int = 1, limit: int = 1000) -> dict:
         return {"status": "error", "message": error_msg}
 
 
-def get_user_strategies(token: str, page: int = 1, limit: int = 1000, search_val: str = None, 
+def get_user_strategies(token: str, page: int = 1, limit: int = -1, search_val: str = None, 
                        search_coin: str = None, amt_type: str = None, search_status: str = None) -> dict:
     """
     查询用户当前策略列表 - Strategy/lists接口

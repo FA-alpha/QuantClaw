@@ -1075,12 +1075,12 @@ Agent回复："收到！正在按您的分配方案执行回测..."
 # 查询策略组列表
 python skills/start-backtest/backtest_monitor.py --list-groups --token <token>
 
-# 分页查询（通常不需要，默认已返回1000条）
-python skills/start-backtest/backtest_monitor.py --list-groups --page 2 --limit 50 --token <token>
+# 分页查询（通常不需要，默认已返回全部）
+python skills/start-backtest/backtest_monitor.py --list-groups --page 1 --limit 10 --token <token>
 ```
 
 **Agent使用原则：**
-- ✅ **用户未指定页码/数量时，使用默认值（page=1, limit=1000，基本不限制）**
+- ✅ **用户未指定页码/数量时，使用默认值（page=1, limit=-1，获取全部）**
 - ❌ **不要额外制造搜索参数**
 - ✅ **直接返回接口结果**
 
@@ -1114,7 +1114,7 @@ python skills/start-backtest/backtest_monitor.py --list-strategies --coin DOGE -
 - ✅ **只传递用户明确指定的参数**
 - ❌ **不要制造用户未提及的筛选条件**
 - ✅ **理解自然语言并转换为对应参数**
-- ✅ **默认参数：page=1, limit=1000（基本不限制查询数量）**
+- ✅ **默认参数：page=1, limit=-1（获取全部数据）**
 
 ### 🎯 **Agent参数映射规则**
 
