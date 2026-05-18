@@ -53,24 +53,137 @@ python skills/start-backtest/start.py --token "$TOKEN" [其他参数]
 # ❌ 不要用于 start.py - 会报错！
 ```
 
-### start.py 专用参数  
+### start.py 支持的参数  
 ```bash
-# ✅ 只能用于 start.py
---apply               # 启动回测
---strategy-id         # 单个策略ID
+# ✅ 查询和计算参数
+--calc-margin         # 保证金计算（必须先执行）
 --strategy-ids        # 多个策略ID（逗号分隔）
---bgn-date           # 开始日期
---end-date           # 结束日期
+--coin-long-allocation     # 币种做多分配（JSON格式）
+--coin-short-allocation    # 币种做空分配（JSON格式）
+--ai-time-long-allocation  # AI时间做多分配（JSON格式）
+--ai-time-short-allocation # AI时间做空分配（JSON格式）
+--total-balance       # 总保证金
 --leverage           # 杠杆倍数
+
+# ✅ 回测执行参数  
+--apply              # 启动回测（在calc-margin之后）
+--margin-mode        # 保证金模式（shared/exclusive）
+--margin-allocation  # 具体保证金金额（来自calc-margin结果）
+--bgn-date          # 开始日期
+--end-date          # 结束日期
 
 # ❌ start.py 不支持 --strategy-group-id 参数！
 ```
 
-### 🚨 Agent常见错误和处理
-- ❌ **错误**: `python start.py --strategy-group-id "XXX"` → 报错
-- ✅ **正确**: `python backtest_monitor.py --strategy-group-id "XXX"`
-- ❌ **错误**: `python backtest_monitor.py --apply` → 报错  
-- ✅ **正确**: `python start.py --apply`
+## 🚨 **关键执行流程（Agent必须遵守，不能跳过步骤）**
+
+### 📋 **两步式回测流程（强制执行）**
+
+**🔥 重要：回测必须分两步执行，不能跳过任何步骤！**
+
+**步骤1️⃣：计算保证金分配（必须先执行）**
+```bash
+python3 skills/start-backtest/start.py --calc-margin \
+  --strategy-ids "策略ID列表" \
+  --coin-long-allocation '{"BTC": 30, "ETH": 40}' \
+  --coin-short-allocation '{"SOL": 50}' \
+  --ai-time-long-allocation '{"某时间类型": 60}' \
+  --ai-time-short-allocation '{"某时间类型": 40}' \
+  --total-balance 10000 \
+  --leverage 1.5 \
+  --long-pct 90 \
+  --short-pct 20
+```
+
+**步骤2️⃣：执行回测（使用步骤1的结果）**
+```bash
+python3 skills/start-backtest/start.py --apply \
+  --strategy-ids "策略ID列表" \
+  --margin-mode shared \
+  --margin-allocation "金额1,金额2,金额3" \  # 来自步骤1计算结果
+  --bgn-date YYYY-MM-DD \
+  --end-date YYYY-MM-DD \
+  --leverage 1.5
+```
+
+### 🚨 **Agent常见错误和处理**
+
+**❌ 错误1：参数名错误**
+```bash
+# ❌ 错误：不存在的参数
+--ai-time-allocation '{"类型": 50}'
+
+# ✅ 正确：必须区分做多做空
+--ai-time-long-allocation '{"类型": 50}'
+--ai-time-short-allocation '{"类型": 30}'
+```
+
+**❌ 错误2：跳过calc-margin步骤**
+```bash
+# ❌ 错误：直接执行apply，没有--margin-allocation
+python3 start.py --apply --strategy-ids "..." --margin-mode shared
+
+# ✅ 正确：必须先calc-margin，再apply
+# 步骤1：python3 start.py --calc-margin ...
+# 步骤2：python3 start.py --apply --margin-allocation "结果"
+```
+
+**❌ 错误3：文件参数混用**
+```bash
+# ❌ 错误：start.py不支持strategy-group-id
+python3 start.py --strategy-group-id "XXX"
+
+# ✅ 正确：用backtest_monitor.py查询策略组
+python3 backtest_monitor.py --list-groups --strategy-group-id "XXX"
+```
+
+## 🔧 **AI时间分配参数详解**
+
+### 📊 **参数格式要求**
+
+**AI时间分配必须区分方向：**
+```bash
+# ✅ 正确格式
+--ai-time-long-allocation '{"2025年震荡": 60, "最近1年": 40}'
+--ai-time-short-allocation '{"2025年牛市": 50, "2024年趋势": 30}'
+
+# ❌ 错误格式 - 不存在此参数
+--ai-time-allocation '{"混合": 50}'  # 报错！
+```
+
+**JSON格式要求：**
+- ✅ **键名**：使用中文AI时间名称（如"2025年震荡"、"最近1年"）
+- ✅ **值**：整数百分比（如60、40、30）
+- ✅ **引号**：使用单引号包围JSON，双引号包围键名
+
+### 📋 **完整参数示例**
+
+**计算保证金的完整命令：**
+```bash
+python3 skills/start-backtest/start.py --calc-margin \
+  --strategy-ids "50599,50675,50701,50676,50678" \
+  --coin-long-allocation '{"BCH": 25, "DOGE": 25, "SOL": 25, "XRP": 25}' \
+  --coin-short-allocation '{"HYPE": 100}' \
+  --ai-time-long-allocation '{"2025年熊市": 50, "最近1年": 50}' \
+  --ai-time-short-allocation '{"2025年牛市": 100}' \
+  --total-balance 10000 \
+  --leverage 1.5 \
+  --long-pct 90 \
+  --short-pct 20 \
+  --token "用户token"
+```
+
+**执行回测的完整命令：**
+```bash
+python3 skills/start-backtest/start.py --apply \
+  --strategy-ids "50599,50675,50701,50676,50678" \
+  --margin-mode shared \
+  --margin-allocation "2250,2250,2250,1125,2125" \
+  --bgn-date 2024-09-01 \
+  --end-date 2024-12-01 \
+  --leverage 1.5 \
+  --token "用户token"
+```
 
 ### 📊 策略查询失败处理规则
 
@@ -167,6 +280,29 @@ Agent应该询问:
 2) 重新确认策略组ID"
 
 Agent应该等待用户选择，不要自动重试
+```
+
+**共享模式参数错误：**
+```
+如果报错"共享模式需要 --margin-allocation 参数"
+
+原因：Agent跳过了calc-margin步骤，直接执行apply
+
+Agent必须：
+1. 先执行 --calc-margin 计算保证金
+2. 从计算结果中提取具体金额
+3. 再执行 --apply 并使用 --margin-allocation "具体金额"
+```
+
+**AI时间参数名错误：**
+```
+如果报错"unrecognized arguments: --ai-time-allocation"
+
+原因：参数名错误，不存在--ai-time-allocation
+
+Agent必须使用：
+--ai-time-long-allocation '{"做多时间类型": 占比}'
+--ai-time-short-allocation '{"做空时间类型": 占比}'
 ```
 
 ### 📋 适用的所有Python脚本调用
