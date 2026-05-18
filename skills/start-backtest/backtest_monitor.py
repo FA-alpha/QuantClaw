@@ -367,6 +367,16 @@ def main():
     parser.add_argument("--back-id", help="单个回测ID")
     parser.add_argument("--back-ids", help="多个回测ID，逗号分隔")
     parser.add_argument("--daemon", action="store_true", help="后台守护模式")
+    
+    # 新增接口查询选项
+    parser.add_argument("--list-groups", action="store_true", help="查询用户策略组列表")
+    parser.add_argument("--list-strategies", action="store_true", help="查询用户策略列表")
+    parser.add_argument("--page", type=int, default=1, help="页码（默认1）")
+    parser.add_argument("--limit", type=int, default=10, help="每页数量（默认10）")
+    parser.add_argument("--name", help="策略名称搜索")
+    parser.add_argument("--coin", help="币种筛选")
+    parser.add_argument("--amt-type", help="类型筛选: 1现货 2合约")
+    parser.add_argument("--status", help="状态筛选")
     parser.add_argument("--list", action="store_true", help="列出当前监控")
     parser.add_argument("--verbose", "-v", action="store_true", help="详细日志")
     
@@ -382,6 +392,28 @@ def main():
             print("  2. templates/users.json")
             sys.exit(1)
         print(f"[INFO] 自动获取到token: {args.token[:20]}...")
+    
+    # 处理新增的接口查询
+    if args.list_groups:
+        print(f"[INFO] 查询策略组列表（第{args.page}页，每页{args.limit}条）")
+        result = get_strategy_groups(args.token, args.page, args.limit)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+        
+    if args.list_strategies:
+        print(f"[INFO] 查询策略列表（第{args.page}页，每页{args.limit}条）")
+        # 只传递用户明确指定的参数，不额外制造参数
+        result = get_user_strategies(
+            token=args.token,
+            page=args.page, 
+            limit=args.limit,
+            search_val=args.name if args.name else None,
+            search_coin=args.coin if args.coin else None,
+            amt_type=args.amt_type if args.amt_type else None,
+            search_status=args.status if args.status else None
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
     
     # 配置日志级别
     if args.verbose:
@@ -436,6 +468,105 @@ def main():
     finally:
         manager.stop_all()
         print("👋 监控系统已退出")
+
+# ========================================
+# 新增接口函数：Strategy/group_lists 和 Strategy/lists
+# ========================================
+
+def get_strategy_groups(token: str, page: int = 1, limit: int = 10) -> dict:
+    """
+    查询用户当前策略组列表 - Strategy/group_lists接口
+    
+    Args:
+        token: 用户登录token
+        page: 页码（默认1）
+        limit: 每页数量（默认10）
+    
+    Returns:
+        dict: API响应数据，包含策略组列表
+    """
+    url = f"{API_BASE}/Strategy/group_lists"
+    data = {
+        "usertoken": token,
+        "app_v": "2.0.0", 
+        "lang": 1,
+        "page": page,
+        "limit": limit
+    }
+    
+    try:
+        resp = requests.post(url, data=data, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        
+        # 检查认证状态
+        if result.get("status") == 0:
+            error_msg = result.get("info", "未知错误")
+            print(f"[ERROR] Strategy/group_lists API错误: {error_msg}")
+            return {"status": "error", "message": error_msg}
+            
+        return result
+        
+    except requests.RequestException as e:
+        error_msg = f"查询策略组列表失败: {e}"
+        print(f"[ERROR] {error_msg}")
+        return {"status": "error", "message": error_msg}
+
+
+def get_user_strategies(token: str, page: int = 1, limit: int = 10, search_val: str = None, 
+                       search_coin: str = None, amt_type: str = None, search_status: str = None) -> dict:
+    """
+    查询用户当前策略列表 - Strategy/lists接口
+    
+    Args:
+        token: 用户登录token
+        page: 页码（默认1）
+        limit: 每页数量（默认10）
+        search_val: 策略名称搜索（可选）
+        search_coin: 币种筛选（可选）
+        amt_type: 类型筛选，1=现货 2=合约（可选）
+        search_status: 状态筛选（可选）
+    
+    Returns:
+        dict: API响应数据，包含策略列表
+    """
+    url = f"{API_BASE}/Strategy/lists"
+    data = {
+        "usertoken": token,
+        "app_v": "2.0.0",
+        "lang": 1, 
+        "page": page,
+        "limit": limit
+    }
+    
+    # 只添加用户明确指定的可选参数，Agent不要额外制造参数
+    if search_val is not None:
+        data["search_val"] = search_val
+    if search_coin is not None:
+        data["search_coin"] = search_coin
+    if amt_type is not None:
+        data["amt_type"] = amt_type
+    if search_status is not None:
+        data["search_status"] = search_status
+    
+    try:
+        resp = requests.post(url, data=data, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        
+        # 检查认证状态
+        if result.get("status") == 0:
+            error_msg = result.get("info", "未知错误")
+            print(f"[ERROR] Strategy/lists API错误: {error_msg}")
+            return {"status": "error", "message": error_msg}
+            
+        return result
+        
+    except requests.RequestException as e:
+        error_msg = f"查询策略列表失败: {e}"
+        print(f"[ERROR] {error_msg}")
+        return {"status": "error", "message": error_msg}
+
 
 if __name__ == "__main__":
     main()

@@ -1056,3 +1056,102 @@ Agent回复："收到！正在按您的分配方案执行回测..."
 - ❌ **禁止无意义的"是否确认"询问**  
 - ✅ **提高执行效率，减少冗余交互**
 
+
+
+---
+
+## 📋 新增接口使用指南
+
+### 🔍 **何时使用Strategy/group_lists接口**
+
+**使用场景：**
+- ✅ 用户询问"我有哪些策略组？"
+- ✅ 用户说"查看我的策略组"
+- ✅ 用户要求"列出策略组"
+- ✅ 需要获取最新策略组信息时
+
+**调用方式：**
+```bash
+# 查询策略组列表
+python skills/start-backtest/backtest_monitor.py --list-groups --token <token>
+
+# 分页查询
+python skills/start-backtest/backtest_monitor.py --list-groups --page 2 --limit 20 --token <token>
+```
+
+**Agent使用原则：**
+- ✅ **用户未指定页码/数量时，使用默认值**
+- ❌ **不要额外制造搜索参数**
+- ✅ **直接返回接口结果**
+
+### 📊 **何时使用Strategy/lists接口**
+
+**使用场景：**
+- ✅ 用户询问"我有哪些策略？"
+- ✅ 用户说"查看BTC策略"（指定币种）
+- ✅ 用户要求"找名字包含XXX的策略"（指定搜索）
+- ✅ 需要筛选特定条件的策略时
+
+**调用方式：**
+```bash
+# 查询所有策略
+python skills/start-backtest/backtest_monitor.py --list-strategies --token <token>
+
+# 按币种筛选
+python skills/start-backtest/backtest_monitor.py --list-strategies --coin BTC --token <token>
+
+# 按名称搜索
+python skills/start-backtest/backtest_monitor.py --list-strategies --name "做多" --token <token>
+
+# 按类型筛选（1=现货，2=合约）
+python skills/start-backtest/backtest_monitor.py --list-strategies --amt-type 2 --token <token>
+
+# 组合筛选
+python skills/start-backtest/backtest_monitor.py --list-strategies --coin DOGE --name "震荡" --page 1 --limit 5 --token <token>
+```
+
+**Agent使用原则：**
+- ✅ **只传递用户明确指定的参数**
+- ❌ **不要制造用户未提及的筛选条件**
+- ✅ **理解自然语言并转换为对应参数**
+- ✅ **默认参数：page=1, limit=10**
+
+### 🎯 **Agent参数映射规则**
+
+**自然语言 → 参数映射：**
+```
+"查看BTC策略" → --coin BTC
+"找做多的策略" → --name "做多"  
+"合约策略" → --amt-type 2
+"现货策略" → --amt-type 1
+"第二页" → --page 2
+"显示20个" → --limit 20
+"活跃的策略" → --status <对应状态值>
+```
+
+**🚨 关键原则：**
+- ✅ **Agent只理解用户自然语言，填入相应参数**
+- ❌ **绝对不要额外制造参数乱填**
+- ✅ **用户没说的参数就不要传**
+- ✅ **保持接口调用简洁明确**
+
+### 📝 **使用示例**
+
+**用户："我有哪些策略组？"**
+```bash
+Agent调用：
+python skills/start-backtest/backtest_monitor.py --list-groups --token <token>
+```
+
+**用户："查看我的DOGE策略，要合约的"**
+```bash
+Agent调用：
+python skills/start-backtest/backtest_monitor.py --list-strategies --coin DOGE --amt-type 2 --token <token>
+```
+
+**用户："找名字里有震荡的策略"**
+```bash
+Agent调用：
+python skills/start-backtest/backtest_monitor.py --list-strategies --name "震荡" --token <token>
+```
+
