@@ -77,6 +77,8 @@ class BacktestInfo:
     strategy_num: str = "1"
     bgn_date: str = ""
     end_date: str = ""
+    create_time: str = ""
+    update_time: str = ""
 
 class BacktestMonitor:
     """单个回测监控器"""
@@ -149,7 +151,8 @@ class BacktestMonitor:
             return None
     
     @staticmethod
-    def get_backtest_list(token: str, back_id: str = None, limit: int = None, offset: int = None) -> Optional[List[BacktestInfo]]:
+    def get_backtest_list(token: str, back_id: str = None, limit: int = None, offset: int = None, 
+                         filter_name: str = None, filter_days: int = None, filter_status: str = None) -> Optional[List[BacktestInfo]]:
         """查询回测列表
         
         Args:
@@ -157,6 +160,9 @@ class BacktestMonitor:
             back_id: 可选，指定回测ID查询单个回测
             limit: 可选，返回条数限制
             offset: 可选，偏移量，用于分页
+            filter_name: 可选，按策略名称筛选
+            filter_days: 可选，按最近天数筛选
+            filter_status: 可选，按回测状态筛选
             
         Returns:
             回测信息列表，失败时返回None
@@ -199,14 +205,80 @@ class BacktestMonitor:
                     trade_num=raw_info.get('trade_num', 'N/A'),
                     strategy_num=raw_info.get('strategy_num', '1'),
                     bgn_date=raw_info.get('bgn_date', ''),
-                    end_date=raw_info.get('end_date', '')
+                    end_date=raw_info.get('end_date', ''),
+                    create_time=raw_info.get('create_time', ''),
+                    update_time=raw_info.get('update_time', '')
                 )
+                
+                # 应用过滤条件
+                if filter_name and filter_name.lower() not in backtest_info.name.lower():
+                    continue
+                    
+                if filter_status and backtest_info.status != filter_status:
+                    continue
+                    
+                if filter_days:
+                    from datetime import datetime, timedelta
+                    try:
+                        # 解析创建时间
+                        if backtest_info.create_time:
+                            create_dt = datetime.strptime(backtest_info.create_time, "%Y-%m-%d %H:%M:%S")
+                            cutoff_dt = datetime.now() - timedelta(days=filter_days)
+                            if create_dt < cutoff_dt:
+                                continue
+                    except:
+                        # 如果时间解析失败，跳过该筛选
+                        pass
+                
                 backtest_list.append(backtest_info)
                 
             return backtest_list
             
         except requests.RequestException as e:
             print(f"❌ 查询回测列表失败: {e}")
+            return None
+    
+    @staticmethod
+    def get_backtest_detail(token: str, back_id: str) -> Optional[dict]:
+        """获取回测详细信息
+        
+        Args:
+            token: 用户token
+            back_id: 回测ID
+            
+        Returns:
+            回测详细信息字典，失败时返回None
+        """
+        url = f"{API_BASE}/Backtrack/stat_info"
+        data = {
+            "usertoken": token,
+            "back_id": back_id
+        }
+        
+        try:
+            resp = requests.post(url, data=data, timeout=30)
+            resp.raise_for_status()
+            result = resp.json()
+            
+            # 检查认证状态
+            if result.get("status") == 0:
+                print(f"❌ API错误: {result.get('info', '未知错误')}")
+                return None
+            
+            if result.get("status") != 1:
+                print(f"❌ 获取回测详细信息失败: {result}")
+                return None
+            
+            info = result.get("info", {})
+            
+            # 过滤掉net_value参数，避免上下文爆炸
+            if "net_value" in info:
+                del info["net_value"]
+            
+            return info
+            
+        except requests.RequestException as e:
+            print(f"❌ 获取回测详细信息失败: {e}")
             return None
             
     def _format_notification_message(self, info: BacktestInfo) -> str:
@@ -456,6 +528,14 @@ def main():
     parser.add_argument("--limit", type=int, default=-1, help="每页数量（默认-1，获取全部）")
     parser.add_argument("--offset", type=int, help="偏移量，用于分页")
     
+    # 回测列表过滤参数  
+    parser.add_argument("--filter-name", help="按策略名称筛选（支持模糊匹配）")
+    parser.add_argument("--filter-days", type=int, help="按最近天数筛选（如：7表示最近7天）")
+    parser.add_argument("--filter-status", help="按回测状态筛选（1=排队, 2=运行中, 3=成功, 4=失败）")
+    
+    # 回测详细信息查询
+    parser.add_argument("--get-backtest-detail", help="获取指定回测ID的详细信息")
+    
     # 保证金分配方案检查
     parser.add_argument("--check-allocation", action="store_true", help="检查保证金分配方案完整性")
     parser.add_argument("--strategy-ids", help="策略ID列表，逗号分隔")
@@ -475,14 +555,9 @@ def main():
     
     # 自动获取 token（如果未提供）
     if not args.token:
-        args.token = auto_get_token()
-        if not args.token:
-            print("错误: 无法自动获取 token，请手动提供 --token 参数")
-            print("检查路径：")
-            print("  1. ~/.quantclaw/users.json")
-            print("  2. templates/users.json")
-            sys.exit(1)
-        print(f"[INFO] 自动获取到token: {args.token[:20]}...")
+        # TODO: 实现 auto_get_token 函数
+        print("错误: 请提供 --token 参数")
+        sys.exit(1)
     
     # 处理新增的接口查询
     if args.list_groups:
@@ -727,7 +802,10 @@ def main():
             token=args.token,
             back_id=args.back_id if args.back_id else None,
             limit=args.limit if args.limit != -1 else None,
-            offset=args.offset
+            offset=args.offset,
+            filter_name=args.filter_name,
+            filter_days=args.filter_days,
+            filter_status=args.filter_status
         )
         
         if backtest_list is None:
@@ -768,6 +846,25 @@ def main():
             
             print()  # 空行分隔
         
+        return
+    
+    # 获取回测详细信息
+    if args.get_backtest_detail:
+        if not args.token:
+            print("❌ --get-backtest-detail 需要 --token 参数")
+            return
+            
+        detail_info = BacktestMonitor.get_backtest_detail(
+            token=args.token,
+            back_id=args.get_backtest_detail
+        )
+        
+        if detail_info is None:
+            print(f"❌ 无法获取回测ID {args.get_backtest_detail} 的详细信息")
+            return
+        
+        print(f"📊 回测ID {args.get_backtest_detail} 详细信息：")
+        print(json.dumps(detail_info, indent=2, ensure_ascii=False))
         return
     
     # 配置日志级别

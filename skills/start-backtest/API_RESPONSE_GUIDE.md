@@ -341,30 +341,37 @@ if result.get("status") == 1:
 | "4" | 失败 | 回测执行失败 | ❌ |
 
 ### Agent 使用示例
-```python
-# 查询所有回测记录
-result = get_backtest_list(token)
-if result.get("status") == 1:
-    backtest_list = result.get("info", [])
-    for backtest in backtest_list:
-        back_id = backtest.get("back_id")        # 回测ID
-        status = backtest.get("status")          # 回测状态
-        name = backtest.get("name")              # 策略名称
-        year_rate = backtest.get("year_rate")    # 年化收益率
-        
-        # 只有完成的回测才有收益数据
-        if status == "3":  # 成功完成
-            print(f"回测{back_id}: {name} - 年化收益{year_rate}%")
-        elif status == "2":  # 运行中
-            print(f"回测{back_id}: {name} - 正在运行中...")
+```bash
+# 查询所有回测记录（建议加过滤避免上下文爆炸）
+python skills/start-backtest/backtest_monitor.py \
+  --list-backtests \
+  --token "$TOKEN" \
+  --limit 10
 
-# 查询指定回测记录
-result = get_backtest_list(token, back_id="5745")
-if result.get("status") == 1:
-    backtest_list = result.get("info", [])
-    if backtest_list:
-        backtest = backtest_list[0]
-        # 处理单个回测记录...
+# 按策略名筛选（避免大量无关数据）
+python skills/start-backtest/backtest_monitor.py \
+  --list-backtests \
+  --token "$TOKEN" \
+  --filter-name "风霆" \
+  --limit 5
+
+# 查询最近7天的回测记录
+python skills/start-backtest/backtest_monitor.py \
+  --list-backtests \
+  --token "$TOKEN" \
+  --filter-days 7
+
+# 查询已完成的回测记录
+python skills/start-backtest/backtest_monitor.py \
+  --list-backtests \
+  --token "$TOKEN" \
+  --filter-status "3" \
+  --limit 10
+
+# 查询指定回测记录详细信息
+python skills/start-backtest/backtest_monitor.py \
+  --get-backtest-detail "5745" \
+  --token "$TOKEN"
 ```
 
 ### ⚠️ 重要提醒
@@ -377,6 +384,72 @@ if result.get("status") == 1:
 - "查看我的回测记录"、"回测历史"、"过去的回测"
 - "回测ID 5745 的结果"、"回测 5745 怎么样"
 - "最近的回测记录"、"所有回测列表"
+
+---
+
+## 📊 get_backtest_detail - 回测详细信息
+
+**接口**: `POST /Backtrack/stat_info`
+
+### 请求参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `usertoken` | string | ✅ 是 | 用户认证token |
+| `back_id` | string | ✅ 是 | 回测ID |
+
+### 返回数据结构
+
+#### 成功响应
+```json
+{
+  "status": 1,
+  "info": {
+    "back_id": "5745",
+    "status": "3",
+    "name": "BTC/ETH/SOL 风霆V4.4-做多",
+    "year_rate": "125.67",
+    "sharp_rate": "1.85",
+    "max_loss": "15.23",
+    "win_rate": "68.5",
+    "trade_num": "156",
+    "total_return": "1256.78",
+    "max_drawdown_days": "5",
+    "avg_trade_return": "8.05",
+    "profit_trades": "107",
+    "loss_trades": "49",
+    "avg_profit": "15.32",
+    "avg_loss": "-8.45",
+    "profit_loss_ratio": "1.81",
+    "kelly_criterion": "0.234",
+    "volatility": "18.45",
+    "sortino_ratio": "2.15",
+    "calmar_ratio": "8.25",
+    "create_time": "2026-05-19 10:30:15",
+    "update_time": "2026-05-19 12:45:32"
+  }
+}
+```
+
+### 重要说明
+
+| 字段 | 说明 | 备注 |
+|------|------|------|
+| `net_value` | 净值曲线数据 | **已过滤**，避免上下文爆炸 |
+| 其他字段 | 回测统计指标 | 完整返回给Agent |
+
+### Agent 调用方式
+```bash
+# 获取回测详细信息（不含净值曲线）
+python skills/start-backtest/backtest_monitor.py \
+  --get-backtest-detail "5745" \
+  --token "$TOKEN"
+```
+
+### 使用场景
+- Agent确认要查看具体回测后，调用此接口获取详细统计数据
+- 先用 `--list-backtests` 过滤筛选，再用此接口查看详情
+- 避免直接查询大量回测数据导致上下文溢出
 
 ---
 
