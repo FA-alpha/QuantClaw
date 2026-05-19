@@ -110,7 +110,7 @@ class BacktestMonitor:
         self.logger.info(f"⏹️ 停止回测 #{self.back_id} 监控")
         
     def _get_backtest_info(self) -> Optional[BacktestInfo]:
-        """查询回测状态"""
+        """查询单个回测状态"""
         url = f"{API_BASE}/Backtrack/lists"
         data = {"usertoken": self.token, "back_id": self.back_id}
         
@@ -146,6 +146,67 @@ class BacktestMonitor:
             
         except requests.RequestException as e:
             self.logger.error(f"查询回测 #{self.back_id} 失败: {e}")
+            return None
+    
+    @staticmethod
+    def get_backtest_list(token: str, back_id: str = None, limit: int = None, offset: int = None) -> Optional[List[BacktestInfo]]:
+        """查询回测列表
+        
+        Args:
+            token: 用户token
+            back_id: 可选，指定回测ID查询单个回测
+            limit: 可选，返回条数限制
+            offset: 可选，偏移量，用于分页
+            
+        Returns:
+            回测信息列表，失败时返回None
+        """
+        url = f"{API_BASE}/Backtrack/lists"
+        data = {"usertoken": token}
+        
+        if back_id:
+            data["back_id"] = back_id
+        if limit is not None:
+            data["limit"] = limit
+        if offset is not None:
+            data["offset"] = offset
+        
+        try:
+            resp = requests.post(url, data=data, timeout=30)
+            resp.raise_for_status()
+            result = resp.json()
+            
+            # 检查认证状态
+            if result.get("status") == 0:
+                print(f"❌ API错误: {result.get('info', '未知错误')}")
+                return None
+                
+            info_list = result.get("info", [])
+            if not info_list:
+                print("📝 暂无回测记录")
+                return []
+                
+            backtest_list = []
+            for raw_info in info_list:
+                backtest_info = BacktestInfo(
+                    back_id=raw_info.get('back_id', ''),
+                    status=raw_info.get('status', ''),
+                    name=raw_info.get('name', ''),
+                    year_rate=raw_info.get('year_rate', 'N/A'),
+                    sharp_rate=raw_info.get('sharp_rate', 'N/A'),
+                    max_loss=raw_info.get('max_loss', 'N/A'),
+                    win_rate=raw_info.get('win_rate', 'N/A'),
+                    trade_num=raw_info.get('trade_num', 'N/A'),
+                    strategy_num=raw_info.get('strategy_num', '1'),
+                    bgn_date=raw_info.get('bgn_date', ''),
+                    end_date=raw_info.get('end_date', '')
+                )
+                backtest_list.append(backtest_info)
+                
+            return backtest_list
+            
+        except requests.RequestException as e:
+            print(f"❌ 查询回测列表失败: {e}")
             return None
             
     def _format_notification_message(self, info: BacktestInfo) -> str:
@@ -389,9 +450,11 @@ def main():
     # 新增接口查询选项
     parser.add_argument("--list-groups", action="store_true", help="查询用户策略组列表（简化版：仅ID+名称）")
     parser.add_argument("--list-strategies", action="store_true", help="查询用户策略列表（简化版：仅ID+名称）")
+    parser.add_argument("--list-backtests", action="store_true", help="查询回测列表")
     parser.add_argument("--detailed", action="store_true", help="返回详细信息（用于回测时获取完整参数）")
     parser.add_argument("--page", type=int, default=1, help="页码（默认1）")
     parser.add_argument("--limit", type=int, default=-1, help="每页数量（默认-1，获取全部）")
+    parser.add_argument("--offset", type=int, help="偏移量，用于分页")
     
     # 保证金分配方案检查
     parser.add_argument("--check-allocation", action="store_true", help="检查保证金分配方案完整性")
@@ -652,6 +715,59 @@ def main():
             "message": message
         }
         print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    
+    # 查询回测列表
+    if args.list_backtests:
+        if not args.token:
+            print("❌ --list-backtests 需要 --token 参数")
+            return
+            
+        backtest_list = BacktestMonitor.get_backtest_list(
+            token=args.token,
+            back_id=args.back_id if args.back_id else None,
+            limit=args.limit if args.limit != -1 else None,
+            offset=args.offset
+        )
+        
+        if backtest_list is None:
+            return
+        
+        if not backtest_list:
+            print("📝 暂无回测记录")
+            return
+        
+        # 格式化输出回测列表
+        print(f"📊 查询到 {len(backtest_list)} 条回测记录：\n")
+        
+        status_names = {
+            '1': '⏳ 排队中',
+            '2': '🏃 运行中',  
+            '3': '✅ 已完成',
+            '4': '❌ 失败'
+        }
+        
+        for i, backtest in enumerate(backtest_list, 1):
+            status_name = status_names.get(backtest.status, f'未知({backtest.status})')
+            print(f"{i}. 回测ID: {backtest.back_id} - {status_name}")
+            print(f"   策略名称: {backtest.name}")
+            print(f"   回测时间: {backtest.bgn_date} ~ {backtest.end_date}")
+            print(f"   策略数量: {backtest.strategy_num}个")
+            
+            # 只有完成的回测才显示收益数据
+            if backtest.status == '3':
+                print(f"   📈 年化收益: {backtest.year_rate}%")
+                print(f"   📊 夏普比率: {backtest.sharp_rate}")
+                print(f"   📉 最大回撤: {backtest.max_loss}%")
+                print(f"   🎯 胜率: {backtest.win_rate}%")
+                print(f"   📝 交易次数: {backtest.trade_num}")
+            elif backtest.status == '4':
+                print(f"   ❌ 回测失败")
+            else:
+                print(f"   ⏳ 正在执行中...")
+            
+            print()  # 空行分隔
+        
         return
     
     # 配置日志级别
