@@ -268,15 +268,122 @@ python3 skills/start-backtest/start.py --apply \
   --token "$TOKEN"
 ```
 
-## 🚨 **策略ID使用规则（绝对不能犯错！）**
+## 🚨 **策略ID/策略组ID使用规则（绝对不能犯错！）**
 
-**✅ 正确流程：**
-1. **查询策略组** → 获取`strategy_lists`中的实际ID
-2. **提取策略ID** → 从返回结果中提取`id`字段  
-3. **使用提取的ID** → 在保证金计算中使用这些ID
+### 📋 **ID与Token的区别（Agent必须理解）**
+
+| 类型 | ID格式 | Token格式 | 用途 | 示例 |
+|------|--------|-----------|------|------|
+| **策略组ID** | 纯数字 | 字母数字字符串 | 接口请求用ID | ID: `115`, Token: `abc123def456` |
+| **策略ID** | 纯数字 | 字母数字字符串 | 接口请求用ID | ID: `4637`, Token: `xyz789ghi012` |
+
+### 🚨 **关键规则：接口请求必须使用数字ID**
+
+**✅ 正确使用：**
+```bash
+# ✅ 使用数字ID请求
+--strategy-group-id "115"     # 策略组ID（数字）
+--strategy-ids "4637,50737"   # 策略ID（数字）
+```
+
+**❌ 错误使用：**
+```bash
+# ❌ 错误使用Token
+--strategy-group-id "abc123def456"  # 这是token，不是ID！
+--strategy-ids "xyz789ghi012"       # 这是token，不是ID！
+```
+
+### 🔧 **ID验证和纠正规则**
+
+**步骤1：ID格式验证**
+```python
+def validate_id(id_value):
+    # ✅ 正确：纯数字
+    if id_value.isdigit():
+        return True, id_value
+    
+    # ❌ 错误：包含字母（可能是token）
+    if any(c.isalpha() for c in id_value):
+        return False, "这是token，不是ID"
+    
+    return False, "ID格式错误"
+```
+
+**步骤2：当发现ID错误时的纠正流程**
+```bash
+# 如果Agent使用了错误的ID（如token），必须重新查询
+# 1. 查询策略组列表
+python skills/start-backtest/backtest_monitor.py \
+  --list-groups \
+  --token "$TOKEN"
+
+# 2. 从返回结果中找到正确的数字ID
+# 根据name字段匹配，提取对应的id字段（数字）
+
+# 3. 使用正确的数字ID重新请求
+python skills/start-backtest/backtest_monitor.py \
+  --check-allocation \
+  --strategy-group-id "115" \  # 必须是数字ID
+  --token "$TOKEN"
+```
+
+### 📊 **API返回数据中的字段映射**
+
+**策略组查询返回示例：**
+```json
+{
+  "info": [
+    {
+      "id": 115,                    // ✅ 这是策略组ID（数字）
+      "group_token": "abc123def456", // ❌ 这是token（字符串）
+      "name": "BTC多空组合",
+      "strategies": [
+        {
+          "id": 4637,               // ✅ 这是策略ID（数字）
+          "strategy_token": "xyz789", // ❌ 这是token（字符串）
+          "name": "BTC-风霆V4.2-做多"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**✅ 正确提取流程：**
+1. **查询策略组** → 获取`info[].id`字段（数字）
+2. **查询策略** → 获取`strategies[].id`字段（数字）  
+3. **使用数字ID** → 在所有接口请求中使用这些数字ID
 
 **❌ 绝对禁止：**
-- ❌ 使用记忆中的策略ID、之前对话的策略ID、自己编造的ID
+- ❌ 使用`group_token`、`strategy_token`作为ID
+- ❌ 使用包含字母的字符串作为ID
+- ❌ 使用记忆中的ID、之前对话的ID、自己编造的ID
+
+### 🚨 **Agent错误检测和自动纠正**
+
+**当接口返回"未找到XXX"错误时：**
+```bash
+# 常见错误提示：
+"未找到指定的策略组ID: abc123def456"
+"未找到指定的策略ID: xyz789ghi012"
+
+# Agent必须识别这是ID使用错误：
+1. 检查使用的ID是否包含字母（token特征）
+2. 如果是token，立即查询正确的数字ID
+3. 使用正确ID重新执行请求
+4. 不要要求用户重新提供ID
+```
+
+**自动纠正示例：**
+```
+Agent内部流程：
+1. 发现使用了"abc123def456"  
+2. 识别：这是token，不是ID
+3. 查询策略组列表
+4. 根据name匹配找到正确ID: 115
+5. 使用115重新执行请求
+6. 对用户透明，不暴露内部纠正过程
+```
 
 ## 🎯 **回测模式识别**
 
@@ -476,7 +583,28 @@ python3 skills/start-backtest/start.py --apply \
 ### **策略ID不存在错误：**
 ```
 如果报错"未找到指定的策略ID: xxxxx,xxxxx..."
-✅ 解决：重新查询策略组，提取实际ID，不使用记忆ID
+
+可能原因：
+1. ❌ 使用了token而不是数字ID
+2. ❌ 使用了错误的ID或记忆中的ID
+
+✅ 解决步骤：
+1. 检查ID格式：是否包含字母（token特征）
+2. 如果是token：查询策略列表，根据name找到正确的数字ID
+3. 如果是数字但仍报错：重新查询策略组/策略列表
+4. 提取实际的id字段（数字），不使用token字段
+```
+
+### **策略组ID混淆错误（常见）：**
+```
+如果报错"未找到指定的策略组ID: abc123def456"
+
+❌ 错误原因：使用了strategy_group_token而不是id
+✅ 纠正方法：
+1. 查询策略组列表：--list-groups
+2. 根据策略组名称匹配
+3. 提取info[].id字段（如115）
+4. 使用数字ID重新请求：--strategy-group-id "115"
 ```
 
 ### **AI时间参数名错误：**  
@@ -489,12 +617,17 @@ python3 skills/start-backtest/start.py --apply \
 
 ## 📊 **参数对照表**
 
-| 参数类型 | backtest_monitor.py | start.py |
-|----------|---------------------|----------|
-| 策略组查询 | `--strategy-group-id` | ❌ 不支持 |
-| 策略列表查询 | `--strategy-ids` | `--strategy-ids` |
-| 保证金计算 | `--check-allocation` | `--calc-margin` |
-| 回测执行 | ❌ 不支持 | `--apply` |
+| 参数类型 | backtest_monitor.py | start.py | 注意事项 |
+|----------|---------------------|----------|----------|
+| 策略组查询 | `--strategy-group-id "115"` | ❌ 不支持 | 必须使用数字ID |
+| 策略列表查询 | `--strategy-ids "4637,50737"` | `--strategy-ids "4637,50737"` | 必须使用数字ID |
+| 保证金计算 | `--check-allocation` | `--calc-margin` | ID参数必须是数字 |
+| 回测执行 | ❌ 不支持 | `--apply` | 所有ID必须是数字 |
+
+### 🚨 **ID参数使用要求**
+- ✅ **策略组ID**：纯数字，如 `"115"`、`"113"`
+- ✅ **策略ID**：纯数字，如 `"4637"`、`"50737"`  
+- ❌ **禁止使用Token**：如 `"abc123def456"`、`"xyz789ghi012"`
 
 ## 🔚 **回测完成处理**
 
