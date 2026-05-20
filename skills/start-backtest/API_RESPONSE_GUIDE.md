@@ -254,8 +254,51 @@ if result.get("status") == 1:
 |--------|------|------|------|
 | `usertoken` | string | ✅ 是 | 用户认证token |
 | `back_id` | string | ❌ 否 | 回测ID，不传则查询所有回测记录 |
-| `limit` | int | ❌ 否 | 返回条数限制，默认返回所有 |
-| `offset` | int | ❌ 否 | 偏移量，用于分页 |
+| `page` | int | ❌ 否 | 页码，从1开始，默认1 |
+| `limit` | int | ❌ 否 | 每页返回条数，默认10 |
+| `app_v` | string | ❌ 否 | API版本，建议使用"2.0.0" |
+| `lang` | int | ❌ 否 | 语言设置，1=中文 |
+| `type` | int | ❌ 否 | 查询类型，1=标准查询 |
+| `sort_type` | int | ❌ 否 | 排序字段，1=按回测时间排序 |
+| `sort_direction` | string | ❌ 否 | 排序方向，"desc"=降序，"asc"=升序 |
+| `search_val` | string | ❌ 否 | 搜索关键词，为空则不筛选 |
+| `search_bgn_date` | string | ❌ 否 | 搜索开始日期，格式YYYY-MM-DD |
+| `search_end_date` | string | ❌ 否 | 搜索结束日期，格式YYYY-MM-DD |
+
+### 🔧 参数作用详解
+
+#### 📊 排序参数
+- **sort_type=1**: 按回测开始时间(back_time)排序，确保最新回测在前
+- **sort_direction="desc"**: 降序排列，最新的在最前面
+- **组合使用**: `sort_type=1` + `sort_direction="desc"` 实现按时间倒序
+
+#### 🎯 分页参数  
+- **page**: 页码从1开始，替代offset参数
+- **limit**: 每页条数，建议10-50之间
+- **计算**: `page = (offset / limit) + 1`
+
+#### 🔍 搜索参数
+- **search_val**: 按策略名称模糊搜索
+- **search_bgn_date/search_end_date**: 按回测时间范围筛选
+- **type=1**: 标准查询模式，包含完整回测信息
+
+#### 🌐 环境参数
+- **app_v="2.0.0"**: Agent专用API版本，不同于网页版1.0.1
+- **lang=1**: 中文界面，影响返回的错误信息语言
+
+### 💡 推荐配置
+```json
+{
+  "usertoken": "xxx",
+  "app_v": "2.0.0",
+  "lang": 1,
+  "type": 1,
+  "sort_type": 1,
+  "sort_direction": "desc",
+  "page": 1,
+  "limit": 10
+}
+```
 
 ### 返回数据结构
 
@@ -265,7 +308,7 @@ if result.get("status") == 1:
   "status": 1,
   "info": [
     {
-      "back_id": "5745",
+      "id": "5745",
       "status": "3",
       "name": "BTC/ETH/SOL 风霆V4.4-做多",
       "year_rate": "125.67",
@@ -317,7 +360,7 @@ if result.get("status") == 1:
 
 | 字段名 | 类型 | 说明 | 示例值 |
 |--------|------|------|--------|
-| `back_id` | string | 回测ID | "5745" |
+| `id` | string | 回测ID | "5745" |
 | `status` | string | 回测状态 | "1"=排队, "2"=运行中, "3"=成功, "4"=失败 |
 | `name` | string | 回测名称 | "BTC/ETH/SOL 风霆V4.4-做多" |
 | `year_rate` | string | 年化收益率(%) | "125.67" |

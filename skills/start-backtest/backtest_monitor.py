@@ -153,29 +153,50 @@ class BacktestMonitor:
     @staticmethod
     def get_backtest_list(token: str, back_id: str = None, limit: int = None, offset: int = None, 
                          filter_name: str = None, filter_days: int = None, filter_status: str = None) -> Optional[List[BacktestInfo]]:
-        """查询回测列表
+        """查询回测列表 - 支持按back_time自动排序
         
         Args:
-            token: 用户token
+            token: 用户认证token
             back_id: 可选，指定回测ID查询单个回测
-            limit: 可选，返回条数限制
-            offset: 可选，偏移量，用于分页
-            filter_name: 可选，按策略名称筛选
-            filter_days: 可选，按最近天数筛选
-            filter_status: 可选，按回测状态筛选
+            limit: 可选，每页返回条数，默认10
+            offset: 可选，偏移量，自动转换为page参数
+            filter_name: 可选，按策略名称筛选（客户端过滤）
+            filter_days: 可选，按最近天数筛选（客户端过滤）
+            filter_status: 可选，按回测状态筛选（客户端过滤）
+            
+        API参数:
+            - sort_type=1: 按回测开始时间排序
+            - sort_direction=desc: 降序，最新回测在前
+            - app_v=2.0.0: Agent API版本
+            - lang=1: 中文界面
             
         Returns:
-            回测信息列表，失败时返回None
+            回测信息列表（已按时间排序），失败时返回None
         """
         url = f"{API_BASE}/Backtrack/lists"
-        data = {"usertoken": token}
+        data = {
+            "usertoken": token,
+            "app_v": "2.0.0",          # Agent API版本，不同于网页版1.0.1
+            "lang": 1,                 # 语言设置：1=中文
+            "type": 1,                 # 查询类型：1=标准查询
+            "sort_type": 1,            # 排序字段：1=按back_time(回测开始时间)排序
+            "sort_direction": "desc",  # 排序方向：desc=降序，最新的在前面
+            "search_val": "",          # 搜索关键词：空=不筛选
+            "search_bgn_date": "",     # 搜索开始日期：空=不限制
+            "search_end_date": ""      # 搜索结束日期：空=不限制
+        }
         
         if back_id:
             data["back_id"] = back_id
         if limit is not None:
             data["limit"] = limit
         if offset is not None:
-            data["offset"] = offset
+            # 网页端使用page参数，从offset计算page
+            page = (offset // limit) + 1 if limit else 1
+            data["page"] = page
+        else:
+            data["page"] = 1
+            data["limit"] = limit if limit is not None else 10
         
         try:
             resp = requests.post(url, data=data, timeout=30)
@@ -195,7 +216,7 @@ class BacktestMonitor:
             backtest_list = []
             for raw_info in info_list:
                 backtest_info = BacktestInfo(
-                    back_id=raw_info.get('back_id', ''),
+                    back_id=raw_info.get('id', ''),
                     status=raw_info.get('status', ''),
                     name=raw_info.get('name', ''),
                     year_rate=raw_info.get('year_rate', 'N/A'),
