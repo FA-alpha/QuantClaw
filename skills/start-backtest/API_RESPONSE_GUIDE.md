@@ -469,9 +469,111 @@ python skills/start-backtest/backtest_monitor.py \
     "sortino_ratio": "2.15",
     "calmar_ratio": "8.25",
     "create_time": "2026-05-19 10:30:15",
-    "update_time": "2026-05-19 12:45:32"
+    "update_time": "2026-05-19 12:45:32",
+    "strategy": [
+      {
+        "id": 4300,
+        "name": "BTC-风霆V4.2-做多",
+        "coin": "BTC",
+        "direction": "做多",
+        "ai_time_id": "123",
+        "ai_time_name": "2025年震荡"
+      },
+      {
+        "id": 4301,
+        "name": "ETH-风霆V4.2-做多", 
+        "coin": "ETH",
+        "direction": "做多",
+        "ai_time_id": "123",
+        "ai_time_name": "2025年震荡"
+      }
+    ]
   }
 }
+```
+
+### 字段说明
+
+| 字段 | 类型 | 说明 | 示例 |
+|------|------|------|------|
+| `status` | int | 请求状态 | 1 |
+| `info` | object | 回测详细信息 | {...} |
+| `info.back_id` | string | 回测ID | "5745" |
+| `info.status` | string | 回测状态 | "3" |
+| `info.name` | string | 策略名称 | "BTC/ETH/SOL 风霆V4.4-做多" |
+| `info.year_rate` | string | 年化收益率 | "125.67" |
+| `info.sharp_rate` | string | 夏普比率 | "1.85" |
+| `info.max_loss` | string | 最大回撤 | "15.23" |
+| `info.win_rate` | string | 胜率 | "68.5" |
+| `info.trade_num` | string | 交易次数 | "156" |
+| `info.strategy` | array | **策略详情数组**（重要） | [...] |
+| `strategy[].id` | int | 策略ID | 4300 |
+| `strategy[].name` | string | 策略名称 | "BTC-风霆V4.2-做多" |
+| `strategy[].coin` | string | 币种 | "BTC" |
+| `strategy[].direction` | string | 方向 | "做多" |
+| `strategy[].ai_time_id` | string | **AI时间ID**（策略组特有） | "123" |
+| `strategy[].ai_time_name` | string | **AI时间名称**（策略组特有） | "2025年震荡" |
+
+### ⚠️ 重要 - 策略组vs单策略判断
+
+**策略组回测特征:**
+- `strategy` 数组中包含 `ai_time_id` 参数（关键判断标准）
+- 通常也包含 `ai_time_name` 参数
+
+**多策略回测特征:**  
+- `strategy` 数组中**没有** `ai_time_id` 参数
+- 可能包含一个或多个策略，没有 `ai_time_id` 就是多策略回测
+
+### 🔧 保证金模式与参数需求
+
+**独占保证金模式:**
+- 适用于任何回测类型（单个策略、多策略、策略组）
+- 每个策略独立分配保证金，**无需**任何分配参数
+- 系统自动分配，用户无需干预
+
+**共享保证金模式:**
+- ⚠️ **仅适用于多个策略或策略组的回测** 
+- 单个策略回测时，无共享保证金模式选项
+- **策略组回测**: 需要币种分配参数 + AI时间分配参数  
+- **多策略回测**: 只需要币种分配参数（无需AI时间参数）
+
+**Agent检查逻辑:**
+```python
+def is_strategy_group_backtest(strategy_info):
+    """检查是否为策略组回测"""
+    if not strategy_info.get("strategy"):
+        return False
+    
+    for strategy in strategy_info["strategy"]:
+        ai_time_id = strategy.get("ai_time_id")
+        
+        # 关键判断：有ai_time_id参数就是策略组回测
+        if ai_time_id:
+            return True
+    
+    return False
+
+def is_shared_mode_applicable(strategy_info):
+    """检查是否可以使用共享保证金模式"""
+    strategies = strategy_info.get("strategy", [])
+    
+    # 共享模式仅适用于多个策略或策略组
+    if len(strategies) <= 1:
+        return False  # 单个策略不支持共享模式
+    
+    return True  # 多策略或策略组支持共享模式
+
+def needs_ai_time_params(strategy_info, margin_mode):
+    """检查是否需要AI时间参数"""
+    if margin_mode == "exclusive":
+        return False  # 独占模式不需要任何分配参数
+    
+    if margin_mode == "shared":
+        if not is_shared_mode_applicable(strategy_info):
+            return False  # 单个策略不支持共享模式
+        return is_strategy_group_backtest(strategy_info)  # 共享模式下策略组才需要AI时间参数
+    
+    return False
 ```
 
 ### 重要说明
@@ -479,6 +581,8 @@ python skills/start-backtest/backtest_monitor.py \
 | 字段 | 说明 | 备注 |
 |------|------|------|
 | `net_value` | 净值曲线数据 | **已过滤**，避免上下文爆炸 |
+| `strategy` | 策略详情数组 | **新增重要字段**，包含AI时间参数 |
+| `ai_time_id/ai_time_name` | AI时间参数 | **策略组标识**，用于再次回测时的参数检查 |
 | 其他字段 | 回测统计指标 | 完整返回给Agent |
 
 ### Agent 调用方式
@@ -487,12 +591,102 @@ python skills/start-backtest/backtest_monitor.py \
 python skills/start-backtest/backtest_monitor.py \
   --get-backtest-detail "5745" \
   --token "$TOKEN"
+
+# 分析回测策略参数需求（用于再次回测）
+python skills/start-backtest/backtest_monitor.py \
+  --analyze-backtest-strategies "5745" \
+  --token "$TOKEN"
 ```
 
 ### 使用场景
 - Agent确认要查看具体回测后，调用此接口获取详细统计数据
 - 先用 `--list-backtests` 过滤筛选，再用此接口查看详情
+- **用这个回测的策略再次回测时**，使用 `--analyze-backtest-strategies` 分析参数需求
 - 避免直接查询大量回测数据导致上下文溢出
+
+### 🔄 再次回测工作流程
+
+当用户想使用某个回测的策略再次进行回测时：
+
+#### 1️⃣ 分析回测策略参数
+```bash
+python skills/start-backtest/backtest_monitor.py \
+  --analyze-backtest-strategies "5745" \
+  --token "$TOKEN"
+```
+
+#### 2️⃣ 检查参数完整性（如果是共享保证金模式）
+```bash
+python skills/start-backtest/backtest_monitor.py \
+  --check-allocation \
+  --token "$TOKEN" \
+  --strategy-ids "4300,4301,4302" \
+  --coin-long-allocation '{"BTC": 40, "ETH": 30, "SOL": 30}' \
+  --ai-time-long-allocation '{"2025年震荡": 70, "最近1年": 30}'
+```
+
+#### 3️⃣ 启动新回测
+```bash
+python skills/start-backtest/start.py \
+  --apply \
+  --token "$TOKEN" \
+  --strategy-ids "4300,4301,4302" \
+  --bgn-date "2024-01-01" \
+  --end-date "2024-12-31" \
+  # 其他参数...
+```
+
+**关键判断逻辑：**
+1. **策略类型判断**: 有 `ai_time_id` = 策略组，无 `ai_time_id` = 单策略
+2. **保证金模式**: 独占模式无需参数，共享模式需要分配参数  
+3. **参数需求**: 策略组+共享模式需要AI时间参数，多策略+共享模式不需要
+
+**实际输出示例：**
+
+```json
+// 策略组回测分析结果
+{
+  "back_id": "5745",
+  "backtest_name": "BTC/ETH/SOL 风霆V4.2 多空组合",
+  "strategy_count": 3,
+  "is_strategy_group_backtest": true,
+  "requirement": {
+    "coin_long_pairs": ["BTC", "ETH"],
+    "coin_short_pairs": ["SOL"],
+    "ai_time_long_types": ["2025年震荡"],
+    "ai_time_short_types": ["最近1年"],
+    "ai_time_id_mapping": {
+      "2025年震荡": "123",
+      "最近1年": "124"
+    },
+    "has_ai_time": true
+  },
+  "usage_guide": {
+    "exclusive_mode": "独占保证金模式：无需任何分配参数",
+    "shared_mode": "共享保证金模式：需要币种分配参数 + AI时间分配参数"
+  }
+}
+
+// 多策略回测分析结果  
+{
+  "back_id": "5746",
+  "backtest_name": "BTC/ETH/SOL-多策略组合",
+  "strategy_count": 3,
+  "is_strategy_group_backtest": false,
+  "requirement": {
+    "coin_long_pairs": ["BTC", "ETH"],
+    "coin_short_pairs": ["SOL"],
+    "ai_time_long_types": [],
+    "ai_time_short_types": [],
+    "ai_time_id_mapping": {},
+    "has_ai_time": false
+  },
+  "usage_guide": {
+    "exclusive_mode": "独占保证金模式：无需任何分配参数", 
+    "shared_mode": "共享保证金模式：只需要币种分配参数（无需AI时间参数）"
+  }
+}
+```
 
 ---
 
