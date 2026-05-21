@@ -585,6 +585,10 @@ def main():
     parser.add_argument("--list", action="store_true", help="列出当前监控")
     parser.add_argument("--verbose", "-v", action="store_true", help="详细日志")
     
+    # 新增 total-balance 和 leverage 参数（仅为保持兼容，不影响实际逻辑）
+    parser.add_argument("--total-balance", type=float, help="总保证金（仅为兼容，不影响实际逻辑）", default=None)
+    parser.add_argument("--leverage", type=float, help="杠杆倍数（仅为兼容，不影响实际逻辑）", default=None)
+    
     args = parser.parse_args()
     
     # 自动获取 token（如果未提供）
