@@ -5,67 +5,13 @@
  - 禁止在用户未明确说明的情况下擅自跳转到其他技能流程 
  - 缺少参数或参数不明确时主动询问用户
 
-### 🔑 重要:用户Token获取 这是进行回测操作的第一步!先获取到当前的usertoken
+
+### 🔑 重要:这是用户Token(USERTOKEN)获取方法,这是进行回测操作的第一步!先获取到当前的USERTOKEN,你才能够进行后续的操作,若你没有获取到USERTOKEN,则先去用这个方法获取,拿到了再阅读其他操作流程
 ```bash
 USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
 ```
 注意:这个USERTOKEN就是用户token参数,在backtest_monitor.py和start.py的接口,方法调用的时候,若需要传入token参数,传入的token参数都是这个USERTOKEN,不要和任何其他的token参数概念混淆了
 
-## 🚨 重要：上下文信息利用原则
-
-### 📋 策略组回测上下文保存规则 注意:只有当进行策略组回测的时候,才会用到!
-
-**❌ 禁止的行为：**
-- 重复查询已获取的策略组信息
-- 忽略 `--check-allocation` 返回的完整策略信息
-- 丢弃之前查询得到的策略 ID 和策略名称
-
-**✅ 正确的处理流程：**
-
-1. **保存查询结果的关键信息**
-   - 必须保存 `strategy_ids` 列表
-   - 必须保存 `strategy_names` 列表
-   - 在后续回测流程中直接使用这些信息
-
-2. **上下文信息利用示例：**
-```python
-# ✅ 正确做法：直接使用 check-allocation 返回的策略 ID
-result = backtest_monitor.check_allocation(strategy_group_id="135")
-strategy_ids = result.get("strategy_ids")
-strategy_names = result.get("strategy_names")
-
-# 后续直接使用这些 ID 进行回测
-start.py --calc-margin \
-  --strategy-ids "$strategy_ids" \
-  ...
-3. ❌ 错误示例：重复查询
-# ❌ 错误做法：再次调用接口查询策略 ID
-backtest_monitor.list_groups()  # 重复查询 ❌
-
-🔍 上下文信息管理原则
-
-Agent 必须遵守的规则：
-
-• 每次 --check-allocation 调用都视为独立的上下文
-• 必须在当前对话单元内保存和使用查询结果
-• 禁止跨对话单元复用上下文信息
-• 总是以最新的查询结果为准
-💡 性能和效率提示
-
-• 通过直接使用已获取的上下文信息，可以：  
-  1. 减少不必要的 API 调用
-  2. 降低系统资源消耗
-  3. 提高回测流程的响应速度
-
-🚨 Agent 自检清单
-
-回测前，Agent 必须确认：
-
-• [x] 已保存策略组 ID
-• [x] 已保存策略 ID 列表
-• [x] 已保存策略名称列表
-• [x] 直接使用已获取的上下文信息
-• [x] 未进行重复查询
 
 # 启动回测
 
@@ -79,7 +25,11 @@ Agent 必须遵守的规则：
 ## 🔥 关键：共享模式参数检查强制流程
 
 **Agent在共享保证金模式下必须遵循：**
-1. **先调用参数检查** → `--check-allocation`确认参数完整性
+1. **先调用参数检查** → `--check-allocation`确认参数完整性,
+  1.1. **若是策略组模式,则要保存查询结果的关键信息**
+      - 必须保存 `strategy_ids` 列表
+      - 必须保存 `strategy_names` 列表
+      - 在后续回测流程中直接使用这些信息
 2. **严格按检查结果操作** → `is_complete: true`才能调用calc_margin
 3. **禁止臆造分配比例** → 不能自动设50%、平均分配等
 4. **严格按用户需求** → 必须使用用户提供的具体比例
@@ -866,30 +816,9 @@ start_backtest(strategy_ids=strategy_ids)
 ### 🔍 上下文管理
 
 **策略组回测上下文必须包含：**
-- ✅ 策略组ID
-- ✅ 策略ID列表
-- ✅ 策略名称列表
+- ✅ 该次回测的时间范围
+- ✅ 策略组内所有策略ID的列表
+- ✅ 策略组内所有策略的名称列表
 - ✅ 币种分配需求
 - ✅ AI时间参数需求
 
-### ⚠️ 常见错误处理
-
-**❌ 禁止的行为：**
-- 重新查询策略ID
-- 修改或重新排序 `strategy_ids`
-- 丢失 `strategy_ids` 和 `strategy_names` 的对应关系
-
-**✅ 正确做法：**
-- 原样保存和使用接口返回的 `strategy_ids`
-- 必要时可以使用 `strategy_names` 进行展示或日志记录
-- 严格按照返回顺序保持 ID 和名称的一致性
-
-### 💡 实践建议
-
-1. 将 `strategy_ids` 视为回测流程的"通行证"
-2. 在回测的每个阶段（参数计算、保证金分配、执行回测）原样传递
-3. 不要对 `strategy_ids` 列表进行任何修改或重排
-
-## 🚨 关键提醒
-
-对于策略组回测，`strategy_ids` 是唯一权威的策略ID信息来源。
