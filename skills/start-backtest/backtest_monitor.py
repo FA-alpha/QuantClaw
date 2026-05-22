@@ -296,10 +296,6 @@ class BacktestMonitor:
             if "net_value" in info:
                 del info["net_value"]
             
-            # 确保strategy字段存在（用于参数分析）
-            if "strategy" not in info or not info["strategy"]:
-                print(f"[WARNING] 回测ID {back_id} 未包含策略详情，可能影响参数分析功能")
-            
             return info
             
         except requests.RequestException as e:
@@ -536,12 +532,6 @@ def main():
   
   # 后台守护模式
   python backtest_monitor.py --token abc123 --back-id 5745 --daemon
-  
-  # 分析回测策略参数需求（用于再次回测）
-  python backtest_monitor.py --token abc123 --analyze-backtest-strategies 5745
-  
-  # 检查保证金分配完整性（新回测）
-  python backtest_monitor.py --token abc123 --check-allocation --strategy-ids "4300,4301" --coin-long-allocation '{"BTC":60,"ETH":40}'
         """
     )
     
@@ -566,9 +556,6 @@ def main():
     
     # 回测详细信息查询
     parser.add_argument("--get-backtest-detail", help="获取指定回测ID的详细信息")
-    
-    # 从回测详情分析策略参数需求
-    parser.add_argument("--analyze-backtest-strategies", help="分析指定回测ID的策略参数需求（用于再次回测时的参数检查）")
     
     # 保证金分配方案检查
     parser.add_argument("--check-allocation", action="store_true", help="检查保证金分配方案完整性")
@@ -901,77 +888,6 @@ def main():
         print(json.dumps(detail_info, indent=2, ensure_ascii=False))
         return
     
-    # 分析回测策略的参数需求
-    if args.analyze_backtest_strategies:
-        if not args.token:
-            print("❌ --analyze-backtest-strategies 需要 --token 参数")
-            return
-            
-        # 获取回测详细信息
-        backtest_detail = BacktestMonitor.get_backtest_detail(
-            token=args.token,
-            back_id=args.analyze_backtest_strategies
-        )
-        
-        if backtest_detail is None:
-            print(f"❌ 无法获取回测ID {args.analyze_backtest_strategies} 的详细信息")
-            return
-        
-        # 分析策略需求
-        requirement = analyze_backtest_strategies_for_allocation(backtest_detail)
-        
-        print(f"\n🔍 回测ID {args.analyze_backtest_strategies} 策略分析结果:")
-        print(f"  回测名称: {backtest_detail.get('name', 'N/A')}")
-        print(f"  策略数量: {len(backtest_detail.get('strategy', []))}")
-        strategy_count = len(backtest_detail.get('strategy', []))
-        if requirement.has_ai_time:
-            backtest_type = "策略组回测"
-        else:
-            backtest_type = "单策略回测" if strategy_count == 1 else "多策略回测"
-        
-        print(f"  回测类型: {backtest_type}")
-        print(f"  币种做多需求: {requirement.coin_long_pairs}")
-        print(f"  币种做空需求: {requirement.coin_short_pairs}")
-        
-        if requirement.has_ai_time:  # 策略组回测才显示AI时间信息
-            print(f"  AI时间做多需求: {requirement.ai_time_long_types}")
-            print(f"  AI时间做空需求: {requirement.ai_time_short_types}")
-            print(f"  AI时间ID映射: {requirement.ai_time_id_mapping}")
-            print(f"\n💡 再次回测时的参数需求:")
-            print(f"   🔸 **独占保证金模式**：无需任何分配参数")
-            print(f"   🔸 **共享保证金模式**：多策略可用，需要币种分配 + AI时间分配参数")
-        else:
-            strategy_count = len(backtest_detail.get('strategy', []))
-            print(f"\n💡 再次回测时的参数需求:")
-            print(f"   🔸 **独占保证金模式**：无需任何分配参数")
-            if strategy_count > 1:
-                print(f"   🔸 **共享保证金模式**：多策略可用，只需要币种分配参数（无需AI时间参数）")
-            else:
-                print(f"   🔸 **共享保证金模式**：单个策略不支持，请使用独占模式")
-        
-        # 输出JSON格式供Agent使用
-        print(f"\n📄 JSON结果:")
-        result = {
-            "back_id": args.analyze_backtest_strategies,
-            "backtest_name": backtest_detail.get('name', 'N/A'),
-            "strategy_count": len(backtest_detail.get('strategy', [])),
-            "is_strategy_group_backtest": requirement.has_ai_time,
-            "requirement": {
-                "coin_long_pairs": requirement.coin_long_pairs,
-                "coin_short_pairs": requirement.coin_short_pairs,
-                "ai_time_long_types": requirement.ai_time_long_types,
-                "ai_time_short_types": requirement.ai_time_short_types,
-                "ai_time_id_mapping": requirement.ai_time_id_mapping,
-                "has_ai_time": requirement.has_ai_time
-            },
-            "usage_guide": {
-                "exclusive_mode": "独占保证金模式：无需任何分配参数", 
-                "shared_mode": f"共享保证金模式：{'多策略可用，需要币种分配参数' + ('+ AI时间分配参数' if requirement.has_ai_time else '（无需AI时间参数）') if len(backtest_detail.get('strategy', [])) > 1 else '单个策略不支持，请使用独占模式'}"
-            }
-        }
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        return
-    
     # 配置日志级别
     if args.verbose:
         logging.getLogger('QuantClawMonitor').setLevel(logging.DEBUG)
@@ -1068,98 +984,6 @@ def get_strategy_groups(token: str, page: int = 1, limit: int = -1) -> dict:
         error_msg = f"查询策略组列表失败: {e}"
         print(f"[ERROR] {error_msg}")
         return {"status": "error", "message": error_msg}
-
-
-def analyze_backtest_strategies_for_allocation(backtest_detail: dict) -> AllocationRequirement:
-    """
-    从回测详情中分析策略，确定保证金分配方案需要的参数
-    
-    Args:
-        backtest_detail: 从Backtrack/stat_info接口获取的回测详细信息
-        
-    Returns:
-        AllocationRequirement: 保证金分配方案需求
-        
-    注意：
-        - 有ai_time_id参数 = 策略组回测
-        - 没有ai_time_id参数 = 多策略回测  
-        - 共享保证金模式仅适用于多个策略或策略组回测
-        - 单个策略回测时无共享保证金模式选项
-        - 只有策略组+共享保证金模式才需要AI时间参数
-        - 独占保证金模式下不需要检查任何分配参数
-    """
-    try:
-        # 获取策略信息数组
-        strategies = backtest_detail.get("strategy", [])
-        if not strategies:
-            print(f"❌ 回测详情中未找到策略信息")
-            return AllocationRequirement([], [], [], [], {}, False)
-        
-        print(f"🔍 从回测详情分析 {len(strategies)} 个策略")
-        
-        # 解析策略参数
-        coin_long_set = set()
-        coin_short_set = set()  
-        ai_time_long_set = set()
-        ai_time_short_set = set()
-        ai_time_id_mapping = {}  # ai_time_name -> ai_time_id 映射
-        has_ai_time = False
-        
-        for strategy in strategies:
-            coin = strategy.get("coin", "").upper()
-            direction = strategy.get("direction", "")
-            
-            # 检查AI时间参数（从回测详情中获取）
-            ai_time_id = strategy.get("ai_time_id")
-            ai_time_name = strategy.get("ai_time_name")
-            
-            print(f"[DEBUG] 策略 {strategy.get('id')}: {coin}-{direction}, AI时间: {ai_time_name}({ai_time_id})")
-            
-            # 收集AI时间ID映射关系
-            # 重要：只有ai_time_id参数存在才说明是策略组回测
-            if ai_time_id and ai_time_name:
-                ai_time_id_mapping[ai_time_name] = str(ai_time_id)
-                has_ai_time = True  # 策略组标识
-            
-            # 收集币种和方向组合（支持中英文）
-            if "做多" in direction or "long" in direction.lower():
-                coin_long_set.add(coin)
-                # AI时间做多
-                if ai_time_name:
-                    ai_time_long_set.add(ai_time_name)
-                        
-            elif "做空" in direction or "short" in direction.lower():
-                coin_short_set.add(coin)
-                # AI时间做空
-                if ai_time_name:
-                    ai_time_short_set.add(ai_time_name)
-        
-        strategy_count = len(strategies)
-        
-        print(f"📊 回测策略分析结果:")
-        if has_ai_time:
-            print(f"   回测类型: 策略组回测")
-        else:
-            print(f"   回测类型: {'单策略回测' if strategy_count == 1 else '多策略回测'}")
-        print(f"   币种做多: {list(coin_long_set)}")
-        print(f"   币种做空: {list(coin_short_set)}")
-        if has_ai_time:  # 只有策略组才显示AI时间信息
-            print(f"   AI时间做多: {list(ai_time_long_set)}")
-            print(f"   AI时间做空: {list(ai_time_short_set)}")
-            print(f"   AI时间ID映射: {ai_time_id_mapping}")
-        
-        return AllocationRequirement(
-            coin_long_pairs=sorted(list(coin_long_set)),
-            coin_short_pairs=sorted(list(coin_short_set)),
-            ai_time_long_types=sorted(list(ai_time_long_set)),
-            ai_time_short_types=sorted(list(ai_time_short_set)),
-            ai_time_id_mapping=ai_time_id_mapping,
-            has_ai_time=has_ai_time
-        )
-        
-    except Exception as e:
-        print(f"❌ 回测策略分析失败: {e}")
-        return AllocationRequirement([], [], [], [], {}, False)
 
 
 def analyze_strategies_for_allocation(strategy_ids: List[str], token: str, 

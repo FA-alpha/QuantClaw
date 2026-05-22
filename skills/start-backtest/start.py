@@ -938,7 +938,7 @@ def main():
     parser.add_argument("--status", dest="search_status", type=int, help="状态筛选")
     
     # 回测参数
-    parser.add_argument("--strategy-id", help="策略 ID（单个策略）")
+    parser.add_argument("--strategy-id", help="策略 ID（单策略）")
     parser.add_argument("--strategy-ids", help="策略 IDs（多策略，逗号分隔）")
     parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
     parser.add_argument("--calc-margin", action="store_true", help="计算保证金分配方案")
