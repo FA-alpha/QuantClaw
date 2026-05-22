@@ -1,18 +1,3 @@
- **行为边界 🚨**： 
- - 严格遵守用户原始意图 
- - 不得自行转换为其他任务 
- - 遇到不确定情况必须询问用户 
- - 禁止在用户未明确说明的情况下擅自跳转到其他技能流程 
- - 缺少参数或参数不明确时主动询问用户
- - 禁止展示命令行参数给用户看
-
-### 🔑 重要:这是用户Token(USERTOKEN)获取方法,这是进行回测操作的第一步!先获取到当前的USERTOKEN,你才能够进行后续的操作,若你没有获取到USERTOKEN,则先去用这个方法获取,拿到了再阅读其他操作流程
-```bash
-USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
-```
-注意:这个USERTOKEN就是用户token参数,一定有值,如果取得为空,那么先暂停其他操作,隔2秒再重试一次,直到成功获取,获取了usertoken之后再继续进行其他操作,如果重试了5次都没能获取成功,则通知用户,在backtest_monitor.py和start.py的接口,方法调用的时候,若需要传入token参数,传入的token参数都是这个USERTOKEN,不要和任何其他的token参数概念混淆了
-
-
 # 启动回测
 
 🚨 **强制规则：**
@@ -21,17 +6,11 @@ USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人a
 3. **调用Python脚本前必须获取并传递token参数**
 4. **共享保证金模式必须先获取分配方案**
 5. **进行回测时，回测开始时间不得早于2020-01-01**
-6. **禁止展示命令行参数给用户看**
-7. **单个策略必定为独立保证金模式,多个策略才需要询问用户保证金模式**
 
 ## 🔥 关键：共享模式参数检查强制流程
 
 **Agent在共享保证金模式下必须遵循：**
-1. **先调用参数检查** → `--check-allocation`确认参数完整性,
-  1.1. **若是策略组模式,则要保存查询结果的关键信息**
-      - 必须保存 `strategy_ids` 列表
-      - 必须保存 `strategy_names` 列表
-      - 在后续回测流程中直接使用这些信息
+1. **先调用参数检查** → `--check-allocation`确认参数完整性
 2. **严格按检查结果操作** → `is_complete: true`才能调用calc_margin
 3. **禁止臆造分配比例** → 不能自动设50%、平均分配等
 4. **严格按用户需求** → 必须使用用户提供的具体比例
@@ -53,6 +32,10 @@ USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人a
 
 ## 📋 策略查询和回测执行
 
+### 🔑 Token获取
+```bash
+TOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
+```
 
 ## 🔍 **用户语义识别和策略查询**
 
@@ -61,9 +44,7 @@ USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人a
 **Agent必须根据用户语义自动判断查询类型：**
 
 ### 📋 **语义识别规则**
-**最先步骤: 检查用户需求**
-- 先根据用户上下文语义去判断,是回测策略组,还是回测策略,这里的判断非常重要,因为后续的查询接口完全不同,如果判断错误,则会导致查询错误的策略或者策略组,从而导致回测失败.
-- 如果已经拿到了策略组id(该id是数字)参数,那么就走策略组查询接口去走下一步,如果用户给的是策略id(该id是数字)且回测的是单个或者多个策略而非策略组,那么就按照正常回测流程来走
+
 **1️⃣ 策略组查询触发词：**
 - "我的策略组"、"策略组回测"、"策略组信息"
 - "最新的策略组"、"策略组列表"
@@ -74,6 +55,20 @@ USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人a
 - "BTC策略"、"做多策略"、"风霆策略"
 - **处理**：调用 `--list-strategies` 查询用户策略列表
 
+**3️⃣ AI回测策略查询触发词：**
+- "AI策略回测"、"用AI策略"、"智能策略"
+- "AI推荐策略"、"系统策略"
+- **处理**：调用AI回测相关接口
+
+**⚠️ 注意：AI回测策略接口需要确认**
+```bash
+# 可能的AI策略查询接口（待确认）
+python skills/start-backtest/backtest_monitor.py \
+  --list-ai-strategies \  # 或其他AI策略查询参数
+  --token "$TOKEN"
+
+# 或者可能是独立的AI策略接口
+# 需要根据实际API文档确定具体参数
 ```
 
 ### 🚨 **自动查询执行流程**
@@ -91,20 +86,20 @@ USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人a
 ```bash
 # 策略组查询
 python skills/start-backtest/backtest_monitor.py \
-  --list-groups (这里传递策略组id来进行查询该策略组中的所有策略id等详细信息)\
-  --token "$USERTOKEN"
+  --list-groups \
+  --token "$TOKEN"
 
 # 用户策略查询（可带筛选条件）
 python skills/start-backtest/backtest_monitor.py \
   --list-strategies \
   --coin BTC \  # 如用户提到具体币种
   --amt-type 2 \  # 如用户提到合约
-  --token "$USERTOKEN"
+  --token "$TOKEN"
 
 # 回测列表查询
 python skills/start-backtest/backtest_monitor.py \
   --list-backtests \
-  --token "$USERTOKEN"
+  --token "$TOKEN"
 
 # 更多接口参数和用法详见 API_RESPONSE_GUIDE.md
 ```
@@ -156,14 +151,14 @@ python skills/start-backtest/backtest_monitor.py \
 
 **若用户选择了多个策略,则进行多策略查询：**
 - ✅ `backtest_monitor.py --check-allocation --strategy-ids "1,2,3"`
-- ⚠️ 该方法返回的数据中,没有AI时间参数
+- ⚠️ 缺少AI时间参数
 
 ### 🔍 **回测列表查询（查看历史回测记录）**
 
 **当用户想要查看过去的回测记录时，使用此接口：**
 
 **回测列表查询：**
-- 基础用法：`--list-backtests --token "$USERTOKEN"`
+- 基础用法：`--list-backtests --token "$TOKEN"`
 - 详细参数和用法请参考 `API_RESPONSE_GUIDE.md` 文档
 
 ### 🎯 **回测列表查询触发条件**
@@ -195,13 +190,13 @@ python skills/start-backtest/backtest_monitor.py \
 python skills/start-backtest/backtest_monitor.py \
   --check-allocation \
   --strategy-group-id "策略组ID" \
-  --token <USERTOKEN>
+  --token <token>
 
-# 或使用策略ID分析(用户想回测多策略或者单策略时使用)
+# 或使用策略ID列表分析(用户想回测多策略或者单策略时使用)
 python skills/start-backtest/backtest_monitor.py \
   --check-allocation \
   --strategy-ids "策略ID1,策略ID2,策略ID3" \
-  --token <USERTOKEN>
+  --token <token>
 ```
 
 **分析结果示例：**
@@ -226,9 +221,8 @@ python skills/start-backtest/backtest_monitor.py \
 
 请提供这些参数的具体占比，我将为您计算保证金分配方案。"
 ```
-若用户给出的参数与需求的参数数量不一致,或者用户无视了要提供的参数等步骤强行想要开始回测,则重新请求用户提供完整的参数,直到用户提供的参数满足需求为止,才可以进入下一步计算保证金分配方案,若返回:请提供--usertoken,则重新去获取usertoken然后再来走一遍这个接口
 
-**步骤2：计算保证金分配（必须在分析策略参数需求后再走这个步骤,这个步骤在共享保证金模式下一定不能被跳过）**
+**步骤2：计算保证金分配（必须在分析策略参数需求后再走这个步骤）**
 ```bash
 # 🚨 注意：只有共享保证金模式需要 --leverage 参数
 python3 skills/start-backtest/start.py --calc-margin \
@@ -241,7 +235,7 @@ python3 skills/start-backtest/start.py --calc-margin \
   --leverage 1.5 \
   --long-pct 90 \
   --short-pct 20 \
-  --token "$USERTOKEN"
+  --token "$TOKEN"
 ```
 
 **步骤3：执行回测（计算保证金分配完成,获得正确的分配金额后）**
@@ -254,7 +248,7 @@ python3 skills/start-backtest/start.py --apply \
   --bgn-date YYYY-MM-DD \
   --end-date YYYY-MM-DD \
   --leverage 1.5 \
-  --token "$USERTOKEN"
+  --token "$TOKEN"
 ```
 
 ## 🚨 **策略ID使用规则（绝对不能犯错！）**
@@ -284,7 +278,8 @@ python3 skills/start-backtest/start.py --apply \
 - 用户明确说共享：「共享模式」、「一起分配」
 
 **⚠️ 需要询问保证金模式的情况：**
-- 用户只说："一起回测"、"同时回测"、"策略组回测" 的时候,没有提到任何分配相关的词汇
+- 用户只说："一起回测"、"同时回测"、"策略组回测"
+- 用户没有提到任何分配相关的词汇
 
 **询问保证金模式：**
 ```
@@ -451,7 +446,7 @@ python3 skills/start-backtest/start.py --apply \
 ## 🎯 **策略选择规则**
 
 ### 📋 **策略组回测规则**
-- ✅ 策略组id很重要,是用来识别策略组,获取策略组内各策略信息的关键参数,在进行策略组回测的时候,如果只知道策略组id,那么可以去查询用户的策略组列表,然后根据策略组id取获取该策略组内的全部策略的id再去进行回测,策略组是一个整体,用来捆绑该策略组下的所有策略的.
+- ✅ 可以**删除**策略组内的部分策略进行回测
 - ❌ **不能新增**策略组外的策略
 - ❌ **不能**将多个策略组一起回测
 
@@ -695,132 +690,3 @@ else:
 - 日期格式必须为 `YYYY-MM-DD`
 - **多策略回测必须先询问保证金模式**
 - **AI时间参数必须询问用户，绝对不能自动推测**
-
-## 🔧 脚本参数支持矩阵
-
-### backtest_monitor.py 支持的参数
-
-| 参数类型 | 参数名 | 是否必须 | 说明 |
-|----------|--------|----------|------|
-| 用户token | `--token` | 是 | 用户token就是USERTOKEN |
-| 回测ID | `--back-id` | 否 | 单个回测 ID |
-| 回测ID列表 | `--back-ids` | 否 | 多个回测 ID，逗号分隔 |
-| 策略组ID | `--strategy-group-id` | 否 | 查询特定策略组 |
-| 策略ID列表 | `--strategy-ids` | 否 | 多个策略 ID，逗号分隔 |
-| 分配检查 | `--check-allocation` | 否 | 检查保证金分配 |
-| 币种做多分配 | `--coin-long-allocation` | 否 | JSON 格式的做多币种分配 |
-| 币种做空分配 | `--coin-short-allocation` | 否 | JSON 格式的做空币种分配 |
-| AI时间做多分配 | `--ai-time-long-allocation` | 否 | JSON 格式的做多AI时间分配 |
-| AI时间做空分配 | `--ai-time-short-allocation` | 否 | JSON 格式的做空AI时间分配 |
-| ⚠️ 兼容 | `--total-balance` | 否 | 仅为命令行兼容，不影响实际逻辑 |
-| ⚠️ 兼容 | `--leverage` | 否 | 仅为命令行兼容，不影响实际逻辑 |
-
-### start.py 支持的参数
-
-| 参数类型 | 参数名 | 是否必须 | 说明 |
-|----------|--------|----------|------|
-| 用户token | `--token` | 是 | 用户token就是USERTOKEN |
-| 策略ID | `--strategy-id` | 否 | 单个策略 ID |
-| 策略ID列表 | `--strategy-ids` | 否 | 多个策略 ID，逗号分隔 |
-| 保证金计算 | `--calc-margin` | 否 | 计算保证金分配 |
-| 币种做多分配 | `--coin-long-allocation` | 否 | JSON 格式的做多币种分配 |
-| 币种做空分配 | `--coin-short-allocation` | 否 | JSON 格式的做空币种分配 |
-| AI时间做多分配 | `--ai-time-long-allocation` | 否 | JSON 格式的做多AI时间分配 |
-| AI时间做空分配 | `--ai-time-short-allocation` | 否 | JSON 格式的做空AI时间分配 |
-| 保证金总额 | `--total-balance` | 是（共享模式） | 共享保证金总额 |
-| 杠杆倍数 | `--leverage` | 是（共享模式） | 共享模式下的杠杆倍数 |
-
-### ⚠️ 调用注意事项
-
-1. **总是先用 `backtest_monitor.py` 检查参数分配**
-2. **保证金计算和回测执行使用 `start.py`**
-3. **共享保证金模式下必须使用 `start.py` 的 `--total-balance` 和 `--leverage`**
-4. **不要在 `backtest_monitor.py` 中使用 `--total-balance` 和 `--leverage`**
-
-### 🚨 推荐调用流程
-
-```bash
-# 步骤1：检查参数分配
-python backtest_monitor.py \
-  --token "$USERTOKEN" \
-  --check-allocation \
-  --strategy-group-id "131"
-
-# 步骤2：计算保证金（使用 start.py）
-python start.py \
-  --token "$USERTOKEN" \
-  --calc-margin \
-  --strategy-ids "1,2,3,4" \
-  --coin-long-allocation '{"BCH": 30, "DOGE": 30}' \
-  --coin-short-allocation '{"BCH": 80, "DOGE": 20}' \
-  --total-balance 10000 \
-  --leverage 1.5
-
-# 步骤3：执行回测（使用 start.py）
-python start.py \
-  --token "$USERTOKEN" \
-  --apply \
-  --strategy-ids "1,2,3,4" \
-  --margin-mode shared \
-  --margin-allocation "3000,2000,3000,2000"
-```
-
-## 🔍 策略组回测参数解析接口返回参数详解
-
-### 📋 `--check-allocation` 接口返回参数说明
-
-#### 🎯 关键参数: `strategy_ids` 和 `strategy_names`
-
-**重要性：** 
-- `strategy_ids`: 策略组中所有策略的 ID 列表
-- `strategy_names`: 对应策略的名称列表
-
-**使用场景：**
-1. 计算保证金分配
-2. 执行回测
-3. 保存策略组上下文信息
-
-#### 📥 返回示例
-```json
-{
-  "requirement": {
-    "coin_long_pairs": ["BTC", "DOGE"],
-    "coin_short_pairs": ["SOL", "BTC"],
-    ...
-  },
-  "strategy_ids": ["4637", "4638", "4639", "4640"],
-  "strategy_names": ["BTC震荡做多策略", "DOGE突破策略", "SOL趋势策略", "ETH多空策略"],
-  "is_complete": false
-}
-```
-
-### 🚨 Agent 处理流程
-
-**策略组回测时，Agent 必须：**
-
-1. **保存策略ID列表**
-```python
-# ✅ 正确做法
-result = check_allocation(strategy_group_id="135")
-strategy_ids = result.get("strategy_ids")
-strategy_names = result.get("strategy_names")
-
-# 在该次回测流程中始终使用这些ID
-calc_margin(strategy_ids=strategy_ids)
-start_backtest(strategy_ids=strategy_ids)
-```
-
-2. **重要原则**
-- 不要自行猜测或重新查询策略ID
-- 直接使用接口返回的 `strategy_ids`
-- 保持 `strategy_ids` 和 `strategy_names` 的对应关系
-
-### 🔍 上下文管理
-
-**策略组回测上下文必须包含：**
-- ✅ 该次回测的时间范围
-- ✅ 策略组内所有策略ID的列表
-- ✅ 策略组内所有策略的名称列表
-- ✅ 币种分配需求
-- ✅ AI时间参数需求
-

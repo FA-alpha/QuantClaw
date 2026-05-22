@@ -179,10 +179,6 @@ def get_strategy_lists(
     search_coin: str = None,
     search_amt_type: int = None,
     search_status: int = None,
-    data_grade: int = 1,
-    show_type: int = 1,
-    app_v: str = "2.0.0",
-    lang: int = 1,
 ) -> dict:
     """
     查看当前账号下策略列表
@@ -194,10 +190,6 @@ def get_strategy_lists(
         "usertoken": token,
         "page": page,
         "limit": limit,
-        "data_grade": data_grade,
-        "show_type": show_type,
-        "app_v": app_v,
-        "lang": lang,
     }
     
     if search_val:
@@ -939,20 +931,11 @@ def main():
                         help="输出格式")
     
     # 策略列表筛选参数
-    parser.add_argument("--search-val", dest="search_val", help="策略名称搜索关键词")
-    parser.add_argument("--name", dest="search_val", help="策略名称搜索（--search-val别名）")
+    parser.add_argument("--name", dest="search_val", help="策略名称搜索")
     parser.add_argument("--coin", dest="search_coin", help="币种筛选")
     parser.add_argument("--amt-type", dest="search_amt_type", type=int,
                         choices=[1, 2], help="类型: 1现货 2合约")
     parser.add_argument("--status", dest="search_status", type=int, help="状态筛选")
-    parser.add_argument("--data-grade", dest="data_grade", type=int, default=1,
-                        help="排序方式: 1=按创建时间排序（默认）")
-    parser.add_argument("--show-type", dest="show_type", type=int, default=1,
-                        help="显示类型: 1=标准显示（默认）")
-    parser.add_argument("--app-v", dest="app_v", default="2.0.0",
-                        help="API版本（默认2.0.0）")
-    parser.add_argument("--lang", dest="lang", type=int, default=1,
-                        help="语言: 1=中文（默认）")
     
     # 回测参数
     parser.add_argument("--strategy-id", help="策略 ID（单个策略）")
@@ -1029,10 +1012,6 @@ def main():
             search_coin=args.search_coin,
             search_amt_type=args.search_amt_type,
             search_status=args.search_status,
-            data_grade=args.data_grade,
-            show_type=args.show_type,
-            app_v=args.app_v,
-            lang=args.lang,
         )
         if args.format == "json":
             print(json.dumps(result, indent=2, ensure_ascii=False))
