@@ -833,7 +833,7 @@ def main():
     # 查询回测列表
     if args.list_backtests:
         if not args.token:
-            print("❌ --list-backtests 需要 --token 参数")
+            print("❌ --list-backtests 需要 --usertoken 参数")
             return
             
         backtest_list = BacktestMonitor.get_backtest_list(
@@ -889,7 +889,7 @@ def main():
     # 获取回测详细信息
     if args.get_backtest_detail:
         if not args.token:
-            print("❌ --get-backtest-detail 需要 --token 参数")
+            print("❌ --get-backtest-detail 需要 --usertoken 参数")
             return
             
         detail_info = BacktestMonitor.get_backtest_detail(
@@ -908,7 +908,7 @@ def main():
     # 分析回测策略的参数需求
     if args.analyze_backtest_strategies:
         if not args.token:
-            print("❌ --analyze-backtest-strategies 需要 --token 参数")
+            print("❌ --analyze-backtest-strategies 需要 --usertoken 参数")
             return
             
         # 获取回测详细信息
@@ -1039,7 +1039,7 @@ def get_strategy_groups(token: str, strategy_group_id: str = None, max_attempts:
     查询用户当前策略组列表，支持精确查找指定策略组
     
     Args:
-        token: 用户登录token
+        token: usertoken
         strategy_group_id: 要查找的策略组ID
         max_attempts: 最大查询页数
     
@@ -1116,7 +1116,7 @@ def analyze_strategies_for_allocation(strategy_ids: List[str], token: str,
     
     Args:
         strategy_ids: 策略ID列表
-        token: 用户token
+        token: usertoken
         strategy_group_id: 策略组ID（可选）
         strategy_data: 直接传入的策略数据（可选，来自策略组查询）
         
@@ -1508,7 +1508,7 @@ def get_user_strategies(token: str, page: int = 1, limit: int = -1, search_val: 
     查询用户当前策略列表 - Strategy/lists接口
     
     Args:
-        token: 用户登录token
+        token: usertoken
         page: 页码（默认1）
         limit: 每页数量（默认10）
         search_val: 策略名称搜索（可选）

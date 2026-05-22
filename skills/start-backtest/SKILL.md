@@ -94,10 +94,11 @@ Agent 必须遵守的规则：
 
 ## 📋 策略查询和回测执行
 
-### 🔑 Token获取
+### 🔑 用户认证Token获取
 ```bash
-TOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
+USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
 ```
+注意:这个USERTOKEN是用户token参数,在backtest_monitor.py和start.py的接口,方法调用的时候,若需要传入token参数,传入的token参数都是这个USERTOKEN,不要和任何其他的token参数概念混淆了
 
 ## 🔍 **用户语义识别和策略查询**
 
@@ -137,19 +138,19 @@ TOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agent
 # 策略组查询
 python skills/start-backtest/backtest_monitor.py \
   --list-groups \
-  --token "$TOKEN"
+  --token "$USERTOKEN"
 
 # 用户策略查询（可带筛选条件）
 python skills/start-backtest/backtest_monitor.py \
   --list-strategies \
   --coin BTC \  # 如用户提到具体币种
   --amt-type 2 \  # 如用户提到合约
-  --token "$TOKEN"
+  --token "$USERTOKEN"
 
 # 回测列表查询
 python skills/start-backtest/backtest_monitor.py \
   --list-backtests \
-  --token "$TOKEN"
+  --token "$USERTOKEN"
 
 # 更多接口参数和用法详见 API_RESPONSE_GUIDE.md
 ```
@@ -208,7 +209,7 @@ python skills/start-backtest/backtest_monitor.py \
 **当用户想要查看过去的回测记录时，使用此接口：**
 
 **回测列表查询：**
-- 基础用法：`--list-backtests --token "$TOKEN"`
+- 基础用法：`--list-backtests --token "$USERTOKEN"`
 - 详细参数和用法请参考 `API_RESPONSE_GUIDE.md` 文档
 
 ### 🎯 **回测列表查询触发条件**
@@ -240,13 +241,13 @@ python skills/start-backtest/backtest_monitor.py \
 python skills/start-backtest/backtest_monitor.py \
   --check-allocation \
   --strategy-group-id "策略组ID" \
-  --token <token>
+  --token <USERTOKEN>
 
 # 或使用策略ID分析(用户想回测多策略或者单策略时使用)
 python skills/start-backtest/backtest_monitor.py \
   --check-allocation \
   --strategy-ids "策略ID1,策略ID2,策略ID3" \
-  --token <token>
+  --token <USERTOKEN>
 ```
 
 **分析结果示例：**
@@ -285,7 +286,7 @@ python3 skills/start-backtest/start.py --calc-margin \
   --leverage 1.5 \
   --long-pct 90 \
   --short-pct 20 \
-  --token "$TOKEN"
+  --token "$USERTOKEN"
 ```
 
 **步骤3：执行回测（计算保证金分配完成,获得正确的分配金额后）**
@@ -298,7 +299,7 @@ python3 skills/start-backtest/start.py --apply \
   --bgn-date YYYY-MM-DD \
   --end-date YYYY-MM-DD \
   --leverage 1.5 \
-  --token "$TOKEN"
+  --token "$USERTOKEN"
 ```
 
 ## 🚨 **策略ID使用规则（绝对不能犯错！）**
@@ -747,7 +748,7 @@ else:
 
 | 参数类型 | 参数名 | 是否必须 | 说明 |
 |----------|--------|----------|------|
-| Token | `--token` | 是 | 用户认证 Token |
+| 用户token | `--token` | 是 | USERTOKEN |
 | 回测ID | `--back-id` | 否 | 单个回测 ID |
 | 回测ID列表 | `--back-ids` | 否 | 多个回测 ID，逗号分隔 |
 | 策略组ID | `--strategy-group-id` | 否 | 查询特定策略组 |
@@ -764,7 +765,7 @@ else:
 
 | 参数类型 | 参数名 | 是否必须 | 说明 |
 |----------|--------|----------|------|
-| Token | `--token` | 是 | 用户认证 Token |
+| 用户token | `--token` | 是 | USERTOKEN |
 | 策略ID | `--strategy-id` | 否 | 单个策略 ID |
 | 策略ID列表 | `--strategy-ids` | 否 | 多个策略 ID，逗号分隔 |
 | 保证金计算 | `--calc-margin` | 否 | 计算保证金分配 |
@@ -787,13 +788,13 @@ else:
 ```bash
 # 步骤1：检查参数分配
 python backtest_monitor.py \
-  --token "$TOKEN" \
+  --token "$USERTOKEN" \
   --check-allocation \
   --strategy-group-id "131"
 
 # 步骤2：计算保证金（使用 start.py）
 python start.py \
-  --token "$TOKEN" \
+  --token "$USERTOKEN" \
   --calc-margin \
   --strategy-ids "1,2,3,4" \
   --coin-long-allocation '{"BCH": 30, "DOGE": 30}' \
@@ -803,7 +804,7 @@ python start.py \
 
 # 步骤3：执行回测（使用 start.py）
 python start.py \
-  --token "$TOKEN" \
+  --token "$USERTOKEN" \
   --apply \
   --strategy-ids "1,2,3,4" \
   --margin-mode shared \
