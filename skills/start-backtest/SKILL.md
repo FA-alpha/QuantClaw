@@ -146,7 +146,7 @@ python skills/start-backtest/backtest_monitor.py \
 
 **若用户选择了多个策略,则进行多策略查询：**
 - ✅ `backtest_monitor.py --check-allocation --strategy-ids "1,2,3"`
-- ⚠️ 缺少AI时间参数
+- ⚠️ 该方法返回的数据中,没有AI时间参数
 
 ### 🔍 **回测列表查询（查看历史回测记录）**
 
@@ -187,7 +187,7 @@ python skills/start-backtest/backtest_monitor.py \
   --strategy-group-id "策略组ID" \
   --token <token>
 
-# 或使用策略ID列表分析(用户想回测多策略或者单策略时使用)
+# 或使用策略ID分析(用户想回测多策略或者单策略时使用)
 python skills/start-backtest/backtest_monitor.py \
   --check-allocation \
   --strategy-ids "策略ID1,策略ID2,策略ID3" \

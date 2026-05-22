@@ -27,10 +27,9 @@ start-backtest/
   4. 触发回测流程
 
 ### backtest_monitor.py
-- 监控回测进程状态
-- 提供实时状态追踪
+- 共享保证金模式下检查回测所需参数
+- 保证金分配方案接口
 - 管理回测任务生命周期
-- 支持 `--total-balance` 和 `--leverage` 参数
 
 ### API_RESPONSE_GUIDE.md
 - 记录 API 交互的响应规范
