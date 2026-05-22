@@ -922,7 +922,7 @@ def main():
             return
         
         # 分析策略需求
-        requirement = analyze_backtest_strategies_for_allocation(backtest_detail)
+        requirement = analyze_strategies_for_allocation(backtest_detail)
         
         print(f"\n🔍 回测ID {args.analyze_backtest_strategies} 策略分析结果:")
         print(f"  回测名称: {backtest_detail.get('name', 'N/A')}")
@@ -1034,136 +1034,78 @@ def main():
 # 新增接口函数：Strategy/group_lists 和 Strategy/lists
 # ========================================
 
-def get_strategy_groups(token: str, page: int = 1, limit: int = -1) -> dict:
+def get_strategy_groups(token: str, strategy_group_id: str = None, max_attempts: int = 10) -> dict:
     """
-    查询用户当前策略组列表 - Strategy/group_lists接口
+    查询用户当前策略组列表，支持精确查找指定策略组
     
     Args:
         token: 用户登录token
-        page: 页码（默认1）
-        limit: 每页数量（默认10）
+        strategy_group_id: 要查找的策略组ID
+        max_attempts: 最大查询页数
     
     Returns:
-        dict: API响应数据，包含策略组列表
+        dict: 找到的策略组详细信息，或错误信息
     """
-    url = f"{API_BASE}/Strategy/group_lists"
-    data = {
-        "usertoken": token,
-        "app_v": "2.0.0", 
-        "lang": 1,
-        "page": page,
-        "limit": limit
-    }
+    page = 1
+    limit = 20  # 每页查询数量
     
-    try:
-        resp = requests.post(url, data=data, timeout=30)
-        resp.raise_for_status()
-        result = resp.json()
+    while page <= max_attempts:
+        url = f"{API_BASE}/Strategy/group_lists"
+        data = {
+            "usertoken": token,
+            "app_v": "2.0.0", 
+            "lang": 1,
+            "page": page,
+            "limit": limit
+        }
         
-        # 检查认证状态
-        if result.get("status") == 0:
-            error_msg = result.get("info", "未知错误")
-            print(f"[ERROR] Strategy/group_lists API错误: {error_msg}")
+        try:
+            resp = requests.post(url, data=data, timeout=30)
+            resp.raise_for_status()
+            result = resp.json()
+            
+            # 检查认证状态
+            if result.get("status") == 0:
+                error_msg = result.get("info", "未知错误")
+                print(f"[ERROR] Strategy/group_lists API错误: {error_msg}")
+                return {"status": "error", "message": error_msg}
+            
+            # 获取策略组列表
+            groups = result.get("info", [])
+            
+            # 如果没有传入strategy_group_id，返回所有策略组
+            if not strategy_group_id:
+                return result
+            
+            # 在当前页查找匹配的策略组
+            for group in groups:
+                if str(group.get("id")) == str(strategy_group_id):
+                    # 找到匹配的策略组，返回完整信息
+                    return {
+                        "status": 1,
+                        "msg": "找到策略组",
+                        "info": [group]
+                    }
+            
+            # 如果本页没找到，且本页数据未满，说明已经查完所有策略组
+            if len(groups) < limit:
+                break
+            
+            # 准备查询下一页
+            page += 1
+        
+        except requests.RequestException as e:
+            error_msg = f"查询策略组列表失败: {e}"
+            print(f"[ERROR] {error_msg}")
             return {"status": "error", "message": error_msg}
-            
-        return result
-        
-    except requests.RequestException as e:
-        error_msg = f"查询策略组列表失败: {e}"
-        print(f"[ERROR] {error_msg}")
-        return {"status": "error", "message": error_msg}
-
-
-def analyze_backtest_strategies_for_allocation(backtest_detail: dict) -> AllocationRequirement:
-    """
-    从回测详情中分析策略，确定保证金分配方案需要的参数
     
-    Args:
-        backtest_detail: 从Backtrack/stat_info接口获取的回测详细信息
-        
-    Returns:
-        AllocationRequirement: 保证金分配方案需求
-        
-    注意：
-        - 有ai_time_id参数 = 策略组回测
-        - 没有ai_time_id参数 = 多策略回测  
-        - 共享保证金模式仅适用于多个策略或策略组回测
-        - 单个策略回测时无共享保证金模式选项
-        - 只有策略组+共享保证金模式才需要AI时间参数
-        - 独占保证金模式下不需要检查任何分配参数
-    """
-    try:
-        # 获取策略信息数组
-        strategies = backtest_detail.get("strategy", [])
-        if not strategies:
-            print(f"❌ 回测详情中未找到策略信息")
-            return AllocationRequirement([], [], [], [], {}, False)
-        
-        print(f"🔍 从回测详情分析 {len(strategies)} 个策略")
-        
-        # 解析策略参数
-        coin_long_set = set()
-        coin_short_set = set()  
-        ai_time_long_set = set()
-        ai_time_short_set = set()
-        ai_time_id_mapping = {}  # ai_time_name -> ai_time_id 映射
-        has_ai_time = False
-        
-        for strategy in strategies:
-            coin = strategy.get("coin", "").upper()
-            direction = strategy.get("direction", "")
-            
-            # 检查AI时间参数（从回测详情中获取）
-            ai_time_id = strategy.get("ai_time_id")
-            ai_time_name = strategy.get("ai_time_name")
-            
-            print(f"[DEBUG] 策略 {strategy.get('id')}: {coin}-{direction}, AI时间: {ai_time_name}({ai_time_id})")
-            
-            # 收集AI时间ID映射关系
-            # 重要：只有ai_time_id参数存在才说明是策略组回测
-            if ai_time_id and ai_time_name:
-                ai_time_id_mapping[ai_time_name] = str(ai_time_id)
-                has_ai_time = True  # 策略组标识
-            
-            # 收集币种和方向组合（支持中英文）
-            if "做多" in direction or "long" in direction.lower():
-                coin_long_set.add(coin)
-                # AI时间做多
-                if ai_time_name:
-                    ai_time_long_set.add(ai_time_name)
-                        
-            elif "做空" in direction or "short" in direction.lower():
-                coin_short_set.add(coin)
-                # AI时间做空
-                if ai_time_name:
-                    ai_time_short_set.add(ai_time_name)
-        
-        strategy_count = len(strategies)
-        
-        print(f"📊 回测策略分析结果:")
-        if has_ai_time:
-            print(f"   回测类型: 策略组回测")
-        else:
-            print(f"   回测类型: {'单策略回测' if strategy_count == 1 else '多策略回测'}")
-        print(f"   币种做多: {list(coin_long_set)}")
-        print(f"   币种做空: {list(coin_short_set)}")
-        if has_ai_time:  # 只有策略组才显示AI时间信息
-            print(f"   AI时间做多: {list(ai_time_long_set)}")
-            print(f"   AI时间做空: {list(ai_time_short_set)}")
-            print(f"   AI时间ID映射: {ai_time_id_mapping}")
-        
-        return AllocationRequirement(
-            coin_long_pairs=sorted(list(coin_long_set)),
-            coin_short_pairs=sorted(list(coin_short_set)),
-            ai_time_long_types=sorted(list(ai_time_long_set)),
-            ai_time_short_types=sorted(list(ai_time_short_set)),
-            ai_time_id_mapping=ai_time_id_mapping,
-            has_ai_time=has_ai_time
-        )
-        
-    except Exception as e:
-        print(f"❌ 回测策略分析失败: {e}")
-        return AllocationRequirement([], [], [], [], {}, False)
+    # 查询了指定页数仍未找到
+    print(f"[WARNING] 未找到ID为 {strategy_group_id} 的策略组")
+    return {
+        "status": 0,
+        "message": f"未找到ID为 {strategy_group_id} 的策略组",
+        "info": []
+    }
 
 
 def analyze_strategies_for_allocation(strategy_ids: List[str], token: str, 
