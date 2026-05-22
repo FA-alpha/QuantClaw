@@ -4,6 +4,61 @@
  - 遇到不确定情况必须询问用户 
  - 禁止在用户未明确说明的情况下擅自跳转到其他技能流程 
  - 缺少参数或参数不明确时主动询问用户
+## 🚨 重要：上下文信息利用原则
+
+### 📋 策略组回测上下文保存规则 注意:只有当进行策略组回测的时候,才会用到!
+
+**❌ 禁止的行为：**
+- 重复查询已获取的策略组信息
+- 忽略 `--check-allocation` 返回的完整策略信息
+- 丢弃之前查询得到的策略 ID 和策略名称
+
+**✅ 正确的处理流程：**
+
+1. **保存查询结果的关键信息**
+   - 必须保存 `strategy_ids` 列表
+   - 必须保存 `strategy_names` 列表
+   - 在后续回测流程中直接使用这些信息
+
+2. **上下文信息利用示例：**
+```python
+# ✅ 正确做法：直接使用 check-allocation 返回的策略 ID
+result = backtest_monitor.check_allocation(strategy_group_id="135")
+strategy_ids = result.get("strategy_ids")
+strategy_names = result.get("strategy_names")
+
+# 后续直接使用这些 ID 进行回测
+start.py --calc-margin \
+  --strategy-ids "$strategy_ids" \
+  ...
+3. ❌ 错误示例：重复查询
+# ❌ 错误做法：再次调用接口查询策略 ID
+backtest_monitor.list_groups()  # 重复查询 ❌
+
+🔍 上下文信息管理原则
+
+Agent 必须遵守的规则：
+
+• 每次 --check-allocation 调用都视为独立的上下文
+• 必须在当前对话单元内保存和使用查询结果
+• 禁止跨对话单元复用上下文信息
+• 总是以最新的查询结果为准
+💡 性能和效率提示
+
+• 通过直接使用已获取的上下文信息，可以：  
+  1. 减少不必要的 API 调用
+  2. 降低系统资源消耗
+  3. 提高回测流程的响应速度
+
+🚨 Agent 自检清单
+
+回测前，Agent 必须确认：
+
+• [x] 已保存策略组 ID
+• [x] 已保存策略 ID 列表
+• [x] 已保存策略名称列表
+• [x] 直接使用已获取的上下文信息
+• [x] 未进行重复查询
 
 # 启动回测
 
