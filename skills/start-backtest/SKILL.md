@@ -4,6 +4,13 @@
  - 遇到不确定情况必须询问用户 
  - 禁止在用户未明确说明的情况下擅自跳转到其他技能流程 
  - 缺少参数或参数不明确时主动询问用户
+
+### 🔑 重要:用户Token获取 这是进行回测操作的第一步!先获取到当前的usertoken
+```bash
+USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
+```
+注意:这个USERTOKEN就是用户token参数,在backtest_monitor.py和start.py的接口,方法调用的时候,若需要传入token参数,传入的token参数都是这个USERTOKEN,不要和任何其他的token参数概念混淆了
+
 ## 🚨 重要：上下文信息利用原则
 
 ### 📋 策略组回测上下文保存规则 注意:只有当进行策略组回测的时候,才会用到!
@@ -94,11 +101,6 @@ Agent 必须遵守的规则：
 
 ## 📋 策略查询和回测执行
 
-### 🔑 用户认证Token获取
-```bash
-USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
-```
-注意:这个USERTOKEN是用户token参数,在backtest_monitor.py和start.py的接口,方法调用的时候,若需要传入token参数,传入的token参数都是这个USERTOKEN,不要和任何其他的token参数概念混淆了
 
 ## 🔍 **用户语义识别和策略查询**
 
@@ -748,7 +750,7 @@ else:
 
 | 参数类型 | 参数名 | 是否必须 | 说明 |
 |----------|--------|----------|------|
-| 用户token | `--token` | 是 | USERTOKEN |
+| 用户token | `--token` | 是 | 用户token就是USERTOKEN |
 | 回测ID | `--back-id` | 否 | 单个回测 ID |
 | 回测ID列表 | `--back-ids` | 否 | 多个回测 ID，逗号分隔 |
 | 策略组ID | `--strategy-group-id` | 否 | 查询特定策略组 |
@@ -765,7 +767,7 @@ else:
 
 | 参数类型 | 参数名 | 是否必须 | 说明 |
 |----------|--------|----------|------|
-| 用户token | `--token` | 是 | USERTOKEN |
+| 用户token | `--token` | 是 | 用户token就是USERTOKEN |
 | 策略ID | `--strategy-id` | 否 | 单个策略 ID |
 | 策略ID列表 | `--strategy-ids` | 否 | 多个策略 ID，逗号分隔 |
 | 保证金计算 | `--calc-margin` | 否 | 计算保证金分配 |
