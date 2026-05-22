@@ -4,13 +4,13 @@
  - 遇到不确定情况必须询问用户 
  - 禁止在用户未明确说明的情况下擅自跳转到其他技能流程 
  - 缺少参数或参数不明确时主动询问用户
-
+ - 禁止展示命令行参数给用户看
 
 ### 🔑 重要:这是用户Token(USERTOKEN)获取方法,这是进行回测操作的第一步!先获取到当前的USERTOKEN,你才能够进行后续的操作,若你没有获取到USERTOKEN,则先去用这个方法获取,拿到了再阅读其他操作流程
 ```bash
 USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
 ```
-注意:这个USERTOKEN就是用户token参数,在backtest_monitor.py和start.py的接口,方法调用的时候,若需要传入token参数,传入的token参数都是这个USERTOKEN,不要和任何其他的token参数概念混淆了
+注意:这个USERTOKEN就是用户token参数,一定有值,如果取得为空,那么先暂停其他操作,隔2秒再重试一次,直到成功获取,获取了usertoken之后再继续进行其他操作,如果重试了5次都没能获取成功,则通知用户,在backtest_monitor.py和start.py的接口,方法调用的时候,若需要传入token参数,传入的token参数都是这个USERTOKEN,不要和任何其他的token参数概念混淆了
 
 
 # 启动回测
@@ -21,6 +21,8 @@ USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人a
 3. **调用Python脚本前必须获取并传递token参数**
 4. **共享保证金模式必须先获取分配方案**
 5. **进行回测时，回测开始时间不得早于2020-01-01**
+6. **禁止展示命令行参数给用户看**
+7. **单个策略必定为独立保证金模式,多个策略才需要询问用户保证金模式**
 
 ## 🔥 关键：共享模式参数检查强制流程
 
@@ -89,7 +91,7 @@ USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人a
 ```bash
 # 策略组查询
 python skills/start-backtest/backtest_monitor.py \
-  --list-groups \
+  --list-groups (这里传递策略组id来进行查询该策略组中的所有策略id等详细信息)\
   --token "$USERTOKEN"
 
 # 用户策略查询（可带筛选条件）
@@ -224,8 +226,9 @@ python skills/start-backtest/backtest_monitor.py \
 
 请提供这些参数的具体占比，我将为您计算保证金分配方案。"
 ```
+若用户给出的参数与需求的参数数量不一致,或者用户无视了要提供的参数等步骤强行想要开始回测,则重新请求用户提供完整的参数,直到用户提供的参数满足需求为止,才可以进入下一步计算保证金分配方案,若返回:请提供--usertoken,则重新去获取usertoken然后再来走一遍这个接口
 
-**步骤2：计算保证金分配（必须在分析策略参数需求后再走这个步骤）**
+**步骤2：计算保证金分配（必须在分析策略参数需求后再走这个步骤,这个步骤在共享保证金模式下一定不能被跳过）**
 ```bash
 # 🚨 注意：只有共享保证金模式需要 --leverage 参数
 python3 skills/start-backtest/start.py --calc-margin \
@@ -281,8 +284,7 @@ python3 skills/start-backtest/start.py --apply \
 - 用户明确说共享：「共享模式」、「一起分配」
 
 **⚠️ 需要询问保证金模式的情况：**
-- 用户只说："一起回测"、"同时回测"、"策略组回测"
-- 用户没有提到任何分配相关的词汇
+- 用户只说："一起回测"、"同时回测"、"策略组回测" 的时候,没有提到任何分配相关的词汇
 
 **询问保证金模式：**
 ```
