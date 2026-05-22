@@ -125,6 +125,40 @@ if result.get("status") == 1:
 
 **接口**: `POST /Strategy/lists`
 
+### 请求参数
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `usertoken` | string | ✅ 是 | - | 用户认证token |
+| `page` | int | ❌ 否 | 1 | 页码，从1开始 |
+| `limit` | int | ❌ 否 | 10 | 每页返回条数 |
+| `search_val` | string | ❌ 否 | - | 搜索关键词（策略名称模糊搜索） |
+| `data_grade` | int | ❌ 否 | 1 | 排序方式：1=按创建时间排序 |
+| `show_type` | int | ❌ 否 | 1 | 显示类型：1=标准显示 |
+| `app_v` | string | ❌ 否 | "2.0.0" | API版本 |
+| `lang` | int | ❌ 否 | 1 | 语言：1=中文 |
+
+### 💡 **标准请求参数（推荐）**
+```json
+{
+  "usertoken": "MTEjI2JpYXplQGZvdXJpZXJhbHBoYS5jb20jIzE3Nzg2NjU0NzAjI3BsYW50X3YyIyMwIyMxIyN1c2Vy",
+  "page": 1,
+  "limit": 10,
+  "data_grade": 1,
+  "show_type": 1,
+  "app_v": "2.0.0",
+  "lang": 1
+}
+```
+
+### 🔍 **搜索模式参数**
+当需要搜索特定策略时，额外添加：
+```json
+{
+  "search_val": "风霆V4.3"  // 根据用户需求设置搜索关键词
+}
+```
+
 ### 返回数据结构
 ```json
 {
