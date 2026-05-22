@@ -594,7 +594,7 @@ def main():
     # 自动获取 token（如果未提供）
     if not args.token:
         # TODO: 实现 auto_get_token 函数
-        print("错误: 请提供 --token 参数")
+        print("错误: 请提供 --token 参数,也就是USERTOKEN")
         sys.exit(1)
     
     # 处理新增的接口查询
@@ -755,78 +755,54 @@ def main():
             return
             
         strategy_ids = [sid.strip() for sid in args.strategy_ids.split(",")] if args.strategy_ids else []
+        strategy_names = []
         
         print(f"🔍 分析策略ID: {strategy_ids}")
         if args.strategy_group_id:
             print(f"🔍 使用策略组ID: {args.strategy_group_id}")
-        
+
         # 分析策略需求
         requirement = analyze_strategies_for_allocation(
             strategy_ids, 
             args.token, 
             strategy_group_id=args.strategy_group_id
         )
-        
-        print(f"\n📊 策略分析结果:")
-        print(f"  币种做多需求: {requirement.coin_long_pairs}")
-        print(f"  币种做空需求: {requirement.coin_short_pairs}")  
-        print(f"  AI时间做多需求: {requirement.ai_time_long_types}")
-        print(f"  AI时间做空需求: {requirement.ai_time_short_types}")
-        print(f"  是否需要AI时间参数: {requirement.has_ai_time}")
-        
-        # 解析用户提供的分配方案
-        user_allocation = {}
-        
-        if args.coin_long_allocation:
-            try:
-                user_allocation["coin_long_allocation"] = json.loads(args.coin_long_allocation)
-            except json.JSONDecodeError:
-                print("❌ coin_long_allocation JSON格式错误")
-                return
+
+        # 如果是策略组查询，获取策略组中的策略ID和名称
+        if args.strategy_group_id:
+            # 调用 get_strategy_groups 获取策略组详细信息
+            groups_result = get_strategy_groups(
+                token=args.token, 
+                strategy_group_id=args.strategy_group_id
+            )
+            
+            if groups_result.get("status") == 1 and groups_result.get("info"):
+                group_info = groups_result['info'][0]
+                strategy_lists = group_info.get('strategy_lists', [])
                 
-        if args.coin_short_allocation:
-            try:
-                user_allocation["coin_short_allocation"] = json.loads(args.coin_short_allocation)
-            except json.JSONDecodeError:
-                print("❌ coin_short_allocation JSON格式错误")
-                return
-                
-        if args.ai_time_long_allocation:
-            try:
-                user_allocation["ai_time_long_allocation"] = json.loads(args.ai_time_long_allocation)
-            except json.JSONDecodeError:
-                print("❌ ai_time_long_allocation JSON格式错误")
-                return
-                
-        if args.ai_time_short_allocation:
-            try:
-                user_allocation["ai_time_short_allocation"] = json.loads(args.ai_time_short_allocation)
-            except json.JSONDecodeError:
-                print("❌ ai_time_short_allocation JSON格式错误")
-                return
-        
-        # 检查完整性
-        missing = check_allocation_completeness(requirement, user_allocation)
-        
-        # 输出结果
-        message = format_missing_params_message(requirement, missing)
-        print(f"\n{message}")
-        
+                # 提取策略ID和名称
+                strategy_ids = [str(strategy['id']) for strategy in strategy_lists]
+                strategy_names = [strategy.get('name', f'策略{idx+1}') for idx, strategy in enumerate(strategy_lists)]
+
+        # 打印策略详情
+        print("\n📊 策略详情:")
+        for idx, (strategy_id, strategy_name) in enumerate(zip(strategy_ids, strategy_names), 1):
+            print(f"{idx}. 策略ID: {strategy_id} - 名称: {strategy_name}")
+
         # 输出JSON格式供Agent使用
-        print(f"\n📄 JSON结果:")
         result = {
             "requirement": {
                 "coin_long_pairs": requirement.coin_long_pairs,
                 "coin_short_pairs": requirement.coin_short_pairs,
                 "ai_time_long_types": requirement.ai_time_long_types,
                 "ai_time_short_types": requirement.ai_time_short_types,
-                "ai_time_id_mapping": requirement.ai_time_id_mapping,
                 "has_ai_time": requirement.has_ai_time
             },
-            "missing": missing,
-            "is_complete": not any(missing.values()),
-            "message": message
+            "strategy_ids": strategy_ids,       # 新增
+            "strategy_names": strategy_names    # 新增
         }
+        
+        print("\n📄 JSON结果:")
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     
@@ -1413,7 +1389,6 @@ def check_allocation_completeness(requirement: AllocationRequirement,
             missing["errors"].append("策略包含AI时间做空参数，需要提供ai_time_short_allocation")
     
     return missing
-
 
 def format_missing_params_message(requirement: AllocationRequirement, 
                                  missing: Dict[str, List[str]]) -> str:
