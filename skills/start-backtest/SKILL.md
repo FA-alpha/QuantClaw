@@ -2,10 +2,11 @@
 
 🚨 **强制规则：**
 1. **回测成功后不要询问用户是否需要等待或查看结果**
-2. **每次回测必须询问时间范围，不使用历史对话信息**
+2. **每次回测必须询问回测的时间范围，不使用历史对话信息**
 3. **调用Python脚本前必须获取并传递token参数**
 4. **共享保证金模式必须先获取分配方案**
 5. **进行回测时，回测开始时间不得早于2020-01-01**
+6. **禁止展示命令行参数给用户看**
 
 ## 🔥 关键：共享模式参数检查强制流程
 
@@ -690,3 +691,87 @@ else:
 - 日期格式必须为 `YYYY-MM-DD`
 - **多策略回测必须先询问保证金模式**
 - **AI时间参数必须询问用户，绝对不能自动推测**
+
+
+## 🔧 脚本参数支持矩阵
+
+### backtest_monitor.py 支持的参数
+
+| 参数类型 | 参数名 | 是否必须 | 说明 |
+|----------|--------|----------|------|
+| 用户token | `--token` | 是 | 用户token就是USERTOKEN |
+| 回测ID | `--back-id` | 否 | 单个回测 ID |
+| 回测ID列表 | `--back-ids` | 否 | 多个回测 ID，逗号分隔 |
+| 策略组ID | `--strategy-group-id` | 否 | 查询特定策略组 |
+| 策略ID列表 | `--strategy-ids` | 否 | 多个策略 ID，逗号分隔 |
+| 分配检查 | `--check-allocation` | 否 | 检查保证金分配 |
+| 币种做多分配 | `--coin-long-allocation` | 否 | JSON 格式的做多币种分配 |
+| 币种做空分配 | `--coin-short-allocation` | 否 | JSON 格式的做空币种分配 |
+| AI时间做多分配 | `--ai-time-long-allocation` | 否 | JSON 格式的做多AI时间分配 |
+| AI时间做空分配 | `--ai-time-short-allocation` | 否 | JSON 格式的做空AI时间分配 |
+| ⚠️ 兼容 | `--total-balance` | 否 | 仅为命令行兼容，不影响实际逻辑 |
+| ⚠️ 兼容 | `--leverage` | 否 | 仅为命令行兼容，不影响实际逻辑 |
+
+### start.py 支持的参数
+
+| 参数类型 | 参数名 | 是否必须 | 说明 |
+|----------|--------|----------|------|
+| 用户token | `--token` | 是 | 用户token就是USERTOKEN |
+| 策略ID | `--strategy-id` | 否 | 单个策略 ID |
+| 策略ID列表 | `--strategy-ids` | 否 | 多个策略 ID，逗号分隔 |
+| 保证金计算 | `--calc-margin` | 否 | 计算保证金分配 |
+| 币种做多分配 | `--coin-long-allocation` | 否 | JSON 格式的做多币种分配 |
+| 币种做空分配 | `--coin-short-allocation` | 否 | JSON 格式的做空币种分配 |
+| AI时间做多分配 | `--ai-time-long-allocation` | 否 | JSON 格式的做多AI时间分配 |
+| AI时间做空分配 | `--ai-time-short-allocation` | 否 | JSON 格式的做空AI时间分配 |
+| 保证金总额 | `--total-balance` | 是（共享模式） | 共享保证金总额 |
+| 杠杆倍数 | `--leverage` | 是（共享模式） | 共享模式下的杠杆倍数 |
+
+### ⚠️ 调用注意事项
+
+1. **总是先用 `backtest_monitor.py` 检查参数分配**
+2. **保证金计算和回测执行使用 `start.py`**
+3. **共享保证金模式下必须使用 `start.py` 的 `--total-balance` 和 `--leverage`**
+4. **不要在 `backtest_monitor.py` 中使用 `--total-balance` 和 `--leverage`**
+
+### 🚨 推荐调用流程
+
+```bash
+# 步骤1：检查参数分配
+python backtest_monitor.py \
+  --token "$USERTOKEN" \
+  --check-allocation \
+  --strategy-group-id "131"
+
+# 步骤2：计算保证金（使用 start.py）
+python start.py \
+  --token "$USERTOKEN" \
+  --calc-margin \
+  --strategy-ids "1,2,3,4" \
+  --coin-long-allocation '{"BCH": 30, "DOGE": 30}' \
+  --coin-short-allocation '{"BCH": 80, "DOGE": 20}' \
+  --total-balance 10000 \
+  --leverage 1.5
+
+# 步骤3：执行回测（使用 start.py）
+python start.py \
+  --token "$USERTOKEN" \
+  --apply \
+  --strategy-ids "1,2,3,4" \
+  --margin-mode shared \
+  --margin-allocation "3000,2000,3000,2000"
+```
+
+## 🔍 策略组回测参数解析接口返回参数详解
+
+### 📋 `--check-allocation` 接口返回参数说明
+
+#### 🎯 关键参数: `strategy_ids` 和 `strategy_names`
+
+**重要性：** 
+- `strategy_ids`: 策略组中所有策略的 ID 列表
+- `strategy_names`: 对应策略的名称列表
+
+**使用场景：**
+1. 计算保证金分配
+2. 执行回测
