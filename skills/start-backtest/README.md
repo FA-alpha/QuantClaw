@@ -1,6 +1,6 @@
-# 回测启动与初始化模块
+# 回测启动与监控模块
 
-管理回测任务的启动、初始化和基础配置。
+管理回测任务的启动、监控和基础配置。
 
 ---
 
@@ -11,12 +11,7 @@ start-backtest/
 ├── SKILL.md                      # 技能描述（Agent 阅读）
 ├── start.py                      # 回测启动主脚本
 ├── backtest_monitor.py           # 回测监控与状态管理
-├── config_manager.py             # 配置加载与参数处理
-├── defaults.py                   # 默认配置参数
-├── requirements.txt              # Python 依赖
-└── utils/                        # 工具模块
-    ├── path_resolver.py          # 路径解析工具
-    └── logger.py                 # 日志记录工具
+├── API_RESPONSE_GUIDE.md         # API 响应指南文档
 ```
 
 ---
@@ -37,26 +32,15 @@ start-backtest/
 - 管理回测任务生命周期
 - 支持 `--total-balance` 和 `--leverage` 参数
 
-### config_manager.py
-- 加载和管理回测配置
-- 处理配置文件读取
-- 参数验证与默认值设置
-- 支持多种配置来源（文件、命令行）
+### API_RESPONSE_GUIDE.md
+- 记录 API 交互的响应规范
+- 定义标准化的 API 返回格式
+- 提供错误处理和状态码说明
 
-### defaults.py
-- 定义回测的默认配置参数
-- 提供基础配置模板
-- 确保回测有最小可用配置
-
-### utils/path_resolver.py
-- 解析文件和目录路径
-- 处理相对路径与绝对路径
-- 确保路径的一致性和安全性
-
-### utils/logger.py
-- 自定义日志记录工具
-- 支持多级别日志输出
-- 记录回测过程中的关键信息和错误
+### SKILL.md
+- 技能描述文档
+- 详细说明模块功能
+- 提供使用指南和示例
 
 ---
 
