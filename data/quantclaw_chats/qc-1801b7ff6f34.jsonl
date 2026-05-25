@@ -1,2 +1,0 @@
-{"ts": 1779347782.972519, "time": "2026-05-21 07:16:22", "role": "user", "name": "用户", "text": "你好，测试一下"}
-{"ts": 1779347787.924478, "time": "2026-05-21 07:16:27", "role": "assistant", "name": "QuantClaw", "text": "400 Provider returned error\n{\"message\":\"You invoked an unsupported model or your request did not allow prompt caching. See the documentation for more information.\"}"}
