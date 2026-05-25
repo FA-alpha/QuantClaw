@@ -1097,6 +1097,65 @@ class SmartGroupRecommender:
         
         return list(selected.values())
     
+    def _single_strategy_recommend(
+        self,
+        strategies: List[Dict],
+        intent: Dict,
+        detail_criteria: Optional[Dict] = None,
+        api_sort_type: Optional[int] = None
+    ) -> Dict:
+        """
+        单策略推荐模式 - 不进行组合分析，直接返回排序后的策略列表
+        
+        Args:
+            strategies: 查询到的策略列表
+            intent: 意图分析结果
+            detail_criteria: 详情筛选条件
+            api_sort_type: API排序类型
+            
+        Returns:
+            包含单条策略列表的结果
+        """
+        self.log("\n🔍 开始单策略推荐...")
+        
+        # 1. 获取数量要求
+        constraints = intent.get('constraints', {})
+        limit = constraints.get('min_strategies', 5)
+        
+        self.log(f"📊 候选策略数: {len(strategies)}")
+        self.log(f"🎯 返回数量: {limit}")
+        
+        # 2. 按收益率排序（或使用API指定的排序）
+        sort_key = 'profit_rate'  # 默认按收益率
+        if api_sort_type == 3:
+            sort_key = 'sharp_rate'
+        elif api_sort_type == 4:
+            sort_key = 'max_draw_down'
+            
+        self.log(f"📈 排序字段: {sort_key}")
+        
+        sorted_strategies = sorted(
+            strategies,
+            key=lambda x: float(x.get(sort_key, 0) or 0),
+            reverse=(sort_key != 'max_draw_down')  # 回撤越小越好
+        )
+        
+        # 3. 取前N个
+        selected = sorted_strategies[:limit]
+        
+        self.log(f"✅ 已选择 {len(selected)} 个策略")
+        
+        # 4. 构建返回结果
+        result = {
+            "mode": "single_strategy",
+            "strategies": selected,
+            "total_fetched": len(strategies),
+            "total_selected": len(selected),
+            "sort_by": sort_key
+        }
+        
+        return result
+    
     def smart_recommend(
         self,
         query_text: str,
@@ -1127,6 +1186,17 @@ class SmartGroupRecommender:
         self.log("="*70)
         self.log("🧠 智能分组推荐系统")
         self.log("="*70)
+        
+        # 0. 检查是否是单策略推荐模式
+        if intent and intent.get('strategy_goal') == 'single_strategy':
+            self.log(f"\n📝 用户需求: {query_text}")
+            self.log("🎯 单策略推荐模式 - 跳过组合分析")
+            return self._single_strategy_recommend(
+                strategies=strategies,
+                intent=intent,
+                detail_criteria=detail_criteria,
+                api_sort_type=api_sort_type
+            )
         
         # 1. 推断分组策略（考虑 intent）
         self.log(f"\n📝 用户需求: {query_text}")
@@ -1797,6 +1867,32 @@ class SmartGroupRecommender:
                     print(f"   {i}. {suggestion}")
             return
         
+        # 单策略推荐模式
+        if result.get('mode') == 'single_strategy':
+            print("\n" + "="*70)
+            print("📊 单策略推荐结果")
+            print("="*70)
+            print(f"查询: {result.get('total_fetched', 0)} → 已选: {result.get('total_selected', 0)} 个")
+            print(f"排序字段: {result.get('sort_by', 'profit_rate')}")
+            
+            strategies = result.get('strategies', [])
+            if strategies:
+                print(f"\n🌟 推荐策略（Top {len(strategies)}）:")
+                for i, s in enumerate(strategies, 1):
+                    print(
+                        f"  #{i} {s.get('name', 'N/A')} | "
+                        f"收益{s.get('profit_rate', 0)}% | "
+                        f"夏普{s.get('sharp_rate', 0)} | "
+                        f"回撤{s.get('max_draw_down', 0)}%"
+                    )
+                    print(f"      Token: {s.get('strategy_token', 'N/A')}")
+            
+            print(f"\n💡 提示:")
+            print(f"   • 保存单个策略: query.py --add-strategy --strategy-token <token>")
+            print(f"   • 创建策略组: query.py --create-group --strategy-tokens <t1,t2,...>")
+            return
+        
+        # 组合推荐模式
         print("\n" + "="*70)
         print("📊 推荐结果")
         print("="*70)

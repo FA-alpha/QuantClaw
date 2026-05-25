@@ -36,6 +36,7 @@
 
 | strategy_goal | 触发条件 | 说明 |
 |--------------|---------|------|
+| `single_strategy` | 包含"推荐几个"/"列出"/"有哪些" + 无"搭配/组合/对冲" | **单策略推荐** - 不进行组合，返回单条策略列表 |
 | `hedging` | 包含"对冲"/"多空" | 多空配合降低风险 |
 | `diversification` | 包含"分散"/"互补" + 单一方向/多币种/多策略类型 | 同类分散降低单一风险 |
 | `trend` | 只提到一个方向，无分散意图 | 单一方向 |
@@ -58,6 +59,27 @@
 ---
 
 ## 📚 示例
+
+### 单策略推荐（新增）
+**输入**：`"推荐几个 BTC 风霆V4 的策略"` 或 `"列出 SOL 的策略"`
+```json
+{
+  "strategy_goal": "single_strategy",
+  "constraints": {
+    "coins": ["BTC"],
+    "directions": null,
+    "min_strategies": 5
+  },
+  "preferences": {
+    "risk_level": "balanced",
+    "diversity_priority": null
+  }
+}
+```
+**说明**：
+- `strategy_goal: "single_strategy"` 触发单策略推荐逻辑
+- 不进行组合分析，直接返回排序后的单条策略列表
+- `min_strategies` 表示返回数量（默认5个）
 
 ### 对冲型（跨币种）
 **输入**：`"BTC和SOL的对冲策略组"` 或 `"DOGE与BCH对冲"`
