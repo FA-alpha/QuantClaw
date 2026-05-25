@@ -26,31 +26,39 @@ echo "✅ Python: $(python3 --version)"
 # 检查并安装依赖
 echo "🔍 Checking dependencies..."
 
-# 检查所有必需的依赖
+# 检查系统工具
+command -v jq &> /dev/null || MISSING_TOOLS="jq"
+
+# 检查 Python 包
 MISSING_DEPS=""
 python3 -c "import aiohttp" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS aiohttp"
 python3 -c "import requests" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS requests"
 python3 -c "import numpy" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS numpy"
 
-if [ -n "$MISSING_DEPS" ]; then
-    echo "⚠️  Missing dependencies:$MISSING_DEPS"
+# 安装缺失的工具和依赖
+if [ -n "$MISSING_TOOLS" ] || [ -n "$MISSING_DEPS" ]; then
+    echo "⚠️  Missing dependencies: $MISSING_TOOLS $MISSING_DEPS"
     echo "   Installing..."
     
-    # 转换为 apt 包名
-    APT_DEPS=$(echo "$MISSING_DEPS" | sed 's/\baiohttp\b/python3-aiohttp/g; s/\brequests\b/python3-requests/g; s/\bnumpy\b/python3-numpy/g')
-    
-    # 尝试使用 apt 安装（推荐）
     if command -v apt-get &> /dev/null; then
+        # 系统工具
+        APT_TOOLS="$MISSING_TOOLS"
+        
+        # Python 包 → apt 包名
+        APT_DEPS=$(echo "$MISSING_DEPS" | sed 's/\baiohttp\b/python3-aiohttp/g; s/\brequests\b/python3-requests/g; s/\bnumpy\b/python3-numpy/g')
+        
+        # 合并安装
+        ALL_APT="$APT_TOOLS $APT_DEPS"
         echo "   Using apt-get (requires root)..."
-        apt-get update -qq && apt-get install -y -qq $APT_DEPS && echo "   ✓ Installed via apt" || {
-            echo "   ⚠️  apt-get failed, trying pip..."
-            python3 -m pip install --break-system-packages $MISSING_DEPS && echo "   ✓ Installed via pip" || {
+        apt-get update -qq && apt-get install -y -qq $ALL_APT && echo "   ✓ Installed via apt" || {
+            echo "   ⚠️  apt-get failed, trying pip for Python packages..."
+            [ -n "$MISSING_DEPS" ] && python3 -m pip install --break-system-packages $MISSING_DEPS && echo "   ✓ Python packages installed via pip" || {
                 echo "❌ Failed to install dependencies"
                 exit 1
             }
         }
     else
-        # 尝试使用 pip
+        # 尝试使用 pip 安装 Python 包
         echo "   Using pip..."
         python3 -m pip install --break-system-packages $MISSING_DEPS || {
             echo "❌ Failed to install dependencies"
