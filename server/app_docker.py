@@ -4,7 +4,7 @@ QuantClaw Server - Docker 版本
 提供 HTTP API + WebSocket 代理 + 独立聊天记录存储
 
 与原版 app.py 的区别：
-1. 认证调用独立的 quantclaw_webhook.py 服务（端口 8080）
+1. 认证调用独立的 quantclaw_webhook.py 服务（端口 8081）
 2. Gateway 地址使用容器内地址
 """
 
@@ -666,8 +666,8 @@ async def handle_websocket(request):
                                     'id': connect_id,
                                     'method': 'connect',
                                     'params': {
-                                        'minProtocol': 3,
-                                        'maxProtocol': 3,
+                                        'minProtocol': 4,
+                                        'maxProtocol': 4,
                                         'client': {
                                             'id': 'gateway-client',
                                             'version': '1.0.0',
@@ -677,8 +677,6 @@ async def handle_websocket(request):
                                         'role': 'operator',
                                         'scopes': ['operator.read', 'operator.write'],
                                         'caps': [],
-                                        'commands': [],
-                                        'permissions': {},
                                         'auth': {'token': GATEWAY_TOKEN},
                                         'locale': 'zh-CN',
                                         'userAgent': 'quantclaw-server/1.0.0'
@@ -981,7 +979,7 @@ def create_app():
 
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 8081))  # 默认8081，与8080的认证服务区分
+    port = int(os.getenv('PORT', 8080))  # 默认8080，与8081的认证服务区分
     logger.info(f'Starting QuantClaw Server (Docker) on port {port}')
     logger.info(f'Gateway: {GATEWAY_URL}')
     logger.info(f'Auth Service: {AUTH_SERVICE_URL}')
