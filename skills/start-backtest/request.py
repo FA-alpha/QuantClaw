@@ -226,15 +226,13 @@ class BacktestRequest:
         page: int = 1, 
         limit: int = 10,
         search_val: Optional[str] = None,
-        show_type: Optional[int] = 1,
-        data_grade: Optional[int] = 0,
         app_v: str = "2.0.0"
     ) -> Dict[str, Any]:
         """
         获取策略列表
         
         :param page: 页码，默认第一页
-        :param limit: 每页数量，默认10个，全部传-1
+        :param limit: 每页数量，默认10个，返回全部的话传-1
         :param search_val: 搜索内容
         :param show_type: 显示类型（1-有效策略 2-历史策略）
         :param data_grade: 数据代次（0-所有策略 1-老策略 2=新策略）
@@ -246,16 +244,15 @@ class BacktestRequest:
             params: Dict[str, Any] = {
                 "page": page,
                 "limit": limit,
-                "app_v": app_v
+                "app_v": app_v,
+                "data_grade": 0,
+                "show_type": 1
             }
             
             # 添加可选参数
             if search_val:
                 params["search_val"] = search_val
-            if show_type is not None:
-                params["show_type"] = show_type
-            if data_grade is not None:
-                params["data_grade"] = data_grade
+            
 
             return self._make_request("Strategy/lists", params)
         except BacktestRequestError as e:
@@ -396,6 +393,23 @@ class BacktestRequest:
             }
 
     # 获取回测统计信息
+    def _remove_net_value(self, data: Any) -> Any:
+        """
+        递归删除所有 net_value 参数
+        
+        :param data: 待处理的数据
+        :return: 处理后的数据
+        """
+        if isinstance(data, dict):
+            # 创建新字典，排除 net_value
+            return {k: self._remove_net_value(v) for k, v in data.items() if k != 'net_value'}
+        elif isinstance(data, list):
+            # 处理列表中的每个元素
+            return [self._remove_net_value(item) for item in data]
+        else:
+            # 其他类型直接返回
+            return data
+
     def get_backtest_stat_info(
         self, 
         back_id: str,
@@ -406,16 +420,19 @@ class BacktestRequest:
         
         :param back_id: 回测任务ID
         :param app_v: 应用版本号，默认2.0.0
-        :return: 回测统计详情
+        :return: 回测统计详情（已删除所有 net_value 参数）
         """
         try:
             if not back_id:
                 raise BacktestRequestError("回测任务ID不能为空", "BACKTEST_ID_EMPTY")
             
-            return self._make_request("Backtrack/stat_info", {
+            response = self._make_request("Backtrack/stat_info", {
                 "back_id": back_id,
                 "app_v": app_v
             })
+            
+            # 递归删除所有 net_value 参数
+            return self._remove_net_value(response)
         except BacktestRequestError as e:
             self.logger.error(f"获取回测统计信息失败: {e.message}")
             return {
@@ -429,7 +446,6 @@ class BacktestRequest:
         usertoken: Optional[str] = None,
         strategy_id: Optional[str] = None,
         strategy_ids: Optional[List[str]] = None,
-        strategy_group_id: Optional[str] = None,
         bgn_date: Optional[str] = None,
         end_date: Optional[str] = None,
         init_balance: Optional[float] = None,
@@ -445,7 +461,6 @@ class BacktestRequest:
         :param usertoken: 用户认证Token
         :param strategy_id: 单个策略ID（兼容旧接口）
         :param strategy_ids: 多个策略ID列表
-        :param strategy_group_id: 策略组ID
         :param bgn_date: 回测开始日期（YYYY-MM-DD）
         :param end_date: 回测结束日期（YYYY-MM-DD）
         :param init_balance: 初始资金
@@ -460,13 +475,6 @@ class BacktestRequest:
             # 处理策略ID
             if strategy_id:
                 strategy_ids = [strategy_id]
-            elif strategy_group_id:
-                # 如果提供了策略组ID，需要先获取策略列表
-                group_result = self.get_strategies(strategy_group_id=strategy_group_id)
-                if group_result.get("status") == "error":
-                    return group_result
-                strategy_ids = [str(strategy["id"]) for strategy in group_result.get("info", [])]
-
             if not strategy_ids:
                 raise BacktestRequestError("未指定策略ID", "NO_STRATEGY_SPECIFIED")
 
@@ -522,6 +530,70 @@ class BacktestRequest:
                 "error_code": e.error_code
             }
 
+    def get_strategy_group_with_groupid(
+        self, 
+        group_id: str,
+        limit: int = 10,
+        app_v: str = "2.0.0"
+    ) -> Dict[str, Any]:
+        """
+        根据策略组ID获取具体的策略组信息
+        
+        :param group_id: 策略组ID
+        :param limit: 每页数量，默认10个
+        :param app_v: 应用版本号，默认2.0.0
+        :return: 策略组详情 或 错误信息
+        """
+        try:
+            page = 1
+            while page <= 10:  # 最多查询10页
+                result = self.get_strategy_groups(
+                    page=page, 
+                    limit=limit, 
+                    app_v=app_v
+                )
+
+                # 检查返回状态
+                if result.get("status") != 1:
+                    return {
+                        "status": "error",
+                        "message": "获取策略组列表失败",
+                        "error_code": "GROUP_LIST_ERROR"
+                    }
+
+                # 获取策略组列表
+                strategy_groups = result.get("info", [])
+                
+                # 查找匹配的策略组
+                for group in strategy_groups:
+                    if str(group.get("id")) == str(group_id):
+                        return {
+                            "status": 1,
+                            "info": group
+                        }
+
+                # 检查是否是最后一页
+                is_end = result.get("url", {}).get("is_end") == 1
+                if is_end:
+                    break
+
+                page += 1
+
+            # 未找到策略组
+            return {
+                "status": "error",
+                "message": f"未找到ID为 {group_id} 的策略组",
+                "error_code": "GROUP_NOT_FOUND"
+            }
+
+        except BacktestRequestError as e:
+            self.logger.error(f"获取策略组详情失败: {e.message}")
+            return {
+                "status": "error",
+                "message": e.message,
+                "error_code": e.error_code
+            }
+
     def analyze_strategies_for_allocation(
         self, 
         strategy_ids: Optional[List[str]] = None,
@@ -533,25 +605,33 @@ class BacktestRequest:
         :param strategy_ids: 策略ID列表
         :param strategy_group_id: 策略组ID
         :return: 分析结果
+        :raises BacktestRequestError: 参数不合法或获取策略失败时
         """
+        # 参数校验
+        if (strategy_ids is None and strategy_group_id is None) or \
+           (strategy_ids is not None and strategy_group_id is not None):
+            raise BacktestRequestError(
+                "必须且仅能传入 strategy_ids 或 strategy_group_id 其中一个", 
+                "INVALID_STRATEGY_PARAMS"
+            )
+
         try:
-            # 如果没有传入策略ID，尝试通过策略组获取
-            if not strategy_ids and strategy_group_id:
-                group_result = self.get_strategies(strategy_group_id=strategy_group_id)
+            # 根据传入参数选择获取策略的方法
+            if strategy_ids:
+                strategies_info = []
+                for sid in strategy_ids:
+                    strategy_info = self.get_strategies(search_val=sid)
+                    if strategy_info.get("status") == "error":
+                        return strategy_info
+                    strategies_info.extend(strategy_info.get("info", []))
+            
+            elif strategy_group_id:
+                group_result = self.get_strategy_group_with_groupid(strategy_group_id)
                 if group_result.get("status") == "error":
                     return group_result
-                strategy_ids = [str(strategy["id"]) for strategy in group_result.get("info", [])]
-
-            if not strategy_ids:
-                raise BacktestRequestError("未指定策略ID或策略组", "NO_STRATEGY_SPECIFIED")
-
-            # 获取每个策略的详细信息
-            strategies_info = []
-            for sid in strategy_ids:
-                strategy_info = self.get_strategies(search_val=sid)
-                if strategy_info.get("status") == "error":
-                    return strategy_info
-                strategies_info.extend(strategy_info.get("info", []))
+                
+                group_info = group_result.get("info", {})
+                strategies_info = group_info.get("strategy_lists", [])
 
             # 解析策略需求
             coin_long_pairs = set()
@@ -678,16 +758,6 @@ def main():
     token = input("请输入用户 Token: ")
     requester = BacktestRequest(token)
     
-    # 示例：获取策略组列表
-    try:
-        groups = requester.get_strategy_groups(search_val="风霆V4")
-        print(json.dumps(groups, indent=2, ensure_ascii=False))
-
-        # 示例：获取策略列表
-        strategies = requester.get_strategies(search_val="风霆V4")
-        print(json.dumps(strategies, indent=2, ensure_ascii=False))
-    except BacktestRequestError as e:
-        print(f"发生错误: {e.message}")
 
 if __name__ == "__main__":
     main()
