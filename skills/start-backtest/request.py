@@ -12,7 +12,58 @@ QuantClaw 回测接口请求统一管理模块
 import requests
 import json
 import logging
+import os
+import sys
+from datetime import datetime
 from typing import Dict, Any, Optional, List, Union, NamedTuple
+
+# 调试开关配置
+class DebugConfig:
+    DEBUG_MODE = False
+    LOG_BASE_PATH = "/home/ubuntu/.quantclaw/logs"
+    AGENT_ID = None  # 需要在初始化时设置
+
+    @classmethod
+    def set_debug_mode(cls, mode: bool, agent_id: Optional[str] = None):
+        """
+        设置调试模式
+        
+        :param mode: 是否开启调试模式
+        :param agent_id: 当前Agent的ID
+        """
+        cls.DEBUG_MODE = mode
+        if agent_id:
+            cls.AGENT_ID = agent_id
+
+    @classmethod
+    def log_network_request(cls, api_name: str, request_params: Dict[str, Any]):
+        """
+        记录网络请求日志
+        
+        :param api_name: 接口名称
+        :param request_params: 请求参数
+        """
+        if not cls.DEBUG_MODE or not cls.AGENT_ID:
+            return
+
+        # 创建日志目录
+        log_dir = os.path.join(cls.LOG_BASE_PATH, f"clawd-{cls.AGENT_ID}")
+        os.makedirs(log_dir, exist_ok=True)
+
+        # 生成日志文件名（按日期）
+        today = datetime.now().strftime("%Y-%m-%d")
+        log_file = os.path.join(log_dir, f"network_logs_{today}.log")
+
+        # 准备日志内容
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_content = f"[{timestamp}] API: {api_name}\n"
+        log_content += "Request Params:\n"
+        log_content += json.dumps(request_params, indent=2, ensure_ascii=False)
+        log_content += "\n\n"
+
+        # 写入日志
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(log_content)
 
 class StrategyRequirement(NamedTuple):
     """策略分配需求"""
@@ -111,11 +162,12 @@ class BacktestRequest:
     提供标准化的接口请求方法，确保参数校验和错误处理
     """
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, agent_id: Optional[str] = None):
         """
         初始化请求管理器
         
         :param token: 用户认证令牌
+        :param agent_id: 当前Agent的ID（可选）
         """
         if not token or not isinstance(token, str):
             raise BacktestRequestError("无效的用户令牌", "INVALID_TOKEN")
@@ -124,6 +176,10 @@ class BacktestRequest:
         self.base_url = "https://www.fourieralpha.com/Mobile"
         self.logger = logging.getLogger(__name__)
         self._cache = {}
+
+        # 设置 Agent ID 用于日志记录
+        if agent_id:
+            DebugConfig.set_debug_mode(False, agent_id)  # 默认关闭调试模式
 
     def _validate_params(self, params: Dict[str, Any]) -> None:
         """
@@ -155,6 +211,9 @@ class BacktestRequest:
                 "app_v": "2.0.0",
                 "lang": 1
             })
+
+            # 如果开启调试模式，记录网络请求日志
+            DebugConfig.log_network_request(endpoint, data)
 
             # 发起请求
             response = requests.post(
@@ -749,6 +808,20 @@ class BacktestRequest:
                 "message": e.message,
                 "error_code": e.error_code
             }
+
+def enable_network_debug_log(agent_id: Optional[str] = None):
+    """
+    启用网络请求调试日志
+
+    :param agent_id: 当前Agent的ID（可选）
+    """
+    DebugConfig.set_debug_mode(True, agent_id)
+
+def disable_network_debug_log():
+    """
+    禁用网络请求调试日志
+    """
+    DebugConfig.set_debug_mode(False)
 
 def main():
     """
