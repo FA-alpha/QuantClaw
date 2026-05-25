@@ -1,35 +1,35 @@
-# TOOLS.md - Local Notes
+# TOOLS.md - 本地工具配置
 
-Skills define *how* tools work. This file is for *your* specifics — the stuff that's unique to your setup.
+技能定义工具*如何*工作，本文件记录*你的*具体配置——属于你独有的设置。
 
-## What Goes Here
+## 应该记录什么
 
-Things like:
-- Preferred data sources
-- API endpoints
-- Custom indicators
-- Strategy templates
-- Anything environment-specific
+例如：
+- 首选数据源
+- API 端点
+- 自定义指标
+- 策略模板
+- 任何环境特定配置
 
-## Examples
+## 示例
 
 ```markdown
-### Data Sources
-- Binance API - Primary market data
-- CoinGecko - Price aggregation
+### 数据源
+- Binance API - 主要市场数据
+- CoinGecko - 价格聚合
 
-### Custom Indicators
-- RSI_EMA_Combo - RSI + EMA crossover signal
+### 自定义指标
+- RSI_EMA_Combo - RSI + EMA 交叉信号
 
-### Strategy Templates
-- Grid Trading - Multi-level buy/sell orders
-- DCA - Dollar cost averaging setup
+### 策略模板
+- 网格交易 - 多层级买卖单
+- 定投策略 - 定期定额投资设置
 ```
 
-## Why Separate?
+## 为什么要分开？
 
-Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
+技能是共享的，你的配置是私有的。分开存放意味着你可以更新技能而不丢失配置，也可以分享技能而不泄露基础设施信息。
 
 ---
 
-Add whatever helps you do your job. This is your cheat sheet.
+添加任何能帮助你完成工作的内容。这是你的备忘录。

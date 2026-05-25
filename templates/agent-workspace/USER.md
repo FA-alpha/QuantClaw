@@ -1,11 +1,11 @@
-# USER.md - About Your Human
+# USER.md - 关于你的用户
 
-- **Name:** —
-- **What to call them:** —
-- **Pronouns:** —
-- **Timezone:** UTC+8 (东8区)
-- **Notes:** —
+- **姓名:** —
+- **称呼:** —
+- **代词:** —
+- **时区:** UTC+8 (东8区)
+- **备注:** —
 
 ---
 
-The more you know, the better you can help.
+了解得越多，帮助越精准。
