@@ -482,7 +482,7 @@ async def handle_clear_history(request):
 
 
 async def handle_new_conversation(request):
-    """新建对话：清除聊天记录并删除 session 文件"""
+    """新建对话：通过 /new 命令清除上下文（兼容 Lossless-Claw）"""
     try:
         data = await request.json()
         token = data.get('token')
@@ -498,52 +498,123 @@ async def handle_new_conversation(request):
 
         user_id = auth_result.get('userId')
         agent_id = auth_result.get('agentId')
-        
-        # 步骤2：清除本地聊天记录
-        chat_store.clear(user_id)
-        logger.info(f'Cleared chat history for user: {user_id}')
-
-        # 步骤3：删除 OpenClaw session 文件（容器内路径）
         session_key = f'agent:{agent_id}:main'
-        session_dir = Path(f'/home/node/.openclaw/agents/{agent_id}/sessions')
         
-        if session_dir.exists():
-            # 删除当前 session 的 JSONL 文件
-            sessions_json = session_dir / 'sessions.json'
-            if sessions_json.exists():
-                try:
-                    import json as _json
-                    with open(sessions_json, 'r') as f:
-                        sessions_data = _json.load(f)
-                    
-                    # 获取当前 session 的文件路径
-                    session_info = sessions_data.get(session_key, {})
-                    session_file = session_info.get('sessionFile')
-                    
-                    if session_file and Path(session_file).exists():
-                        Path(session_file).unlink()
-                        logger.info(f'Deleted session file: {session_file}')
-                    
-                    # 从 sessions.json 中删除这个 session
-                    if session_key in sessions_data:
-                        del sessions_data[session_key]
-                        with open(sessions_json, 'w') as f:
-                            _json.dump(sessions_data, f, indent=2)
-                        logger.info(f'Removed session key from sessions.json: {session_key}')
-                    
-                except Exception as e:
-                    logger.error(f'Failed to delete session files: {e}')
-        
-        logger.info(f'Session reset for user: {user_id}, agent: {agent_id}')
+        # 步骤2：清除本地聊天记录（ChatStore）
+        chat_store.clear(user_id)
+        logger.info(f'✅ Cleared ChatStore for user: {user_id}')
 
-        return web.json_response({
-            'success': True,
-            'cleared': True,
-            'sessionReset': True,
-            'userId': user_id,
-            'agentId': agent_id,
-            'sessionKey': session_key,
-        })
+        # 步骤3：通过 WebSocket 发送 /new 命令（自动清理 OpenClaw + Lossless-Claw）
+        try:
+            async with aiohttp.ClientSession() as ws_session:
+                gateway_url = f'{GATEWAY_WS}?token={GATEWAY_TOKEN}'
+                
+                async with ws_session.ws_connect(gateway_url) as gateway_ws:
+                    connected = False
+                    new_sent = False
+                    
+                    # 设置超时
+                    async def timeout_handler():
+                        await asyncio.sleep(10)
+                        if not new_sent:
+                            logger.warning('WebSocket /new command timeout')
+                    
+                    timeout_task = asyncio.create_task(timeout_handler())
+                    
+                    try:
+                        async for msg in gateway_ws:
+                            if msg.type == WSMsgType.TEXT:
+                                ws_data = json.loads(msg.data)
+                                
+                                # 握手
+                                if ws_data.get('event') == 'connect.challenge' and not connected:
+                                    connect_req = {
+                                        'type': 'req',
+                                        'id': 'new_conv_connect',
+                                        'method': 'connect',
+                                        'params': {
+                                            'minProtocol': 4,
+                                            'maxProtocol': 4,
+                                            'client': {
+                                                'id': 'gateway-client',
+                                                'version': '1.0.0',
+                                                'platform': 'linux',
+                                                'mode': 'backend'
+                                            },
+                                            'role': 'operator',
+                                            'scopes': ['operator.admin'],
+                                            'caps': [],
+                                            'auth': {'token': GATEWAY_TOKEN},
+                                            'locale': 'zh-CN',
+                                            'userAgent': 'quantclaw-new-conversation'
+                                        }
+                                    }
+                                    await gateway_ws.send_json(connect_req)
+                                
+                                # 握手成功，发送 /new
+                                elif ws_data.get('type') == 'res' and ws_data.get('id') == 'new_conv_connect':
+                                    if ws_data.get('ok'):
+                                        connected = True
+                                        msg_req = {
+                                            'type': 'req',
+                                            'id': 'send_new',
+                                            'method': 'chat.send',
+                                            'params': {
+                                                'sessionKey': session_key,
+                                                'message': '/new',
+                                                'idempotencyKey': str(uuid.uuid4())
+                                            }
+                                        }
+                                        await gateway_ws.send_json(msg_req)
+                                        logger.info(f'📤 Sent /new command to {session_key}')
+                                    else:
+                                        logger.error(f'Handshake failed: {ws_data.get("error")}')
+                                        break
+                                
+                                # /new 命令响应
+                                elif ws_data.get('type') == 'res' and ws_data.get('id') == 'send_new':
+                                    if ws_data.get('ok'):
+                                        logger.info(f'✅ /new command executed for {session_key}')
+                                        new_sent = True
+                                    else:
+                                        logger.error(f'/new command failed: {ws_data.get("error")}')
+                                    break
+                            
+                            elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                                logger.warning('WebSocket closed during /new')
+                                break
+                    
+                    finally:
+                        timeout_task.cancel()
+                        try:
+                            await timeout_task
+                        except asyncio.CancelledError:
+                            pass
+            
+            if new_sent:
+                logger.info(f'🎉 Session reset via /new for: {user_id}, agent: {agent_id}')
+                return web.json_response({
+                    'success': True,
+                    'cleared': True,
+                    'sessionReset': True,
+                    'method': 'websocket_new_command',
+                    'userId': user_id,
+                    'agentId': agent_id,
+                    'sessionKey': session_key,
+                })
+            else:
+                logger.error('Failed to send /new command (timeout or error)')
+                return web.json_response({
+                    'success': False,
+                    'error': 'Failed to reset session via /new command'
+                }, status=500)
+        
+        except Exception as ws_error:
+            logger.error(f'WebSocket /new error: {ws_error}')
+            return web.json_response({
+                'success': False,
+                'error': f'Failed to send /new command: {str(ws_error)}'
+            }, status=500)
 
     except Exception as e:
         logger.error(f'New conversation error: {e}')
