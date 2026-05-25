@@ -55,19 +55,20 @@ class DebugConfig:
             print("❌ 未获取到 Agent ID")
 
     @classmethod
-    def log_network_request(cls, api_name: str, request_params: Dict[str, Any]):
+    def log_network_request(cls, api_name: str, request_params: Dict[str, Any], response_data: Optional[Dict[str, Any]] = None):
         """
-        记录网络请求日志
+        记录网络请求和响应日志
         
         :param api_name: 接口名称
         :param request_params: 请求参数
+        :param response_data: 接口返回的数据
         """
         if not cls.DEBUG_MODE or not cls.AGENT_ID:
             return
 
         try:
             # 创建日志目录
-            log_dir = os.path.join(cls.LOG_BASE_PATH, f"clawd-{cls.AGENT_ID}")
+            log_dir = os.path.join(os.path.expanduser(cls.LOG_BASE_PATH), f"clawd-{cls.AGENT_ID}")
             os.makedirs(log_dir, exist_ok=True)
 
             # 生成日志文件名（按日期）
@@ -79,11 +80,20 @@ class DebugConfig:
             log_content = f"[{timestamp}] API: {api_name}\n"
             log_content += "Request Params:\n"
             log_content += json.dumps(request_params, indent=2, ensure_ascii=False)
-            log_content += "\n\n"
+            
+            # 记录响应数据（如果有）
+            if response_data is not None:
+                log_content += "\n\nResponse Data:\n"
+                log_content += json.dumps(response_data, indent=2, ensure_ascii=False)
+            
+            log_content += "\n\n---\n\n"
 
             # 写入日志
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(log_content)
+
+            # 打印日志路径（调试用）
+            print(f"🔍 日志已写入: {log_file}")
         except Exception as e:
             print(f"❌ 日志记录失败: {e}")
 
@@ -245,6 +255,9 @@ class BacktestRequest:
             )
             response.raise_for_status()
             result = response.json()
+
+            # 如果开启调试模式，记录响应数据
+            DebugConfig.log_network_request(endpoint, data, result)
 
             # 检查接口返回状态
             if result.get("status") != 1:
