@@ -19,21 +19,40 @@ from typing import Dict, Any, Optional, List, Union, NamedTuple
 
 # 调试开关配置
 class DebugConfig:
-    DEBUG_MODE = False
-    LOG_BASE_PATH = "~/.quantclaw/logs"
-    AGENT_ID = None  # 需要在初始化时设置
+    DEBUG_MODE = False  # 默认关闭调试
+    LOG_BASE_PATH = os.path.expanduser("~/.quantclaw/logs")
+    AGENT_ID = None  # Agent ID 初始为 None
 
     @classmethod
     def set_debug_mode(cls, mode: bool, agent_id: Optional[str] = None):
         """
         设置调试模式
         
+        使用方法:
+        1. 在调用接口前通过 enable_network_debug_log() 开启
+        2. 传入当前 Agent 的 ID
+        3. 默认关闭调试模式
+        
         :param mode: 是否开启调试模式
         :param agent_id: 当前Agent的ID
         """
         cls.DEBUG_MODE = mode
         if agent_id:
-            cls.AGENT_ID = agent_id
+            # 尝试获取当前 Agent ID
+            try:
+                # 从系统配置或环境变量获取 Agent ID
+                with open(os.path.expanduser("~/.quantclaw/agent_config.json"), 'r') as f:
+                    agent_config = json.load(f)
+                    cls.AGENT_ID = agent_config.get('agent_id', agent_id)
+            except FileNotFoundError:
+                cls.AGENT_ID = agent_id
+
+        # 打印调试状态
+        print(f"🔧 网络请求调试模式: {'开启' if cls.DEBUG_MODE else '关闭'}")
+        if cls.AGENT_ID:
+            print(f"🆔 当前 Agent ID: {cls.AGENT_ID}")
+        else:
+            print("❌ 未获取到 Agent ID")
 
     @classmethod
     def log_network_request(cls, api_name: str, request_params: Dict[str, Any]):
@@ -46,24 +65,27 @@ class DebugConfig:
         if not cls.DEBUG_MODE or not cls.AGENT_ID:
             return
 
-        # 创建日志目录
-        log_dir = os.path.join(cls.LOG_BASE_PATH, f"clawd-{cls.AGENT_ID}")
-        os.makedirs(log_dir, exist_ok=True)
+        try:
+            # 创建日志目录
+            log_dir = os.path.join(cls.LOG_BASE_PATH, f"clawd-{cls.AGENT_ID}")
+            os.makedirs(log_dir, exist_ok=True)
 
-        # 生成日志文件名（按日期）
-        today = datetime.now().strftime("%Y-%m-%d")
-        log_file = os.path.join(log_dir, f"network_logs_{today}.log")
+            # 生成日志文件名（按日期）
+            today = datetime.now().strftime("%Y-%m-%d")
+            log_file = os.path.join(log_dir, f"network_logs_{today}.log")
 
-        # 准备日志内容
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_content = f"[{timestamp}] API: {api_name}\n"
-        log_content += "Request Params:\n"
-        log_content += json.dumps(request_params, indent=2, ensure_ascii=False)
-        log_content += "\n\n"
+            # 准备日志内容
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_content = f"[{timestamp}] API: {api_name}\n"
+            log_content += "Request Params:\n"
+            log_content += json.dumps(request_params, indent=2, ensure_ascii=False)
+            log_content += "\n\n"
 
-        # 写入日志
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(log_content)
+            # 写入日志
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(log_content)
+        except Exception as e:
+            print(f"❌ 日志记录失败: {e}")
 
 class StrategyRequirement(NamedTuple):
     """策略分配需求"""
