@@ -350,22 +350,41 @@ class BacktestRequest:
         :return: 保证金分配详情
         """
         try:
+            # 转换 strategys_json 中的 ID 为字符串
+            strategys_json_str = [
+                {**strategy, "id": str(strategy["id"])} 
+                for strategy in strategys_json
+            ]
+            
             # 构造请求参数
             params: Dict[str, Any] = {
-                "strategys_json": strategys_json,
-                "leverage": leverage,
-                "long_pct": long_pct,
-                "short_pct": short_pct,
-                "long_coin_pcts": long_coin_pcts,
-                "short_coin_pcts": short_coin_pcts,
+                "strategys_json": json.dumps(strategys_json_str),
+                "leverage": str(leverage),
+                "long_pct": str(long_pct),
+                "short_pct": str(short_pct),
+                "long_coin_pcts": json.dumps(long_coin_pcts),
+                "short_coin_pcts": json.dumps(short_coin_pcts),
                 "app_v": app_v
             }
             
-            # 可选参数
+            # 可选参数处理
             if long_ai_time_pcts:
-                params["long_ai_time_pcts"] = long_ai_time_pcts
+                # 确保 ai_time_pcts 只包含 ai_time_id 和 pct
+                params["long_ai_time_pcts"] = json.dumps([
+                    {
+                        "ai_time_id": str(pct.get("ai_time_id", "-")),
+                        "pct": pct["pct"]  # 保持原始数值，不转换为字符串
+                    } for pct in long_ai_time_pcts
+                ])
+            
             if short_ai_time_pcts:
-                params["short_ai_time_pcts"] = short_ai_time_pcts
+                # 确保 ai_time_pcts 只包含 ai_time_id 和 pct
+                params["short_ai_time_pcts"] = json.dumps([
+                    {
+                        "ai_time_id": str(pct.get("ai_time_id", "-")),
+                        "pct": pct["pct"]  # 保持原始数值，不转换为字符串
+                    } for pct in short_ai_time_pcts
+                ])
 
             return self._make_request("Strategy/calc_margin", params)
         except BacktestRequestError as e:
