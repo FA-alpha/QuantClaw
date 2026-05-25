@@ -424,6 +424,104 @@ class BacktestRequest:
                 "error_code": e.error_code
             }
 
+    def apply_backtest(
+        self,
+        usertoken: Optional[str] = None,
+        strategy_id: Optional[str] = None,
+        strategy_ids: Optional[List[str]] = None,
+        strategy_group_id: Optional[str] = None,
+        bgn_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        init_balance: Optional[float] = None,
+        leverage: Optional[float] = None,
+        margin_mode: Optional[str] = None,
+        margin_allocation: Optional[str] = None,
+        data_type: int = 1,
+        app_v: str = "2.0.0"
+    ) -> Dict[str, Any]:
+        """
+        开始回测
+        
+        :param usertoken: 用户认证Token
+        :param strategy_id: 单个策略ID（兼容旧接口）
+        :param strategy_ids: 多个策略ID列表
+        :param strategy_group_id: 策略组ID
+        :param bgn_date: 回测开始日期（YYYY-MM-DD）
+        :param end_date: 回测结束日期（YYYY-MM-DD）
+        :param init_balance: 初始资金
+        :param leverage: 杠杆倍数
+        :param margin_mode: 保证金模式（'exclusive' or 'shared'）
+        :param margin_allocation: 保证金分配方案
+        :param data_type: 数据类型（默认1）
+        :param app_v: 应用版本号，默认2.0.0
+        :return: 回测任务提交结果
+        """
+        try:
+            # 处理策略ID
+            if strategy_id:
+                strategy_ids = [strategy_id]
+            elif strategy_group_id:
+                # 如果提供了策略组ID，需要先获取策略列表
+                group_result = self.get_strategies(strategy_group_id=strategy_group_id)
+                if group_result.get("status") == "error":
+                    return group_result
+                strategy_ids = [str(strategy["id"]) for strategy in group_result.get("info", [])]
+
+            if not strategy_ids:
+                raise BacktestRequestError("未指定策略ID", "NO_STRATEGY_SPECIFIED")
+
+            # 构造请求参数
+            params: Dict[str, Any] = {
+                "usertoken": usertoken or self.token,
+                "strategy_id": ",".join(strategy_ids),  # 逗号分隔的策略ID
+                "data_type": str(data_type),
+                "app_v": app_v
+            }
+
+            # 添加可选参数
+            if bgn_date and end_date:
+                import json as json_module
+                date_lists = [{"bgn_date": bgn_date, "end_date": end_date}]
+                params["date_lists"] = json_module.dumps(date_lists)
+
+            if init_balance is not None:
+                params["init_balance"] = str(init_balance)
+
+            if leverage is not None:
+                params["leverage"] = str(leverage)
+
+            # 处理保证金模式
+            if margin_mode:
+                # 构造保证金模式配置
+                import json as json_module
+                margin_config = {
+                    "is_shared_margin": (margin_mode == "shared"),
+                    "global_margin_limit": init_balance or 10000
+                }
+
+                # 如果是共享模式且有保证金分配方案
+                if margin_mode == "shared" and margin_allocation:
+                    strategy_margin_limit = {}
+                    allocations = margin_allocation.split(",")
+                    for i, (sid, alloc) in enumerate(zip(strategy_ids, allocations)):
+                        try:
+                            actual_margin = float(alloc)
+                            strategy_margin_limit[sid.strip()] = str(int(actual_margin))
+                        except:
+                            pass
+                    margin_config["strategy_margin_limit"] = strategy_margin_limit
+
+                params["margin_mode_config"] = json_module.dumps(margin_config)
+
+            return self._make_request("Backtrack/apply_do", params)
+        except BacktestRequestError as e:
+            self.logger.error(f"回测任务提交失败: {e.message}")
+            return {
+                "status": "error",
+                "message": e.message,
+                "error_code": e.error_code
+            }
+
     def analyze_strategies_for_allocation(
         self, 
         strategy_ids: Optional[List[str]] = None,
