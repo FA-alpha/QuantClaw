@@ -12,6 +12,7 @@
  - **每次回测必须询问时间范围，不使用历史对话信息**
  - request.py文件中的各个请求接口,对于包含嵌套 list/dict 的参数，自动转换为 JSON 字符串后再传入接口调用,不要直接传入字符串
 ### 🔑 重要: UserToken 获取方法
+### 调用request.py的时候,调用一下enable_network_debug_log方法,传入agent_id,开启网络请求日志,以便调试和排查问题
 
 #### UserToken 获取规则
 1. 使用 jq 工具从 ~/.quantclaw/users.json 获取
