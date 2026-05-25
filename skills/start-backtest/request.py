@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional, List, Union, NamedTuple
 # 调试开关配置
 class DebugConfig:
     DEBUG_MODE = False
-    LOG_BASE_PATH = "/home/ubuntu/.quantclaw/logs"
+    LOG_BASE_PATH = "~/.quantclaw/logs"
     AGENT_ID = None  # 需要在初始化时设置
 
     @classmethod
