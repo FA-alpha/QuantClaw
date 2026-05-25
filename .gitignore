@@ -1,5 +1,6 @@
 extensions/quantclaw-auth/node_modules
 server/data
+server/data-docker
 __pycache__
 server/venv/
 server/quantclaw.log

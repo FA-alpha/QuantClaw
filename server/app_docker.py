@@ -147,8 +147,8 @@ class PersistentSessionListener:
                             'id': connect_id,
                             'method': 'connect',
                             'params': {
-                                'minProtocol': 3,
-                                'maxProtocol': 3,
+                                'minProtocol': 4,
+                                'maxProtocol': 4,
                                 'client': {
                                     'id': 'gateway-client',
                                     'version': '1.0.0',
@@ -156,10 +156,8 @@ class PersistentSessionListener:
                                     'mode': 'backend'
                                 },
                                 'role': 'operator',
-                                'scopes': ['operator.read'],
+                                'scopes': ['operator.read', 'operator.write'],
                                 'caps': [],
-                                'commands': [],
-                                'permissions': {},
                                 'auth': {'token': self.gateway_token},
                                 'locale': 'zh-CN',
                                 'userAgent': 'quantclaw-listener/1.0.0'
