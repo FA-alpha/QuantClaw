@@ -699,7 +699,7 @@ class BacktestRequest:
                 "message": e.message,
                 "error_code": e.error_code
             }
-
+    ##包装好的,用于根据策略组id,获取该策略组内所有策略的详细信息的方法
     def get_strategy_group_with_groupid(
         self, 
         group_id: str,
