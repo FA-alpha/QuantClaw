@@ -194,16 +194,22 @@ class BacktestRequest:
     提供标准化的接口请求方法，确保参数校验和错误处理
     """
 
-    def __init__(self, token: str, agent_id: Optional[str] = None):
+    def __init__(self, token: Optional[str] = None, agent_id: Optional[str] = None):
         """
         初始化请求管理器
-        
+
         :param token: 用户认证令牌
         :param agent_id: 当前Agent的ID（可选）
+        :raises BacktestRequestError: 如果未提供有效的用户令牌
         """
-        if not token or not isinstance(token, str):
-            raise BacktestRequestError("无效的用户令牌", "INVALID_TOKEN")
-        
+        # 移除原有的 if not token 检查
+        # 改为更严格的令牌检查
+        if token is None or not isinstance(token, str) or token.strip() == "":
+            raise BacktestRequestError(
+            "未提供有效的用户令牌，请先获取UserToken",
+            "INVALID_TOKEN"
+            )
+
         self.token = token
         self.base_url = "https://www.fourieralpha.com/Mobile"
         self.logger = logging.getLogger(__name__)
@@ -211,7 +217,7 @@ class BacktestRequest:
 
         # 设置 Agent ID 用于日志记录
         if agent_id:
-            DebugConfig.set_debug_mode(False, agent_id)  # 默认关闭调试模式
+            DebugConfig.set_debug_mode(False, agent_id) # 默认关闭调试模式
 
     def _validate_params(self, params: Dict[str, Any]) -> None:
         """
@@ -237,9 +243,10 @@ class BacktestRequest:
         self._validate_params(data)
 
         try:
+            if "usertoken" not in data or not data["usertoken"]:
+                data["usertoken"] = self.token
             # 添加通用请求参数
             data.update({
-                "usertoken": self.token,
                 "app_v": "2.0.0",
                 "lang": 1
             })
