@@ -98,7 +98,7 @@ cd /home/node/quantclaw/server
 
 | 服务 | 容器端口 | 宿主端口 | 功能 |
 |------|---------|---------|------|
-| app_docker.py | 8080 | 8081 | HTTP API + WebSocket |
+| app_docker.py | 8080 | 8080 | HTTP API + WebSocket |
 | quantclaw_webhook.py | 8081 | - | 认证服务（内部） |
 
 ---
