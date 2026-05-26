@@ -23,10 +23,10 @@ fi
 
 echo "✅ Container is running: ${CONTAINER_NAME}"
 
-# 在容器内执行启动脚本
+# 在容器内执行启动脚本（使用 root 权限安装依赖）
 echo ""
 echo "📦 Executing start script inside container..."
-sudo docker exec ${CONTAINER_NAME} bash /home/node/quantclaw/server/start_docker.sh
+sudo docker exec -u root ${CONTAINER_NAME} bash /home/node/quantclaw/server/start_docker.sh
 
 # 显示状态
 echo ""

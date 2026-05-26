@@ -50,7 +50,7 @@ if [ -n "$MISSING_TOOLS" ] || [ -n "$MISSING_DEPS" ]; then
         # 合并安装
         ALL_APT="$APT_TOOLS $APT_DEPS"
         echo "   Using apt-get (requires root)..."
-        sudo apt-get update -qq && sudo apt-get install -y -qq $ALL_APT && echo "   ✓ Installed via apt" || {
+        apt-get update -qq && apt-get install -y -qq $ALL_APT && echo "   ✓ Installed via apt" || {
             echo "   ⚠️  apt-get failed, trying pip for Python packages..."
             [ -n "$MISSING_DEPS" ] && python3 -m pip install --break-system-packages $MISSING_DEPS && echo "   ✓ Python packages installed via pip" || {
                 echo "❌ Failed to install dependencies"
