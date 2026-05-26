@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import asyncio
 import logging
+import base64
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, List
@@ -128,8 +129,9 @@ class UserManager:
     def __init__(self, config: Dict, validator: TokenValidator):
         self.config = config
         self.validator = validator
-        self.users = {}  # token -> user_record
-        self.user_index = {}  # user_id -> token
+        self.users = {}  # platform_user_id -> user_record
+        self.token_index = {}  # token -> platform_user_id
+        self.agent_index = {}  # agent_id -> platform_user_id
         
         # 展开路径
         self.data_path = Path(config['dataPath']).expanduser()
@@ -139,14 +141,54 @@ class UserManager:
         
         self.load_users()
     
+    @staticmethod
+    def decode_token(token: str) -> Optional[Dict]:
+        """
+        解码 token 提取用户信息
+        
+        Token 格式（Base64 编码）:
+        18##laihui@fourieralpha.com##1779792069##plant_v2##0##1##user
+        
+        Returns:
+            {
+                'platform_user_id': '18',  # 平台用户ID（唯一且不变）
+                'email': 'laihui@fourieralpha.com',
+                'timestamp': 1779792069,
+                'version': 'plant_v2',
+                'role': 'user'
+            }
+        """
+        try:
+            decoded = base64.b64decode(token).decode('utf-8')
+            parts = decoded.split('##')
+            
+            if len(parts) >= 7:
+                return {
+                    'platform_user_id': parts[0],  # 使用平台用户ID作为唯一标识
+                    'email': parts[1],
+                    'timestamp': int(parts[2]),
+                    'version': parts[3],
+                    'role': parts[6]
+                }
+            else:
+                logger.warning(f'⚠️ Token format invalid: {len(parts)} parts')
+                return None
+                
+        except Exception as e:
+            logger.error(f'❌ Failed to decode token: {e}')
+            return None
+    
     def load_users(self):
         """从 JSON 文件加载用户"""
         if self.data_path.exists():
             try:
                 data = json.loads(self.data_path.read_text())
                 for user in data.get('users', []):
-                    self.users[user['token']] = user
-                    self.user_index[user['userId']] = user['token']
+                    platform_user_id = user.get('platformUserId')
+                    if platform_user_id:
+                        self.users[platform_user_id] = user
+                        self.token_index[user['token']] = platform_user_id
+                        self.agent_index[user['agentId']] = platform_user_id
                 logger.info(f'✅ Loaded {len(self.users)} users from {self.data_path}')
             except Exception as e:
                 logger.warning(f'⚠️ Failed to load users: {e}')
@@ -162,72 +204,111 @@ class UserManager:
             logger.error(f'❌ Failed to save users: {e}')
     
     def find_by_token(self, token: str) -> Optional[Dict]:
-        """根据 token 查找用户"""
-        return self.users.get(token)
+        """根据 token 查找用户（通过解码提取平台用户ID）"""
+        # 先尝试从 token_index 查找
+        platform_user_id = self.token_index.get(token)
+        if platform_user_id:
+            return self.users.get(platform_user_id)
+        
+        # 如果找不到，尝试解码 token 获取平台用户ID
+        token_info = self.decode_token(token)
+        if token_info and token_info['platform_user_id'] in self.users:
+            # 更新 token_index 缓存
+            self.token_index[token] = token_info['platform_user_id']
+            return self.users[token_info['platform_user_id']]
+        
+        return None
     
-    def find_by_user_id(self, user_id: str) -> Optional[Dict]:
-        """根据 user_id 查找用户"""
-        token = self.user_index.get(user_id)
-        return self.users.get(token) if token else None
+    def find_by_platform_user_id(self, platform_user_id: str) -> Optional[Dict]:
+        """根据平台用户ID查找用户"""
+        return self.users.get(platform_user_id)
+    
+    def find_by_agent_id(self, agent_id: str) -> Optional[Dict]:
+        """根据 agent_id 查找用户"""
+        platform_user_id = self.agent_index.get(agent_id)
+        return self.users.get(platform_user_id) if platform_user_id else None
     
     async def auto_register(self, token: str) -> Dict:
         """
         自动注册新用户
         
         流程：
-        1. 检查 token 是否已注册
-        2. 调用外部 API 验证 token 真实性
-        3. 生成唯一 agent_id (qc-{hash})
-        4. 创建 workspace
-        5. 保存用户记录
+        1. 解码 token 提取平台用户ID
+        2. 检查平台用户ID是否已注册（如果是，更新 token）
+        3. 调用外部 API 验证 token 真实性
+        4. 生成唯一 agent_id (qc-{platform_user_id_hash})
+        5. 创建 workspace
+        6. 保存用户记录
         
         Returns:
             {
-                'userId': 'u_169a9a518fa7',
+                'platformUserId': '18',
+                'userId': 'u_4ec9599fc203',
+                'email': 'laihui@fourieralpha.com',
                 'token': 'client_token_abc123',
-                'agentId': 'qc-169a9a518fa7',
-                'workspace': '/home/ubuntu/clawd-qc-169a9a518fa7',
+                'agentId': 'qc-4ec9599fc203',
+                'workspace': '/home/ubuntu/clawd-qc-4ec9599fc203',
                 'createdAt': '2026-05-21T13:00:00.000Z',
+                'updatedAt': '2026-05-26T11:21:00.000Z',
                 'enabled': True
             }
         """
-        # 1. 检查是否已注册
-        existing_user = self.users.get(token)
+        # 1. 解码 token 提取平台用户ID
+        token_info = self.decode_token(token)
+        if not token_info:
+            raise ValueError('Failed to decode token')
+        
+        platform_user_id = token_info['platform_user_id']
+        email = token_info['email']
+        logger.info(f'👤 Extracted platform user ID: {platform_user_id}, email: {email}')
+        
+        # 2. 检查平台用户ID是否已注册
+        existing_user = self.users.get(platform_user_id)
         if existing_user:
-            logger.info(f'✅ Token already registered: {existing_user["userId"]}')
+            # 用户已存在，更新 token、邮箱和时间戳
+            logger.info(f'✅ User exists, updating token: {existing_user["agentId"]}')
+            existing_user['token'] = token
+            existing_user['email'] = email  # 邮箱可能变化，需要更新
+            existing_user['updatedAt'] = datetime.now().isoformat()
+            self.token_index[token] = platform_user_id
+            self.save_users()
             return existing_user
         
-        # 2. 验证 token（调用外部 API）
+        # 3. 验证 token（调用外部 API）
         validation = await self.validator.validate(token)
         if not validation['valid']:
             raise ValueError(validation['message'])
         
         logger.info(f'✅ Token validated successfully')
         
-        # 3. 生成唯一 agent_id（与 TypeScript 版本一致）
-        hash_part = hashlib.sha256(token.encode()).hexdigest()[:12]
+        # 4. 生成唯一 agent_id（基于平台用户ID，保证同一用户的 ID 固定）
+        hash_part = hashlib.sha256(platform_user_id.encode()).hexdigest()[:12]
         user_id = f'u_{hash_part}'
         agent_id = f'qc-{hash_part}'
         workspace = self.workspace_base / f'clawd-{agent_id}'
         
-        # 4. 创建 workspace
+        # 5. 创建 workspace
         self.create_workspace(workspace, agent_id)
         
-        # 5. 保存用户记录
+        # 6. 保存用户记录
         user = {
-            'userId': user_id,
+            'platformUserId': platform_user_id,  # 平台用户ID（唯一且不变）
+            'userId': user_id,  # 内部用户ID
+            'email': email,  # 邮箱（可能变化）
             'token': token,
             'agentId': agent_id,
             'workspace': str(workspace),
             'createdAt': datetime.now().isoformat(),
+            'updatedAt': datetime.now().isoformat(),
             'enabled': True
         }
         
-        self.users[token] = user
-        self.user_index[user_id] = token
+        self.users[platform_user_id] = user
+        self.token_index[token] = platform_user_id
+        self.agent_index[agent_id] = platform_user_id
         self.save_users()
         
-        logger.info(f'🎉 Registered new user: {user_id} (agent: {agent_id})')
+        logger.info(f'🎉 Registered new user: {user_id} (agent: {agent_id}, platform_id: {platform_user_id})')
         return user
     
     def create_workspace(self, workspace: Path, agent_id: str):
@@ -421,10 +502,12 @@ async def handle_register(request: web.Request):
             'success': True,
             'isNewUser': is_new_user,
             'userId': user['userId'],
+            'email': user.get('email'),
             'agentId': user['agentId'],
             'token': user['token'],
             'workspace': user.get('workspace'),
             'createdAt': user.get('createdAt'),
+            'updatedAt': user.get('updatedAt'),
             'enabled': user.get('enabled', True)
         })
         
