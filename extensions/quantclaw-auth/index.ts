@@ -16,11 +16,14 @@ import { TokenValidator, TokenValidatorConfig } from './token-validator';
 // ============ 类型定义 ============
 
 interface UserRecord {
+  platformUserId: string;  // 平台用户ID（唯一且不变）
   userId: string;
-  token: string;  // 唯一 token，用于认证和绑定
+  email?: string;  // 邮箱（可能变化）
+  token: string;  // 当前 token（可能更新）
   agentId: string;
   workspace: string;
   createdAt: string;
+  updatedAt?: string;
   enabled: boolean;
 }
 
@@ -88,8 +91,10 @@ class MessageFilter {
 // ============ 用户管理器 ============
 
 class UserManager {
-  private users = new Map<string, UserRecord>(); // token -> user
-  private userIndex = new Map<string, string>(); // userId -> token
+  private users = new Map<string, UserRecord>(); // platformUserId -> user
+  private tokenIndex = new Map<string, string>(); // token -> platformUserId
+  private userIndex = new Map<string, string>(); // userId -> platformUserId
+  private agentIndex = new Map<string, string>(); // agentId -> platformUserId
   private config: PluginConfig;
   private logger: any;
   private tokenValidator?: TokenValidator;
@@ -123,8 +128,13 @@ class UserManager {
       if (fs.existsSync(dataPath)) {
         const data = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
         for (const user of data.users || []) {
-          this.users.set(user.token, user);
-          this.userIndex.set(user.userId, user.token);
+          const platformUserId = user.platformUserId;
+          if (platformUserId) {
+            this.users.set(platformUserId, user);
+            this.tokenIndex.set(user.token, platformUserId);
+            this.userIndex.set(user.userId, platformUserId);
+            this.agentIndex.set(user.agentId, platformUserId);
+          }
         }
         this.logger.info(`[quantclaw-auth] Loaded ${this.users.size} users`);
       }
@@ -144,80 +154,155 @@ class UserManager {
     }
   }
 
-  findByToken(token: string) { return this.users.get(token); }
-  findByUserId(userId: string) { 
-    const token = this.userIndex.get(userId);
-    return token ? this.users.get(token) : undefined;
+  /**
+   * 解码 token 提取平台用户ID
+   * Token 格式（Base64）: 18##laihui@fourieralpha.com##1779792069##plant_v2##0##1##user
+   */
+  private decodeToken(token: string): { platformUserId: string; email: string; timestamp: number; version: string; role: string } | null {
+    try {
+      const decoded = Buffer.from(token, 'base64').toString('utf-8');
+      const parts = decoded.split('##');
+      
+      if (parts.length >= 7) {
+        return {
+          platformUserId: parts[0],
+          email: parts[1],
+          timestamp: parseInt(parts[2], 10),
+          version: parts[3],
+          role: parts[6],
+        };
+      }
+      this.logger.warn(`[quantclaw-auth] Token format invalid: ${parts.length} parts`);
+      return null;
+    } catch (err) {
+      this.logger.error(`[quantclaw-auth] Failed to decode token: ${err}`);
+      return null;
+    }
   }
+
+  findByToken(token: string): UserRecord | undefined {
+    // 先从 tokenIndex 查找
+    const platformUserId = this.tokenIndex.get(token);
+    if (platformUserId) {
+      return this.users.get(platformUserId);
+    }
+    
+    // 如果找不到，尝试解码 token 获取平台用户ID
+    const tokenInfo = this.decodeToken(token);
+    if (tokenInfo && this.users.has(tokenInfo.platformUserId)) {
+      // 更新 tokenIndex 缓存
+      this.tokenIndex.set(token, tokenInfo.platformUserId);
+      return this.users.get(tokenInfo.platformUserId);
+    }
+    
+    return undefined;
+  }
+  
+  findByUserId(userId: string): UserRecord | undefined {
+    const platformUserId = this.userIndex.get(userId);
+    return platformUserId ? this.users.get(platformUserId) : undefined;
+  }
+  
+  findByAgentId(agentId: string): UserRecord | undefined {
+    const platformUserId = this.agentIndex.get(agentId);
+    return platformUserId ? this.users.get(platformUserId) : undefined;
+  }
+  
   listUsers() { return Array.from(this.users.values()); }
 
   // 自动注册：绑定客户端传入的 token
   async autoRegister(clientToken: string): Promise<UserRecord> {
-    // 1. 先检查 token 是否已注册
-    const existingUser = this.users.get(clientToken);
+    // 1. 解码 token 提取平台用户ID
+    const tokenInfo = this.decodeToken(clientToken);
+    if (!tokenInfo) {
+      throw new Error('Failed to decode token');
+    }
+    
+    const platformUserId = tokenInfo.platformUserId;
+    const email = tokenInfo.email;
+    this.logger.info(`[quantclaw-auth] Extracted platform user ID: ${platformUserId}, email: ${email}`);
+    
+    // 2. 检查平台用户ID是否已注册
+    const existingUser = this.users.get(platformUserId);
     if (existingUser) {
-      this.logger.info(`[quantclaw-auth] Token already registered: ${existingUser.userId}`);
+      // 用户已存在，更新 token、邮箱和时间戳
+      this.logger.info(`[quantclaw-auth] User exists, updating token: ${existingUser.agentId}`);
+      existingUser.token = clientToken;
+      existingUser.email = email;
+      existingUser.updatedAt = new Date().toISOString();
+      this.tokenIndex.set(clientToken, platformUserId);
+      this.saveUsers();
       return existingUser;
     }
     
-    // 2. 验证 token 真实性
+    // 3. 验证 token 真实性（调用外部 API）
     if (this.tokenValidator) {
       const validation = await this.tokenValidator.validate(clientToken);
       if (!validation.valid) {
         throw new Error(validation.message || 'Invalid token');
       }
-      this.logger.info(`[quantclaw-auth] Token validated: status=${validation.status}`);
+      this.logger.info(`[quantclaw-auth] Token validated successfully`);
     }
     
-    // 3. 使用客户端 token 的 hash 生成用户ID
-    const hash = crypto.createHash('sha256').update(clientToken).digest('hex').substring(0, 12);
+    // 4. 生成唯一 agent_id（基于平台用户ID，保证同一用户的 ID 固定）
+    const hash = crypto.createHash('sha256').update(platformUserId).digest('hex').substring(0, 12);
     const userId = `u_${hash}`;
     const agentId = `qc-${hash}`;
-    // 使用 clawd- 前缀，让 Gateway 自动发现（fallback 机制）
     const workspace = this.expandPath(`~/clawd-${agentId}`);
 
+    // 5. 创建 workspace
     await this.createWorkspace(workspace, userId);
 
+    // 6. 保存用户记录
     const user: UserRecord = {
-      userId,
-      token: clientToken,  // 绑定客户端的 token
+      platformUserId,  // 平台用户ID（唯一且不变）
+      userId,  // 内部用户ID
+      email,  // 邮箱（可能变化）
+      token: clientToken,  // 当前 token
       agentId,
       workspace,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       enabled: true,
     };
 
-    this.users.set(clientToken, user);
-    this.userIndex.set(userId, clientToken);
+    this.users.set(platformUserId, user);
+    this.tokenIndex.set(clientToken, platformUserId);
+    this.userIndex.set(userId, platformUserId);
+    this.agentIndex.set(agentId, platformUserId);
     this.saveUsers();
     this.updateAgentConfig(user);
 
-    this.logger.info(`[quantclaw-auth] Registered ${userId} with client token`);
+    this.logger.info(`[quantclaw-auth] Registered new user: ${userId} (agent: ${agentId}, platform_id: ${platformUserId})`);
     return user;
   }
 
-  // 手动注册
+  // 手动注册（生成随机 token）
   async register(userId: string): Promise<UserRecord> {
     if (this.userIndex.has(userId)) throw new Error(`User ${userId} already exists`);
 
     const token = 'qc_' + crypto.randomBytes(24).toString('hex');
+    const platformUserId = 'manual_' + crypto.randomBytes(8).toString('hex');
     const agentId = `qc-${userId.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-    // 使用 clawd- 前缀，让 Gateway 自动发现（fallback 机制）
     const workspace = this.expandPath(`~/clawd-${agentId}`);
 
     await this.createWorkspace(workspace, userId);
 
     const user: UserRecord = {
+      platformUserId,  // 手动注册用随机ID
       userId,
       token,
       agentId,
       workspace,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       enabled: true,
     };
 
-    this.users.set(token, user);
-    this.userIndex.set(userId, token);
+    this.users.set(platformUserId, user);
+    this.tokenIndex.set(token, platformUserId);
+    this.userIndex.set(userId, platformUserId);
+    this.agentIndex.set(agentId, platformUserId);
     this.saveUsers();
     this.updateAgentConfig(user);
 
@@ -325,9 +410,16 @@ class UserManager {
   }
 
   delete(userId: string): boolean {
-    const token = this.userIndex.get(userId);
-    if (!token) return false;
-    this.users.delete(token);
+    const platformUserId = this.userIndex.get(userId);
+    if (!platformUserId) return false;
+    
+    const user = this.users.get(platformUserId);
+    if (user) {
+      this.tokenIndex.delete(user.token);
+      this.agentIndex.delete(user.agentId);
+    }
+    
+    this.users.delete(platformUserId);
     this.userIndex.delete(userId);
     this.saveUsers();
     return true;
@@ -337,6 +429,7 @@ class UserManager {
     const user = this.findByUserId(userId);
     if (!user) return false;
     user.enabled = enabled;
+    user.updatedAt = new Date().toISOString();
     this.saveUsers();
     return true;
   }
@@ -344,10 +437,18 @@ class UserManager {
   regenToken(userId: string): string | null {
     const user = this.findByUserId(userId);
     if (!user) return null;
-    this.users.delete(user.token);
+    
+    // 删除旧 token 索引
+    this.tokenIndex.delete(user.token);
+    
+    // 生成新 token
     user.token = 'qc_' + crypto.randomBytes(24).toString('hex');
-    this.users.set(user.token, user);
+    user.updatedAt = new Date().toISOString();
+    
+    // 更新索引
+    this.tokenIndex.set(user.token, user.platformUserId);
     this.saveUsers();
+    
     return user.token;
   }
 }
