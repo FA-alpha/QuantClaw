@@ -4,3 +4,4 @@ server/data-docker
 __pycache__
 server/venv/
 server/quantclaw.log
+server/*.log
