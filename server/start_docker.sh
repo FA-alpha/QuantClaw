@@ -34,6 +34,7 @@ MISSING_DEPS=""
 python3 -c "import aiohttp" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS aiohttp"
 python3 -c "import requests" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS requests"
 python3 -c "import numpy" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS numpy"
+python3 -c "import typer" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS typer"
 
 # 安装缺失的工具和依赖
 if [ -n "$MISSING_TOOLS" ] || [ -n "$MISSING_DEPS" ]; then
@@ -44,8 +45,8 @@ if [ -n "$MISSING_TOOLS" ] || [ -n "$MISSING_DEPS" ]; then
         # 系统工具
         APT_TOOLS="$MISSING_TOOLS"
         
-        # Python 包 → apt 包名
-        APT_DEPS=$(echo "$MISSING_DEPS" | sed 's/\baiohttp\b/python3-aiohttp/g; s/\brequests\b/python3-requests/g; s/\bnumpy\b/python3-numpy/g')
+        # Python 包 → apt 包名（typer 通过 pip 安装）
+        APT_DEPS=$(echo "$MISSING_DEPS" | sed 's/\baiohttp\b/python3-aiohttp/g; s/\brequests\b/python3-requests/g; s/\bnumpy\b/python3-numpy/g; s/\btyper\b//g')
         
         # 合并安装
         ALL_APT="$APT_TOOLS $APT_DEPS"
@@ -70,10 +71,11 @@ else
 fi
 
 # 最终检查所有依赖是否可用
-if ! python3 -c "import aiohttp, requests, numpy" 2>/dev/null; then
+if ! python3 -c "import aiohttp, requests, numpy, typer" 2>/dev/null; then
     echo "❌ Some dependencies are not available!"
     echo "   Please install manually:"
     echo "   sudo docker exec -u root <container> apt-get update && apt-get install -y python3-aiohttp python3-requests python3-numpy"
+    echo "   sudo docker exec <container> python3 -m pip install --break-system-packages typer"
     exit 1
 fi
 
