@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sys
+import typer
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Union, NamedTuple
 
@@ -106,51 +107,50 @@ class StrategyRequirement(NamedTuple):
     ai_time_id_mapping: Dict[str, str]
     has_ai_time: bool
 
-def check_allocation_completeness(
-    requirement: StrategyRequirement, 
-    user_allocation: Dict[str, Any]
-) -> Dict[str, List[str]]:
-    """
-    检查分配方案完整性
-    
-    :param requirement: 策略需求
-    :param user_allocation: 用户提供的分配方案
-    :return: 缺失参数列表
-    """
-    missing = {
-        "coin_long_allocation": [],
-        "coin_short_allocation": [],
-        "ai_time_long_allocation": [],
-        "ai_time_short_allocation": []
-    }
+def check_allocation_iscomplete(
+        requirement: StrategyRequirement, 
+        user_allocation: Dict[str, Any]
+    ) -> Dict[str, List[str]]:
+        """
+        检查分配方案完整性
+        
+        :param requirement: 策略需求
+        :param user_allocation: 用户提供的分配方案
+        :return: 缺失参数列表
+        """
+        missing = {
+            "coin_long_allocation": [],
+            "coin_short_allocation": [],
+            "ai_time_long_allocation": [],
+            "ai_time_short_allocation": []
+        }
 
-    # 检查做多币种分配
-    user_coin_long_alloc = user_allocation.get("coin_long_allocation", {})
-    for coin in requirement.coin_long_pairs:
-        if coin not in user_coin_long_alloc:
-            missing["coin_long_allocation"].append(coin)
+        # 检查做多币种分配
+        user_coin_long_alloc = user_allocation.get("coin_long_allocation", {})
+        for coin in requirement.coin_long_pairs:
+            if coin not in user_coin_long_alloc:
+                missing["coin_long_allocation"].append(coin)
 
-    # 检查做空币种分配  
-    user_coin_short_alloc = user_allocation.get("coin_short_allocation", {})
-    for coin in requirement.coin_short_pairs:
-        if coin not in user_coin_short_alloc:
-            missing["coin_short_allocation"].append(coin)
+        # 检查做空币种分配  
+        user_coin_short_alloc = user_allocation.get("coin_short_allocation", {})
+        for coin in requirement.coin_short_pairs:
+            if coin not in user_coin_short_alloc:
+                missing["coin_short_allocation"].append(coin)
 
-    # 检查AI时间做多分配
-    if requirement.has_ai_time:
-        user_ai_time_long_alloc = user_allocation.get("ai_time_long_allocation", {})
-        for ai_time in requirement.ai_time_long_types:
-            if ai_time not in user_ai_time_long_alloc:
-                missing["ai_time_long_allocation"].append(ai_time)
+        # 检查AI时间做多分配
+        if requirement.has_ai_time:
+            user_ai_time_long_alloc = user_allocation.get("ai_time_long_allocation", {})
+            for ai_time in requirement.ai_time_long_types:
+                if ai_time not in user_ai_time_long_alloc:
+                    missing["ai_time_long_allocation"].append(ai_time)
 
-        # 检查AI时间做空分配
-        user_ai_time_short_alloc = user_allocation.get("ai_time_short_allocation", {})
-        for ai_time in requirement.ai_time_short_types:
-            if ai_time not in user_ai_time_short_alloc:
-                missing["ai_time_short_allocation"].append(ai_time)
+            # 检查AI时间做空分配
+            user_ai_time_short_alloc = user_allocation.get("ai_time_short_allocation", {})
+            for ai_time in requirement.ai_time_short_types:
+                if ai_time not in user_ai_time_short_alloc:
+                    missing["ai_time_short_allocation"].append(ai_time)
 
-    return {k: v for k, v in missing.items() if v}
-
+        return {k: v for k, v in missing.items() if v}
 def format_missing_params_message(
     requirement: StrategyRequirement, 
     missing: Dict[str, List[str]]
@@ -197,8 +197,7 @@ class BacktestRequest:
     def __init__(self, token: Optional[str] = None, agent_id: Optional[str] = None):
         """
         初始化请求管理器
-
-        :param token: 用户认证令牌
+        :param token: 用户token
         :param agent_id: 当前Agent的ID（可选）
         :raises BacktestRequestError: 如果未提供有效的用户令牌
         """
@@ -858,7 +857,7 @@ class BacktestRequest:
                 "message": e.message,
                 "error_code": e.error_code
             }
-
+    
     def check_allocation_completeness(
         self, 
         strategy_ids: Optional[List[str]] = None,
@@ -894,7 +893,7 @@ class BacktestRequest:
             )
 
             # 检查分配方案完整性
-            missing = check_allocation_completeness(requirement, user_allocation)
+            missing = check_allocation_iscomplete(requirement, user_allocation)
             
             # 格式化消息
             message = format_missing_params_message(requirement, missing)
@@ -943,6 +942,324 @@ def disable_network_debug_log():
 
     
 
+def cli_support():
+    """
+    为request.py添加命令行接口支持
+    使用Typer框架实现
+    """
+    import json
+    import sys
+    from typing import Optional, List, Dict
+
+    app = typer.Typer()
+
+    def create_requester(token: str, agent_id: Optional[str] = None):
+        """创建BacktestRequest实例"""
+        return BacktestRequest(token, agent_id)
+
+    @app.command()
+    def get_strategy_groups(
+        token: str = typer.Option(..., help="UserToken"),
+        page: int = typer.Option(1, help="页码"),
+        limit: int = typer.Option(10, help="每页数量"),
+        search: Optional[str] = typer.Option(None, help="搜索内容")
+    ):
+        """
+        获取策略组列表
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - page: int (可选, 默认1) - 页码
+        - limit: int (可选, 默认10) - 每页数量
+        - search: Optional[str] (可选) - 搜索内容
+        
+        功能: 查询并返回策略组列表，支持分页和搜索
+        """
+        requester = create_requester(token)
+        result = requester.get_strategy_groups(page=page, limit=limit, search_val=search)
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def get_strategies(
+        token: str = typer.Option(..., help="UserToken"),
+        page: int = typer.Option(1, help="页码"),
+        limit: int = typer.Option(10, help="每页数量"),
+        search: Optional[str] = typer.Option(None, help="搜索内容")
+    ):
+        """
+        获取策略列表
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - page: int (可选, 默认1) - 页码
+        - limit: int (可选, 默认10) - 每页数量
+        - search: Optional[str] (可选) - 搜索内容
+        
+        功能: 查询并返回策略列表，支持分页和搜索
+        """
+        requester = create_requester(token)
+        result = requester.get_strategies(page=page, limit=limit, search_val=search)
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def get_strategy_with_id(
+        token: str = typer.Option(..., help="UserToken"),
+        strategy_id: str = typer.Argument(..., help="策略ID")
+    ):
+        """
+        获取指定ID的策略详情
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - strategy_id: str (必填) - 要查询的策略ID
+        
+        功能: 根据策略ID精确查询策略详细信息
+        """
+        requester = create_requester(token)
+        result = requester.get_strategy_with_id(strategy_id)
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def get_strategy_group_with_groupid(
+        token: str = typer.Option(..., help="UserToken"),
+        group_id: str = typer.Argument(..., help="策略组ID"),
+        limit: int = typer.Option(10, help="每页数量")
+    ):
+        """
+        根据策略组ID获取策略组详情
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - group_id: str (必填) - 策略组ID
+        - limit: int (可选, 默认10) - 每页数量
+        
+        功能: 精确查询特定ID的策略组信息
+        """
+        requester = create_requester(token)
+        result = requester.get_strategy_group_with_groupid(group_id, limit=limit)
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def apply_backtest(
+        token: str = typer.Option(..., help="UserToken"),
+        strategy_ids: List[str] = typer.Option(..., help="策略ID列表"),
+        bgn_date: Optional[str] = typer.Option(None, help="回测开始日期"),
+        end_date: Optional[str] = typer.Option(None, help="回测结束日期"),
+        init_balance: Optional[float] = typer.Option(None, help="初始资金"),
+        leverage: Optional[float] = typer.Option(None, help="杠杆倍数"),
+        margin_mode: Optional[str] = typer.Option(None, help="保证金模式"),
+        margin_allocation: Optional[str] = typer.Option(None, help="保证金分配方案")
+    ):
+        """
+        提交回测任务
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - strategy_ids: List[str] (必填) - 策略ID列表
+        - bgn_date: Optional[str] (可选) - 回测开始日期
+        - end_date: Optional[str] (可选) - 回测结束日期
+        - init_balance: Optional[float] (可选) - 初始资金
+        - leverage: Optional[float] (可选) - 杠杆倍数
+        - margin_mode: Optional[str] (可选) - 保证金模式
+        - margin_allocation: Optional[str] (可选) - 保证金分配方案
+        
+        功能: 提交多策略回测任务
+        """
+        requester = create_requester(token)
+        result = requester.apply_backtest(
+            strategy_ids=strategy_ids,
+            bgn_date=bgn_date,
+            end_date=end_date,
+            init_balance=init_balance,
+            leverage=leverage,
+            margin_mode=margin_mode,
+            margin_allocation=margin_allocation
+        )
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def get_backtest_stat_info(
+        token: str = typer.Option(..., help="UserToken"),
+        back_id: str = typer.Argument(..., help="回测任务ID")
+    ):
+        """
+        获取回测统计信息
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - back_id: str (必填) - 回测任务ID
+        
+        功能: 获取指定回测任务的详细统计信息
+        """
+        requester = create_requester(token)
+        result = requester.get_backtest_stat_info(back_id)
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def check_backtest_status(
+        token: str = typer.Option(..., help="UserToken"),
+        back_id: str = typer.Argument(..., help="回测任务ID")
+    ):
+        """
+        检查回测任务状态
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - back_id: str (必填) - 回测任务ID
+        
+        功能: 查询指定回测任务的当前状态
+        """
+        requester = create_requester(token)
+        result = requester.check_backtest_status(back_id)
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def get_backtest_list(
+        token: str = typer.Option(..., help="UserToken"),
+        page: int = typer.Option(1, help="页码"),
+        limit: int = typer.Option(10, help="每页数量"),
+        search: Optional[str] = typer.Option(None, help="搜索内容"),
+        search_status: Optional[int] = typer.Option(None, help="状态筛选"),
+        search_type: Optional[int] = typer.Option(None, help="类型筛选")
+    ):
+        """
+        获取回测列表
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - page: int (可选, 默认1) - 页码
+        - limit: int (可选, 默认10) - 每页数量
+        - search: Optional[str] (可选) - 搜索内容
+        - search_status: Optional[int] (可选) - 状态筛选
+        - search_type: Optional[int] (可选) - 类型筛选
+        
+        功能: 查询回测列表，支持多种筛选条件
+        """
+        requester = create_requester(token)
+        result = requester.get_backtest_list(
+            page=page, 
+            limit=limit, 
+            search_val=search, 
+            search_status=search_status, 
+            search_type=search_type
+        )
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def calc_margin(
+        token: str = typer.Option(..., help="UserToken"),
+        strategys_json: str = typer.Option(..., help="策略JSON字符串"),
+        leverage: float = typer.Option(..., help="保证金对应杠杆"),
+        long_pct: float = typer.Option(..., help="做多保证金占比"),
+        short_pct: float = typer.Option(..., help="做空保证金占比"),
+        long_coin_pcts_json: str = typer.Option(..., help="做多币种保证金占比JSON"),
+        short_coin_pcts_json: str = typer.Option(..., help="做空币种保证金占比JSON"),
+        long_ai_time_pcts_json: Optional[str] = typer.Option(None, help="做多AI时间保证金占比JSON"),
+        short_ai_time_pcts_json: Optional[str] = typer.Option(None, help="做空AI时间保证金占比JSON")
+    ):
+        """
+        计算策略保证金
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - strategys_json: str (必填) - 策略JSON字符串
+        - leverage: float (必填) - 保证金对应杠杆
+        - long_pct: float (必填) - 做多保证金占比
+        - short_pct: float (必填) - 做空保证金占比
+        - long_coin_pcts_json: str (必填) - 做多币种保证金占比JSON
+        - short_coin_pcts_json: str (必填) - 做空币种保证金占比JSON
+        - long_ai_time_pcts_json: Optional[str] (可选) - 做多AI时间保证金占比JSON
+        - short_ai_time_pcts_json: Optional[str] (可选) - 做空AI时间保证金占比JSON
+        
+        功能: 计算多策略回测的保证金分配详情
+        """
+        requester = create_requester(token)
+        
+        try:
+            strategys = json.loads(strategys_json)
+            long_coin_pcts = json.loads(long_coin_pcts_json)
+            short_coin_pcts = json.loads(short_coin_pcts_json)
+            
+            long_ai_time_pcts = json.loads(long_ai_time_pcts_json) if long_ai_time_pcts_json else None
+            short_ai_time_pcts = json.loads(short_ai_time_pcts_json) if short_ai_time_pcts_json else None
+        except json.JSONDecodeError:
+            typer.echo("错误：JSON参数必须是有效的JSON格式")
+            sys.exit(1)
+        
+        result = requester.calc_margin(
+            strategys_json=strategys,
+            leverage=leverage,
+            long_pct=long_pct,
+            short_pct=short_pct,
+            long_coin_pcts=long_coin_pcts,
+            short_coin_pcts=short_coin_pcts,
+            long_ai_time_pcts=long_ai_time_pcts,
+            short_ai_time_pcts=short_ai_time_pcts
+        )
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def analyze_strategies_for_allocation(
+        token: str = typer.Option(..., help="UserToken"),
+        strategy_ids: Optional[List[str]] = typer.Option(None, help="策略ID列表"),
+        strategy_group_id: Optional[str] = typer.Option(None, help="策略组ID")
+    ):
+        """
+        分析策略分配需求
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - strategy_ids: Optional[List[str]] (可选) - 策略ID列表
+        - strategy_group_id: Optional[str] (可选) - 策略组ID
+        
+        功能: 分析策略的分配需求，用于多策略回测前的准备
+        注意: 必须且仅能传入strategy_ids或strategy_group_id其中一个
+        """
+        requester = create_requester(token)
+        result = requester.analyze_strategies_for_allocation(
+            strategy_ids=strategy_ids, 
+            strategy_group_id=strategy_group_id
+        )
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    @app.command()
+    def check_allocation_completeness(
+        token: str = typer.Option(..., help="UserToken"),
+        strategy_ids: Optional[List[str]] = typer.Option(None, help="策略ID列表"),
+        strategy_group_id: Optional[str] = typer.Option(None, help="策略组ID"),
+        user_allocation_json: Optional[str] = typer.Option(None, help="用户分配方案JSON")
+    ):
+        """
+        检查保证金分配方案完整性
+        
+        参数类型:
+        - token: str (必填) - UserToken
+        - strategy_ids: Optional[List[str]] (可选) - 策略ID列表
+        - strategy_group_id: Optional[str] (可选) - 策略组ID
+        - user_allocation_json: Optional[str] (可选) - 用户分配方案JSON字符串
+        
+        功能: 检查多策略回测的保证金分配方案是否完整
+        注意: 必须且仅能传入strategy_ids或strategy_group_id其中一个
+        """
+        requester = create_requester(token)
+        
+        user_allocation = {}
+        if user_allocation_json:
+            try:
+                user_allocation = json.loads(user_allocation_json)
+            except json.JSONDecodeError:
+                typer.echo("错误：user_allocation_json必须是有效的JSON格式")
+                sys.exit(1)
+        
+        result = requester.check_allocation_completeness(
+            strategy_ids=strategy_ids, 
+            strategy_group_id=strategy_group_id,
+            user_allocation=user_allocation
+        )
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+    
+
 def main():
     """
     主函数，用于测试接口请求
@@ -951,4 +1268,4 @@ def main():
     pass
 
 if __name__ == "__main__":
-    main()
+    cli_support()
