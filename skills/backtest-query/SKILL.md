@@ -402,7 +402,28 @@ exec("query.py --create-group --strategy-tokens '{','.join(tokens)}'")
 ⚠️ 禁止硬编码，必须查询列表
 
 ### 保存单策略
-`query.py --add-strategy --strategy-token "xxx"`（策略库 ≠ 策略组）
+
+⚠️ **关键：必须使用 `strategy_token` 字段！**
+
+```bash
+cd skills/backtest-query && python3 query.py \
+  --add-strategy \
+  --strategy-token "NzAxNzA1IyMyIyMy"  # 必须是 Base64 格式的 token
+```
+
+**参数说明**：
+- `--strategy-token`：必须传递 JSON 中的 **`strategy_token` 字段**（Base64 格式）
+- ❌ **禁止使用 `id` 字段**（如 "832548##2##2"），服务器不识别！
+- 策略库 ≠ 策略组（`--add-strategy` 保存单个策略，`--create-group` 创建多策略组合）
+
+**示例 JSON 数据**：
+```json
+{
+  "id": "832548##2##2",           // ❌ 不要用这个！
+  "strategy_token": "NzAxNzA1IyMyIyMy",  // ✅ 必须用这个！
+  "strategy_name": "风霆_v4.3"
+}
+```
 
 ---
 
