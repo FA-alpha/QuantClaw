@@ -399,7 +399,16 @@ class UserManager:
         memory_dir.mkdir(exist_ok=True)
         logger.info(f'📂 Created memory directory')
         
-        # 4. 更新 openclaw.json 添加 agent 配置
+        # 4. 修改权限（Docker 环境中确保 node 用户可写）
+        try:
+            import subprocess
+            # chown -R 1000:1000（node 用户的 UID:GID）
+            subprocess.run(['chown', '-R', '1000:1000', str(workspace)], check=True)
+            logger.info(f'✅ Set workspace permissions to node:node')
+        except Exception as e:
+            logger.warning(f'⚠️ Failed to set permissions: {e}')
+        
+        # 5. 更新 openclaw.json 添加 agent 配置
         self.add_agent_to_config(agent_id, workspace)
         
         logger.info(f'✅ Workspace created successfully')
