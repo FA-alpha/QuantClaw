@@ -735,7 +735,8 @@ async def handle_websocket(request):
                                             'method': 'chat.send',
                                             'params': {
                                                 'sessionKey': session_key,
-                                                'message': text
+                                                'message': text,
+                                                'idempotencyKey': str(uuid.uuid4()),
                                             }
                                         }
                                         await gateway_ws.send_json(rpc_msg)
