@@ -1148,9 +1148,10 @@ class SmartGroupRecommender:
         # 4. 构建返回结果
         result = {
             "mode": "single_strategy",
-            "strategies": selected,
+            "strategies": strategies,
             "total_fetched": len(strategies),
             "total_selected": len(selected),
+            'selected_strategies':selected,
             "sort_by": sort_key
         }
         
@@ -1350,9 +1351,6 @@ class SmartGroupRecommender:
                 "error": "候选策略不足",
                 "message": "未找到足够的策略来生成组合",
                 "suggestions": [
-                    "放宽时间范围（如从30天改为1年）",
-                    "增加币种选择",
-                    "移除版本限制",
                     "降低筛选条件（如胜率、回撤要求）"
                 ],
                 "query": query_text,
@@ -1369,8 +1367,6 @@ class SmartGroupRecommender:
                 "message": f"找到 {len(all_selected)} 个策略，但需要至少 {min_strategies} 个",
                 "suggestions": [
                     f"降低 min_strategies 要求（当前={min_strategies}，建议≤{len(all_selected)}）",
-                    "放宽时间范围",
-                    "增加币种选择",
                     "移除版本或方向限制"
                 ],
                 "query": query_text,
