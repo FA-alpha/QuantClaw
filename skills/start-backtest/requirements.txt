@@ -2,3 +2,5 @@
 
 # 网络请求
 requests
+# 命令行需求的框架
+typer
