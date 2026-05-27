@@ -556,11 +556,9 @@ async def handle_new_conversation(request):
                                         msg_req = {
                                             'type': 'req',
                                             'id': 'send_new',
-                                            'method': 'chat.send',
+                                            'method': 'sessions.create',
                                             'params': {
-                                                'sessionKey': session_key,
-                                                'message': '/new',
-                                                'idempotencyKey': str(uuid.uuid4())
+                                                'key': session_key
                                             }
                                         }
                                         await gateway_ws.send_json(msg_req)
@@ -737,8 +735,7 @@ async def handle_websocket(request):
                                             'method': 'chat.send',
                                             'params': {
                                                 'sessionKey': session_key,
-                                                'message': text,
-                                                'idempotencyKey': str(uuid.uuid4()),
+                                                'message': text
                                             }
                                         }
                                         await gateway_ws.send_json(rpc_msg)
