@@ -149,12 +149,23 @@ class UserManager:
         Token 格式（Base64 编码）:
         18##laihui@fourieralpha.com##1779792069##plant_v2##0##1##user
         
+        字段说明:
+        [0] platform_user_id - 平台用户ID（唯一且不变）
+        [1] email - 邮箱
+        [2] timestamp - 时间戳
+        [3] version - 系统版本
+        [4] parent_user_id - 如果是子账号，则为主账号ID；主账号则为0
+        [5] account_type - 账号类型：1=主账号，2=子账号
+        [6] role - 角色（通常为 'user'）
+        
         Returns:
             {
                 'platform_user_id': '18',  # 平台用户ID（唯一且不变）
                 'email': 'laihui@fourieralpha.com',
                 'timestamp': 1779792069,
                 'version': 'plant_v2',
+                'parent_user_id': '0',  # 主账号ID（0表示是主账号）
+                'account_type': '1',  # 1=主账号, 2=子账号
                 'role': 'user'
             }
         """
@@ -168,6 +179,8 @@ class UserManager:
                     'email': parts[1],
                     'timestamp': int(parts[2]),
                     'version': parts[3],
+                    'parent_user_id': parts[4],  # 主账号ID（子账号时有值）
+                    'account_type': parts[5],  # 1=主账号, 2=子账号
                     'role': parts[6]
                 }
             else:
