@@ -556,9 +556,11 @@ async def handle_new_conversation(request):
                                         msg_req = {
                                             'type': 'req',
                                             'id': 'send_new',
-                                            'method': 'sessions.create',
+                                            'method': 'chat.send',
                                             'params': {
-                                                'key': session_key
+                                                'sessionKey': session_key,
+                                                'message': '/new',
+                                                'idempotencyKey': str(uuid.uuid4())
                                             }
                                         }
                                         await gateway_ws.send_json(msg_req)
