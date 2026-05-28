@@ -105,7 +105,11 @@ class PersistentSessionListener:
                 async with aiohttp.ClientSession() as http_session:
                     gateway_url = f'{self.gateway_ws}?token={self.gateway_token}'
                     
-                    async with http_session.ws_connect(gateway_url) as gateway_ws:
+                    async with http_session.ws_connect(
+                        gateway_url,
+                        autoping=True,      # 自动响应 Gateway 的 ping
+                        heartbeat=30        # 每30秒发送 ping 保持连接
+                    ) as gateway_ws:
                         # 握手
                         if not await self._complete_handshake(gateway_ws):
                             logger.error(f'Handshake failed for {session_key}')
@@ -507,7 +511,11 @@ async def handle_new_conversation(request):
             async with aiohttp.ClientSession() as ws_session:
                 gateway_url = f'{GATEWAY_WS}?token={GATEWAY_TOKEN}'
                 
-                async with ws_session.ws_connect(gateway_url) as gateway_ws:
+                async with ws_session.ws_connect(
+                    gateway_url,
+                    autoping=True,
+                    heartbeat=30
+                ) as gateway_ws:
                     connected = False
                     new_sent = False
                     
@@ -646,7 +654,11 @@ async def handle_websocket(request):
         async with aiohttp.ClientSession() as http_session:
             gateway_url = f'{GATEWAY_WS}?token={GATEWAY_TOKEN}'
             
-            async with http_session.ws_connect(gateway_url) as gateway_ws:
+            async with http_session.ws_connect(
+                gateway_url,
+                autoping=True,      # 自动响应 ping
+                heartbeat=30        # 每30秒发送 ping
+            ) as gateway_ws:
                 
                 # 握手
                 connected = False
