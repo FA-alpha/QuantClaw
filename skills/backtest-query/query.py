@@ -627,7 +627,7 @@ def main():
     parser = argparse.ArgumentParser(description="查询回测数据")
     parser.add_argument("--token", help="用户 token（可选，未提供时自动获取）")
     parser.add_argument("--agent-id", dest="agent_id", help="Agent ID（可选，用于 token 自动获取）")
-    parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
+    parser.add_argument("--detail", dest="back_id", type=str, help="查看回测详情（需要回测记录ID）")
     parser.add_argument("--add-strategy", action="store_true", help="保存策略到策略库")
     parser.add_argument("--strategy-token", help="策略 token（用于保存单个策略）")
     parser.add_argument("--create-group", action="store_true", help="创建策略组")

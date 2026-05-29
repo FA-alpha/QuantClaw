@@ -211,8 +211,18 @@ cd skills/backtest-query && python3 smart_group_recommend.py \
 ```bash
 --agent-id "qc-xxx"                           # 用于自动获取 token
 --list-coins / --list-strategies / --list-ai-times  # 查询列表
+--detail "back_id"                            # 查看回测详情（需要回测记录ID）
 --create-group --group-name "xxx" --strategy-tokens "t1,t2,t3"  # 创建组
 --add-strategy --strategy-token "xxx"         # 保存单策略（使用 strategy_token）
+```
+
+**使用示例**：
+
+**查看回测详情**：
+```bash
+cd skills/backtest-query && python3 query.py \
+  --detail "12345" \
+  --agent-id "qc-xxx"
 ```
 
 **⚠️ 保存单策略注意**：必须使用 `strategy_token` 字段（Base64 格式），禁止使用 `id` 字段
