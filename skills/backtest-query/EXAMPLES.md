@@ -429,29 +429,45 @@ cd skills/backtest-query && python3 smart_group_recommend.py \
 - 使用 `--max-combinations` 和 `--top-per-group` 控制输出规模
 
 ---
-
 ## 案例11：查看回测详情
 
 **场景**：用户想查看某个回测记录的详细信息（收益曲线、交易记录等）
 
-**用户**："查看回测 12345 的详情" 或 "看一下回测ID abc123 的详细数据"
+**用户**："查看回测 12345 的详情" 或 "看一下策略ID abc123 的详细数据"
+
+### ⚠️ 字段区分（关键）
+
+推荐结果中有三个 ID 字段：
+
+```json
+{
+  "id": "12345",                          // ✅ 用于 --detail 查看详情
+  "back_id": "67890",                     // ❌ 内部字段，不用于查询
+  "strategy_token": "NzAxNzA1IyMyIyMy"   // ✅ 用于 --add-strategy 保存策略
+}
+```
+
+**正确用法**：
+- 查看详情 → 使用 `id` 字段
+- 保存策略 → 使用 `strategy_token` 字段
+- `back_id` → 不直接使用
 
 ### 参数提取
 
 ```bash
-# 回测ID可以是数字或字符串
-# 用户："查看回测 12345 的详情" → back_id = "12345"
-# 用户："回测ID abc123" → back_id = "abc123"
+# 从推荐结果中提取 id 字段（不是 back_id！）
+# 用户："查看回测 12345 的详情" → strategy_id = "12345"
+# 用户："策略ID abc123" → strategy_id = "abc123"
 ```
 
 ### 执行命令
 
 ```bash
 agent_id="qc-xxx"
-back_id="12345"  # 或 "abc123"
+strategy_id="12345"  # 使用 id 字段，不是 back_id
 
 cd skills/backtest-query && python3 query.py \
-  --detail "${back_id}" \
+  --detail "${strategy_id}" \
   --agent-id "${agent_id}"
 ```
 

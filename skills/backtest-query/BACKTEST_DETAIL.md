@@ -4,11 +4,36 @@
 
 ---
 
+## ⚠️ 字段区分（重要）
+
+查看回测详情需要使用 **`id` 字段**（策略ID），不是 `back_id` 或 `strategy_token`。
+
+| 字段 | 用途 | 示例值 |
+|------|------|--------|
+| **`id`** | **查看回测详情**（--detail） | "12345" |
+| `back_id` | 回测记录ID（内部字段） | "67890" |
+| `strategy_token` | 保存单策略（--add-strategy） | "NzAxNzA1IyMyIyMy" |
+
+**正确用法**：
+```bash
+# 从推荐结果中提取 id 字段
+strategy_id = result["combinations"][0]["strategies"][0]["id"]  # ✅ 使用 id
+
+# 查看详情
+cd skills/backtest-query && python3 query.py \
+  --detail "${strategy_id}" \
+  --agent-id "qc-xxx"
+```
+
+---
+
 ## 📊 回测详情字段说明
 
 ### API 信息
 
 - **URI**: `/Backtrack/stat_info`
+- **参数**: `usertoken`, `back_id`（注：虽然API参数叫 back_id，但实际应传入策略的 id 字段值）
+
 - **参数**: `usertoken`, `back_id`
 
 ### 响应结构

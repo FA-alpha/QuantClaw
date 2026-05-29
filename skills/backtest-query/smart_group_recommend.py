@@ -893,6 +893,7 @@ class SmartGroupRecommender:
         # 保留前3个策略作为样本（只保留关键字段）
         for s in strategies[:3]:
             summary["sample_strategies"].append({
+                "id": s.get("id"),
                 "back_id": s.get("back_id"),
                 "coin": s.get("coin"),
                 "direction": s.get("direction"),
