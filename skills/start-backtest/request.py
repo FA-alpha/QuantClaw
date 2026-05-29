@@ -23,7 +23,7 @@ class DebugConfig:
     DEBUG_MODE = False  # 默认关闭调试
     LOG_BASE_PATH = os.path.expanduser("~/.quantclaw/logs")
     AGENT_ID = None  # Agent ID 初始为 None
-
+    
     @classmethod
     def set_debug_mode(cls, mode: bool, agent_id: Optional[str] = None):
         """
@@ -194,7 +194,7 @@ class BacktestRequest:
     提供标准化的接口请求方法，确保参数校验和错误处理
     """
 
-    def __init__(self, token: Optional[str] = None, agent_id: Optional[str] = None):
+    def __init__(self, agent_id: Optional[str] = None):
         """
         初始化请求管理器
         :param token: 用户token
@@ -203,13 +203,14 @@ class BacktestRequest:
         """
         # 移除原有的 if not token 检查
         # 改为更严格的令牌检查
-        if token is None or not isinstance(token, str) or token.strip() == "":
+
+        if agent_id is None or not isinstance(agent_id, str) or agent_id.strip() == "":
             raise BacktestRequestError(
-            "未提供有效的用户令牌，请先获取UserToken",
+            "未提供有效的agentid，请先获取agentid并传入",
             "INVALID_TOKEN"
             )
-
-        self.token = token
+          # 尝试获取用户令牌，如果失败会在后续请求中抛出错误
+        self.token = get_user_token_by_agent_id(agent_id)
         self.base_url = "https://www.fourieralpha.com/Mobile"
         self.logger = logging.getLogger(__name__)
         self._cache = {}
@@ -283,7 +284,7 @@ class BacktestRequest:
 
     def get_strategy_groups(
         self, 
-        usertoken: Optional[str] = None,
+        agent_id: Optional[str] = None,
         page: int = 1, 
         limit: int = 10,
         search_val: Optional[str] = None,
@@ -292,7 +293,7 @@ class BacktestRequest:
         """
         获取策略组列表
         
-        :param usertoken: 用户认证Token
+        :param agent_id: agentid,用于获取用户认证Token
         :param page: 页码，默认第一页
         :param limit: 每页数量，默认10个，全部传-1
         :param search_val: 搜索内容
@@ -302,7 +303,7 @@ class BacktestRequest:
         try:
             # 构造请求参数
             params: Dict[str, Any] = {
-                "usertoken": usertoken or self.token,
+                "usertoken": get_user_token_by_agent_id(agent_id) or self.token,
                 "page": page,
                 "limit": limit,
                 "app_v": app_v
@@ -619,7 +620,7 @@ class BacktestRequest:
 
     def apply_backtest(
         self,
-        usertoken: Optional[str] = None,
+        agent_id: Optional[str] = None,
         strategy_id: Optional[str] = None,
         strategy_ids: Optional[List[str]] = None,
         bgn_date: Optional[str] = None,
@@ -634,7 +635,7 @@ class BacktestRequest:
         """
         开始回测
         
-        :param usertoken: 用户认证Token
+        :param agent_id: agentid,用于获取用户认证Token
         :param strategy_id: 单个策略ID（兼容旧接口）
         :param strategy_ids: 多个策略ID列表
         :param bgn_date: 回测开始日期（YYYY-MM-DD）
@@ -656,7 +657,7 @@ class BacktestRequest:
 
             # 构造请求参数
             params: Dict[str, Any] = {
-                "usertoken": usertoken or self.token,
+                "usertoken": get_user_token_by_agent_id(agent_id) or self.token,
                 "strategy_id": ",".join(strategy_ids),  # 逗号分隔的策略ID
                 "data_type": str(data_type),
                 "app_v": app_v
@@ -939,7 +940,44 @@ def disable_network_debug_log():
     禁用网络请求调试日志
     """
     DebugConfig.set_debug_mode(False)
-
+    
+def get_user_token_by_agent_id(agent_id: str) -> Optional[str]:
+    """
+    根据传入的AgentID获取对应的UserToken
+    
+    使用方式：
+    USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
+    
+    :param agent_id: 机器人的AgentID
+    :return: UserToken字符串，如果未找到返回None
+    """
+    try:
+        # 确保使用绝对路径
+        users_file_path = os.path.expanduser("~/.quantclaw/users.json")
+        
+        # 检查文件是否存在
+        if not os.path.exists(users_file_path):
+            print(f"❌ 用户配置文件不存在: {users_file_path}")
+            return None
+        
+        # 读取并解析JSON文件
+        with open(users_file_path, 'r') as f:
+            users_data = json.load(f)
+        
+        # 遍历用户列表查找匹配的AgentID
+        for user in users_data.get('users', []):
+            if user.get('agentId') == agent_id:
+                return user.get('token')
+        
+        print(f"❌ 未找到AgentID为 {agent_id} 的UserToken")
+        return None
+    
+    except json.JSONDecodeError:
+        print(f"❌ JSON解析错误: {users_file_path}")
+        return None
+    except Exception as e:
+        print(f"❌ 获取UserToken时发生错误: {e}")
+        return None
     
 
 def cli_support():
@@ -959,7 +997,7 @@ def cli_support():
 
     @app.command()
     def get_strategy_groups(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         page: int = typer.Option(1, help="页码"),
         limit: int = typer.Option(10, help="每页数量"),
         search: Optional[str] = typer.Option(None, help="搜索内容")
@@ -968,20 +1006,20 @@ def cli_support():
         获取策略组列表
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - 该agent的id
         - page: int (可选, 默认1) - 页码
         - limit: int (可选, 默认10) - 每页数量
         - search: Optional[str] (可选) - 搜索内容
         
         功能: 查询并返回策略组列表，支持分页和搜索
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.get_strategy_groups(page=page, limit=limit, search_val=search)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
     def get_strategies(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         page: int = typer.Option(1, help="页码"),
         limit: int = typer.Option(10, help="每页数量"),
         search: Optional[str] = typer.Option(None, help="搜索内容")
@@ -990,38 +1028,38 @@ def cli_support():
         获取策略列表
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - 该agent的id
         - page: int (可选, 默认1) - 页码
         - limit: int (可选, 默认10) - 每页数量
         - search: Optional[str] (可选) - 搜索内容
         
         功能: 查询并返回策略列表，支持分页和搜索
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.get_strategies(page=page, limit=limit, search_val=search)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
     def get_strategy_with_id(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         strategy_id: str = typer.Argument(..., help="策略ID")
     ):
         """
         获取指定ID的策略详情
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - strategy_id: str (必填) - 要查询的策略ID
         
         功能: 根据策略ID精确查询策略详细信息
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.get_strategy_with_id(strategy_id)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
     def get_strategy_group_with_groupid(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         group_id: str = typer.Argument(..., help="策略组ID"),
         limit: int = typer.Option(10, help="每页数量")
     ):
@@ -1029,19 +1067,19 @@ def cli_support():
         根据策略组ID获取策略组详情
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - group_id: str (必填) - 策略组ID
         - limit: int (可选, 默认10) - 每页数量
         
         功能: 精确查询特定ID的策略组信息
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.get_strategy_group_with_groupid(group_id, limit=limit)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
     def apply_backtest(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         strategy_ids: List[str] = typer.Option(..., help="策略ID列表"),
         bgn_date: Optional[str] = typer.Option(None, help="回测开始日期"),
         end_date: Optional[str] = typer.Option(None, help="回测结束日期"),
@@ -1054,7 +1092,7 @@ def cli_support():
         提交回测任务
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - strategy_ids: List[str] (必填) - 策略ID列表
         - bgn_date: Optional[str] (可选) - 回测开始日期
         - end_date: Optional[str] (可选) - 回测结束日期
@@ -1065,7 +1103,7 @@ def cli_support():
         
         功能: 提交多策略回测任务
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.apply_backtest(
             strategy_ids=strategy_ids,
             bgn_date=bgn_date,
@@ -1079,43 +1117,43 @@ def cli_support():
 
     @app.command()
     def get_backtest_stat_info(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         back_id: str = typer.Argument(..., help="回测任务ID")
     ):
         """
         获取回测统计信息
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - back_id: str (必填) - 回测任务ID
         
         功能: 获取指定回测任务的详细统计信息
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.get_backtest_stat_info(back_id)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
     def check_backtest_status(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         back_id: str = typer.Argument(..., help="回测任务ID")
     ):
         """
         检查回测任务状态
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - back_id: str (必填) - 回测任务ID
         
         功能: 查询指定回测任务的当前状态
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.check_backtest_status(back_id)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
     def get_backtest_list(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         page: int = typer.Option(1, help="页码"),
         limit: int = typer.Option(10, help="每页数量"),
         search: Optional[str] = typer.Option(None, help="搜索内容"),
@@ -1126,7 +1164,7 @@ def cli_support():
         获取回测列表
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - 智能体的id
         - page: int (可选, 默认1) - 页码
         - limit: int (可选, 默认10) - 每页数量
         - search: Optional[str] (可选) - 搜索内容
@@ -1135,7 +1173,7 @@ def cli_support():
         
         功能: 查询回测列表，支持多种筛选条件
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.get_backtest_list(
             page=page, 
             limit=limit, 
@@ -1147,7 +1185,7 @@ def cli_support():
 
     @app.command()
     def calc_margin(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         strategys_json: str = typer.Option(..., help="策略JSON字符串"),
         leverage: float = typer.Option(..., help="保证金对应杠杆"),
         long_pct: float = typer.Option(..., help="做多保证金占比"),
@@ -1161,7 +1199,7 @@ def cli_support():
         计算策略保证金
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agentid
         - strategys_json: str (必填) - 策略JSON字符串
         - leverage: float (必填) - 保证金对应杠杆
         - long_pct: float (必填) - 做多保证金占比
@@ -1173,7 +1211,7 @@ def cli_support():
         
         功能: 计算多策略回测的保证金分配详情
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         
         try:
             strategys = json.loads(strategys_json)
@@ -1200,7 +1238,7 @@ def cli_support():
 
     @app.command()
     def analyze_strategies_for_allocation(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         strategy_ids: Optional[List[str]] = typer.Option(None, help="策略ID列表"),
         strategy_group_id: Optional[str] = typer.Option(None, help="策略组ID")
     ):
@@ -1208,14 +1246,14 @@ def cli_support():
         分析策略分配需求
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - 当前机器人agentID
         - strategy_ids: Optional[List[str]] (可选) - 策略ID列表
         - strategy_group_id: Optional[str] (可选) - 策略组ID
         
         功能: 分析策略的分配需求，用于多策略回测前的准备
         注意: 必须且仅能传入strategy_ids或strategy_group_id其中一个
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.analyze_strategies_for_allocation(
             strategy_ids=strategy_ids, 
             strategy_group_id=strategy_group_id
@@ -1224,7 +1262,7 @@ def cli_support():
 
     @app.command()
     def check_allocation_completeness(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="当前机器人agentID"),
         strategy_ids: Optional[List[str]] = typer.Option(None, help="策略ID列表"),
         strategy_group_id: Optional[str] = typer.Option(None, help="策略组ID"),
         user_allocation_json: Optional[str] = typer.Option(None, help="用户分配方案JSON")
@@ -1233,7 +1271,7 @@ def cli_support():
         检查保证金分配方案完整性
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - 当前机器人agentID
         - strategy_ids: Optional[List[str]] (可选) - 策略ID列表
         - strategy_group_id: Optional[str] (可选) - 策略组ID
         - user_allocation_json: Optional[str] (可选) - 用户分配方案JSON字符串
@@ -1241,7 +1279,7 @@ def cli_support():
         功能: 检查多策略回测的保证金分配方案是否完整
         注意: 必须且仅能传入strategy_ids或strategy_group_id其中一个
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         
         user_allocation = {}
         if user_allocation_json:
