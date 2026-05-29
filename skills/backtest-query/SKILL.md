@@ -479,9 +479,37 @@ cd skills/backtest-query && python3 query.py \
 ```bash
 --agent-id "qc-xxx"              # 用于自动获取 token
 --list-coins / --list-strategies / --list-ai-times  # 查询列表
+--detail "strategy_id"           # 查看回测详情（使用 id 字段，不是 back_id）
 --create-group --group-name "xxx" --strategy-tokens "t1,t2,t3"  # 创建组
 --add-strategy --strategy-token "xxx"  # 保存单策略
 ```
+
+**⚠️ 字段区分（重要）**：
+
+| 字段 | 用途 | 示例值 |
+|------|------|--------|
+| `id` | 查看回测详情（--detail） | "12345" |
+| `back_id` | 回测记录ID（内部字段） | "67890" |
+| `strategy_token` | 保存单策略（--add-strategy） | "NzAxNzA1IyMyIyMy" |
+
+**查看回测详情示例**：
+```bash
+# 从推荐结果中提取 id 字段
+strategy_id="12345"  # 使用 id，不是 back_id
+
+cd skills/backtest-query && python3 query.py \
+  --detail "${strategy_id}" \
+  --agent-id "qc-xxx"
+```
+
+**返回字段说明**：
+- `status`: 回测状态（1-待回测 2-回测中 3-回测成功 4-回测失败）
+- `bgn_date` / `end_date`: 开始/结束时间
+- `strategy`: 策略信息列表
+- `total_stat`: 回测统计（收益率、最大回撤、夏普率等）
+- `trade_lists`: 交易记录
+
+详细字段说明见：`/home/lh/work/回测统计.txt`
 
 ### 参数规则
 - 版本：用户说 "V4.3" → `{"11": ["4.3"]}`；未说 → 不传
