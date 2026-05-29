@@ -66,6 +66,37 @@ cd skills/backtest-query && python3 smart_group_recommend.py --agent-id xxx --qu
 
 ## 执行规范
 
+### 0. 命令生成检查清单（必做）
+
+**在生成 `smart_group_recommend.py` 命令前，必须检查以下参数**：
+
+- [ ] `--agent-id` → 总是传递
+- [ ] `--query` → 用户原话
+- [ ] `--coins` → 验证后传递
+- [ ] `--strategy-types` → 查询匹配后传递
+- [ ] **`--strategy-direction-map`** → **对冲/多空/做多/做空时必须传递！**
+- [ ] `--intent-json` → 总是传递
+- [ ] `--max-combinations` → 总是传递
+- [ ] `--top-per-group` → 总是传递
+- [ ] `--output` → 总是传递
+
+**⚠️ 关键检查：方向参数**
+
+| 用户关键词 | 必须传递 | 参数值 |
+|------------|----------|----------|
+| "对冲""多空""对冲策略" | ✅ 是 | `'{"11": ["long", "short"]}'` |
+| "做多" | ✅ 是 | `'{"11": ["long"]}'` |
+| "做空" | ✅ 是 | `'{"11": ["short"]}'` |
+| 未提方向 | ❌ 否 | 不传参数 |
+
+**示例检查**：
+```
+用户："帮我构建 DOGE 与 BCH 对冲策略组合"
+检查：“对冲” → 必须传递 --strategy-direction-map '{"11": ["long", "short"]}'
+```
+
+---
+
 ### 1. 前置确认（强制执行）
 
 **适用范围**：仅调用 `smart_group_recommend.py` 时生效
@@ -116,6 +147,7 @@ cd skills/backtest-query && python3 smart_group_recommend.py \
   --query "用户原话" \
   --coins "DOGE,BCH" \
   --strategy-types "11" \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
   --intent-json "${intent_json}" \
   --max-combinations 1 \
   --top-per-group 3 \
@@ -287,3 +319,42 @@ cd skills/backtest-query && python3 query.py \
 - **高级规则/边界情况**：见 `ADVANCED.md`
 - **意图分析详细规则**：见 `INTENT_ANALYSIS.md`
 - **回测详情字段说明**：见 `BACKTEST_DETAIL.md`
+
+---
+
+## 🚨 常见遗漏检查
+
+### 方向参数遗漏问题
+
+**症状**：同样的用户输入，有时传递方向参数，有时不传
+
+**原因**：Agent 快速扫描时可能遗漏方向关键词
+
+**解决方案**：每次调用 `smart_group_recommend.py` 前，执行以下检查：
+
+```python
+# 伪代码检查逻辑
+user_input = "帮我构建 DOGE 与 BCH 对冲策略组合"
+
+# 检查方向关键词
+if "对冲" in user_input or "多空" in user_input:
+    direction_map = '{"11": ["long", "short"]}'  # 必须传递
+elif "做多" in user_input:
+    direction_map = '{"11": ["long"]}'  # 必须传递
+elif "做空" in user_input:
+    direction_map = '{"11": ["short"]}'  # 必须传递
+else:
+    direction_map = None  # 不传参数
+
+# 构建命令
+if direction_map:
+    command += f' --strategy-direction-map \'{direction_map}\''
+```
+
+**检查清单**：
+- [ ] 用户输入包含 "对冲"/"多空" → 必须传 `["long", "short"]`
+- [ ] 用户输入包含 "做多" → 必须传 `["long"]`
+- [ ] 用户输入包含 "做空" → 必须传 `["short"]`
+- [ ] 以上都没有 → 不传参数
+
+**⚠️ 强制规则**：检测到方向关键词后，**必须立即生成并传递** `--strategy-direction-map` 参数，不要等到后面再决定。
