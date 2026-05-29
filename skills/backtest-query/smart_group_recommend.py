@@ -731,9 +731,10 @@ class ParallelQueryExecutor:
 class SmartGroupRecommender:
     """智能分组推荐器"""
     
-    def __init__(self, token: str, verbose: bool = True):
+    def __init__(self, token: str, verbose: bool = True, agent_id: str = None):
         self.token = token
         self.verbose = verbose
+        self.agent_id = agent_id
     
     def log(self, msg: str):
         if self.verbose:
@@ -2160,7 +2161,7 @@ def main():
     sort_methods = parse_csv(args.sort_methods) if args.sort_methods else None
     
     # 8. 智能推荐
-    recommender = SmartGroupRecommender(token, verbose=not args.quiet)
+    recommender = SmartGroupRecommender(token, verbose=not args.quiet, agent_id=args.agent_id)
     
     try:
         result = recommender.smart_recommend(
