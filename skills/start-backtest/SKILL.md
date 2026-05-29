@@ -1,5 +1,5 @@
 # QuantClaw 回测技能
-技能介绍:该技能是用于fourieralpha项目进行项目回测所用的技能,包含:获取usertoken,查询策略信息,查询策略组信息,回测前置条件检测,保证金分配方案计算,执行回测流程,查询回测等功能
+技能介绍:该技能是用于fourieralpha项目进行项目回测所用的技能,包含:获取agentid,查询策略信息,查询策略组信息,回测前置条件检测,保证金分配方案计算,执行回测流程,查询回测等功能
 
  **行为边界 🚨**： 
  - 严格遵守用户原始意图 
@@ -13,47 +13,11 @@
  - request.py文件中的各个请求接口,对于包含嵌套 list/dict 的参数，自动转换为 JSON 字符串后再传入接口调用,不要直接传入字符串
  - request.py文件已支持cli调用其中的方法
  - 思考时必须使用中文进行思考和表达
-### 🔑 重要: UserToken 获取方法
-### 调用request.py的时候,调用一下enable_network_debug_log方法,传入agent_id,开启网络请求日志,以便调试和排查问题
+### 🔑 重要: agentID使用方法
+#### agentID 获取规则
+1. 获取当前机器人的agentID
+2. 调用request.py文件的接口时,若接口需要传递agent_id参数,则将当前机器人的agentID传入,数据类型为string
 
-#### UserToken 获取规则
-1. 使用 jq 工具从 ~/.quantclaw/users.json 获取
-2. 必须传入当前机器人的 agentID
-3. 获取失败时需要重试机制
-
-```bash
-# UserToken 获取示例
-USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人agentID" '.users[] | select(.agentId == $agent_id) | .token')
-```
-
-#### UserToken获取流程
-1. 先获取当前机器人的 agentID
-2. 通过 agentID 查询对应的 UserToken
-3. 检查 UserToken 是否为空
-   - 如果为空，等待2秒后重试
-   - 最大重试次数为5次
-4. 重试5次仍失败，通知用户
-### UserToken获取与管理补充说明
-
-#### UserToken验证与存储流程
-  - 获取到UserToken之后,进行Token存储
-
-    1. Token存储方式:
-    - 使用环境变量 `USERTOKEN_{agent_id}` 进行存储
-    - 存储格式: `export USERTOKEN_{agent_id}="{UserToken值}"`
-    2. Token重新获取机制:
-    • 当接口返回Token错误时
-    • 优先读取 USERTOKEN_{agent_id} 环境变量,若该环境变量有值,将该值与接口报错时请求参数中的usertoken进行对比,若完全一致,说明环境变量中的Token无效,则需要清理该环境变量,然后根据UserToken 获取规则重新进行获取
-    3. 环境变量生命周期管理:
-    • 在Agent关闭前自动清理
-    4. 安全注意事项:
-    • 谨防Token泄露
-
-#### 注意事项
-- UserToken 是唯一的用户认证凭证
-- 获取到UserToken之后,调用
-- 所有接口调用必须使用此 UserToken
-- 不要与其他 Token 概念混淆
 
 ### 本skill分为多个独立模块,模块之间可能会在走到某个步骤之后去调用其他模块,但每个模块的功能互相独立,互不干扰,运行模块时,所有功能限定在模块的说明范围之内,不要自己去主动创建脚本之类的
 
@@ -270,3 +234,5 @@ USERTOKEN=$(cat ~/.quantclaw/users.json | jq -r --arg agent_id "当前机器人a
   • 固定周期：2026年第一季度
 
 ### 以上部分为独立模块之——搜索市场行情
+# 添加在文件末尾
+
