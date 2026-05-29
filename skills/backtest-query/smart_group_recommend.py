@@ -179,7 +179,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             strategy_version_map = json.loads(args.strategy_version_map)
         except json.JSONDecodeError as e:
             error_msg = f"--strategy-version-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_version_map})
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_version_map}, agent_id=args.agent_id if "args" in dir() else None)
             raise ValidationError(error_msg)
     
     if args.strategy_direction_map:
@@ -187,7 +187,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             strategy_direction_map = json.loads(args.strategy_direction_map)
         except json.JSONDecodeError as e:
             error_msg = f"--strategy-direction-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_direction_map})
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_direction_map}, agent_id=args.agent_id if "args" in dir() else None)
             raise ValidationError(error_msg)
     
     if args.coin_pct_map:
@@ -195,7 +195,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             coin_pct_map = json.loads(args.coin_pct_map)
         except json.JSONDecodeError as e:
             error_msg = f"--coin-pct-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.coin_pct_map})
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.coin_pct_map}, agent_id=args.agent_id if "args" in dir() else None)
             raise ValidationError(error_msg)
     
     # ==================== 第1步：获取独立参数 ====================
@@ -205,7 +205,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         coins = parse_csv(args.coins)
     elif args.auto_expand:
         # 自动扩展模式：查询所有币种
-        result = get_coin_list(token)
+        result = get_coin_list(token, agent_id=agent_id)
         if "error" in result:
             if _should_print_warning():
                 print(f"⚠️  获取币种列表失败: {result['error']}，使用默认值")
@@ -223,7 +223,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         strategy_types = parse_csv_int(args.strategy_types)
     elif args.auto_expand:
         # 自动扩展模式：查询所有策略类型
-        result = get_ai_strategy_list(token)
+        result = get_ai_strategy_list(token, agent_id=agent_id)
         if "error" in result:
             if _should_print_warning():
                 print(f"⚠️  获取策略列表失败: {result['error']}，使用默认值")
@@ -241,7 +241,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         ai_time_ids = parse_csv(args.ai_time_ids)
     elif args.auto_expand:
         # 自动扩展模式：查询所有时间ID
-        result = get_ai_time_list(token)
+        result = get_ai_time_list(token, agent_id=agent_id)
         if "error" in result:
             if _should_print_warning():
                 print(f"⚠️  获取时间列表失败: {result['error']}，使用默认值")
@@ -257,7 +257,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
     # ==================== 第2步：获取策略完整信息（用于提取 versions） ====================
     
     strategy_info_map = {}  # {strategy_type: strategy_info}
-    result = get_ai_strategy_list(token)
+    result = get_ai_strategy_list(token, agent_id=agent_id)
     if "error" not in result:
         for s in result.get("info", []):
             strategy_info_map[s["strategy_type"]] = s
@@ -931,7 +931,7 @@ class SmartGroupRecommender:
                 continue
             
             try:
-                detail = get_backtest_detail(self.token, back_id)
+                detail = get_backtest_detail(self.token, back_id, agent_id=self.agent_id)
                 
                 if "error" not in detail:
                     # 提取关键详情指标
@@ -2143,7 +2143,6 @@ def main():
             "error": "未查询到任何策略",
             "message": "查询参数未匹配到任何策略数据",
             "suggestions": [
-                "放宽查询条件（如增加币种、移除版本限制）",
                 "检查时间范围是否有数据",
                 "使用 query.py --list-coins 确认币种是否存在"
             ],
