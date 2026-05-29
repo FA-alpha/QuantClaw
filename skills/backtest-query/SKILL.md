@@ -6,25 +6,27 @@
 
 ## ⚠️ 必读：常见错误
 
-### 错误1：查看回测详情使用错误的ID
+### 错误1：查看回测详情使用错误的字段
 
 **错误做法**：
 ```python
-# ❌ 错误：使用 back_id 或其他字段
-strategy_id = "710740##2##2"  # back_id 格式
+# ❌ 错误：使用 back_id 或 strategy_token
 strategy_id = result['back_id']  # 错误字段
+strategy_id = result['strategy_token']  # 错误字段
 ```
 
 **✅ 正确做法**：
 ```python
 # 必须使用 id 字段！
 strategy_id = result['id']  # 正确！
-# 例如："710740" 或 "832548"
+# id 格式示例："710740##2##2" 或 "832548##1##3"
 
 cd skills/backtest-query && python3 query.py \
   --detail "${strategy_id}" \
   --agent-id "qc-xxx"
 ```
+
+**⚠️ 注意**：`id` 字段的格式是 `{strategy_id}##{version}##{leverage}`，直接使用即可。
 
 ### 错误2：对冲/多空策略未传递方向参数
 
@@ -505,14 +507,14 @@ cd skills/backtest-query && python3 query.py \
 
 | 字段 | 用途 | 示例值 |
 |------|------|--------|
-| `id` | 查看回测详情（--detail） | "12345" |
-| `back_id` | 回测记录ID（内部字段） | "67890" |
+| `id` | 查看回测详情（--detail） | "710740##2##2" |
+| `back_id` | 回测记录ID（内部字段） | 内部使用 |
 | `strategy_token` | 保存单策略（--add-strategy） | "NzAxNzA1IyMyIyMy" |
 
 **查看回测详情示例**：
 ```bash
-# 从推荐结果中提取 id 字段
-strategy_id="12345"  # 使用 id，不是 back_id
+# 从推荐结果中提取 id 字段（就是这种格式）
+strategy_id="710740##2##2"  # 使用 id 字段
 
 cd skills/backtest-query && python3 query.py \
   --detail "${strategy_id}" \
