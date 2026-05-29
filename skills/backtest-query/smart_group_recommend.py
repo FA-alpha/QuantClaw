@@ -146,7 +146,7 @@ def validate_args(args):
     return None
 
 
-def build_query_combinations(args, token: str) -> List[Dict]:
+def build_query_combinations(args, token: str, agent_id: str = None) -> List[Dict]:
     """
     根据参数生成查询组合（统一返回字典列表）
     
@@ -2069,7 +2069,7 @@ def main():
     
     # 4. 生成查询组合
     try:
-        combinations = build_query_combinations(args, token)
+        combinations = build_query_combinations(args, token, agent_id=args.agent_id)
     except Exception as e:
         # 根据错误信息生成用户友好的建议
         error_msg = str(e)
