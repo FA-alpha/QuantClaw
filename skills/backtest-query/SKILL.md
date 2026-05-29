@@ -4,6 +4,56 @@
 
 ---
 
+## ⚠️ 必读：常见错误
+
+### 错误1：查看回测详情使用错误的ID
+
+**错误做法**：
+```python
+# ❌ 错误：使用 back_id 或其他字段
+strategy_id = "710740##2##2"  # back_id 格式
+strategy_id = result['back_id']  # 错误字段
+```
+
+**✅ 正确做法**：
+```python
+# 必须使用 id 字段！
+strategy_id = result['id']  # 正确！
+# 例如："710740" 或 "832548"
+
+cd skills/backtest-query && python3 query.py \
+  --detail "${strategy_id}" \
+  --agent-id "qc-xxx"
+```
+
+### 错误2：对冲/多空策略未传递方向参数
+
+**错误做法**：
+```bash
+# ❌ 用户说“对冲策略”，但命令缺少方向参数
+cd skills/backtest-query && python3 smart_group_recommend.py \
+  --coins "DOGE,BCH" \
+  --strategy-types "11" \
+  --intent-json '{...}'  # 缺少 --strategy-direction-map
+```
+
+**✅ 正确做法**：
+```bash
+# 检测到“对冲”关键词，必须传递方向参数！
+cd skills/backtest-query && python3 smart_group_recommend.py \
+  --coins "DOGE,BCH" \
+  --strategy-types "11" \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
+  --intent-json '{...}'
+```
+
+**关键词检测：**
+- 用户说 "对冲"/"多空" → 必须传 `["long", "short"]`
+- 用户说 "做多" → 必须传 `["long"]`
+- 用户说 "做空" → 必须传 `["short"]`
+
+---
+
 ## 📁 脚本路径规范
 
 **重要**：本 skill 的脚本位于 `skills/backtest-query/` 目录内。
@@ -193,6 +243,7 @@ cd skills/backtest-query && python3 smart_group_recommend.py \
   --query "用户原话" \
   --coins "DOGE,BCH" \
   --strategy-types "11" \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
   --intent-json '{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}' \
   --max-combinations 1 \
   --top-per-group 3 \
