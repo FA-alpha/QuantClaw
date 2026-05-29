@@ -270,3 +270,4 @@ cd skills/backtest-query && python3 query.py \
 - **典型案例集**：见 `EXAMPLES.md`
 - **高级规则/边界情况**：见 `ADVANCED.md`
 - **意图分析详细规则**：见 `INTENT_ANALYSIS.md`
+- **回测详情字段说明**：见 `BACKTEST_DETAIL.md`
