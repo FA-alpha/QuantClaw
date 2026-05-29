@@ -1,29 +1,8 @@
 # 回测详情字段说明
 
-查看 AI 回测记录的详细统计信息。
+AI 回测记录的返回字段详细说明。
 
 ---
-
-## 查询方式
-
-```bash
-cd skills/backtest-query && python3 query.py \
-  --detail "strategy_id" \
-  --agent-id "qc-xxx"
-```
-
-**⚠️ 注意**：使用推荐结果中的 `id` 字段，不是 `back_id`。
-
----
-
-## API 信息
-
-- **URI**: `/Backtrack/stat_info`
-- **参数**: `usertoken`, `back_id`（传入策略的 id 字段值）
-
----
-
-## 返回字段说明
 
 ### 顶层字段
 
