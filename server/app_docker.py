@@ -50,98 +50,96 @@ CHAT_DIR.mkdir(exist_ok=True, parents=True)
 
 logger.info(f'📁 Using data directory: {DATA_DIR}')
 
-# ============ 持久会话监听器 ============
+# ============ 全局消息监听器 ============
 
-class PersistentSessionListener:
+class GlobalMessageListener:
     """
-    后台持久监听器：独立于客户端 WebSocket
-    负责持续监听 Agent 会话并保存消息到本地存储
+    全局消息监听器（重构版）
+    
+    设计思路：
+    - 服务启动时启动，一直运行
+    - 监听所有 Gateway 消息
+    - 判断是否是活跃用户（有消息记录文件）
+    - 自动保存消息到文件
+    
+    优势：
+    - 简单：不需要动态启停
+    - 可靠：不会遗漏消息
+    - 高效：一个连接监听所有消息
     """
     
     def __init__(self, gateway_ws: str, gateway_token: str, chat_store):
         self.gateway_ws = gateway_ws
         self.gateway_token = gateway_token
         self.chat_store = chat_store
-        self.active_listeners = {}  # {session_key: task}
-        self.session_states = {}  # {session_key: {'current_response': '', 'response_saved': bool}}
+        self.running = False
+        self.task = None
+        
+        # 消息缓存：{session_key: current_response}
+        self.response_cache = {}
     
-    async def start_listener(self, session_key: str, user_id: str, user_token: str = None):
-        """为指定 session 启动持久监听器"""
-        if session_key in self.active_listeners:
-            logger.info(f'Listener already active: {session_key}')
+    async def start(self):
+        """启动全局监听器"""
+        if self.running:
+            logger.warning('GlobalListener already running')
             return
         
-        # 初始化状态
-        self.session_states[session_key] = {
-            'current_response': '',
-            'response_saved': False,
-            'user_id': user_id,
-            'user_token': user_token,
-        }
-        
-        # 启动后台任务
-        task = asyncio.create_task(self._listen_loop(session_key))
-        self.active_listeners[session_key] = task
-        logger.info(f'🎧 Started persistent listener for {session_key} (user: {user_id})')
+        self.running = True
+        self.task = asyncio.create_task(self._listen_loop())
+        logger.info('🌍 GlobalMessageListener started')
     
-    async def stop_listener(self, session_key: str):
-        """停止指定 session 的监听器"""
-        task = self.active_listeners.pop(session_key, None)
-        if task:
-            task.cancel()
+    async def stop(self):
+        """停止监听器"""
+        self.running = False
+        if self.task:
+            self.task.cancel()
             try:
-                await task
+                await self.task
             except asyncio.CancelledError:
                 pass
-            logger.info(f'🔇 Stopped listener for {session_key}')
-        
-        # 清理状态
-        self.session_states.pop(session_key, None)
+        logger.info('🌍 GlobalMessageListener stopped')
     
-    async def _listen_loop(self, session_key: str):
-        """持久监听循环（独立运行，不受客户端影响）"""
-        while True:
+    async def _listen_loop(self):
+        """持久监听循环"""
+        while self.running:
             try:
-                async with aiohttp.ClientSession() as http_session:
+                async with aiohttp.ClientSession() as session:
                     gateway_url = f'{self.gateway_ws}?token={self.gateway_token}'
                     
-                    async with http_session.ws_connect(
+                    async with session.ws_connect(
                         gateway_url,
-                        autoping=True,      # 自动响应 Gateway 的 ping
-                        heartbeat=30        # 每30秒发送 ping 保持连接
-                    ) as gateway_ws:
-                        # 握手
-                        if not await self._complete_handshake(gateway_ws):
-                            logger.error(f'Handshake failed for {session_key}')
+                        autoping=True,
+                        heartbeat=30
+                    ) as ws:
+                        # 完成握手
+                        if not await self._complete_handshake(ws):
+                            logger.error('GlobalListener handshake failed')
                             await asyncio.sleep(5)
                             continue
                         
-                        logger.info(f'🔗 Listener connected to Gateway: {session_key}')
+                        logger.info('🌍 GlobalListener connected to Gateway')
                         
-                        # 持续监听消息
-                        async for msg in gateway_ws:
+                        # 持续监听
+                        async for msg in ws:
                             if msg.type == WSMsgType.TEXT:
-                                await self._handle_gateway_message(session_key, msg.data)
+                                await self._handle_message(msg.data)
                             elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                                logger.warning(f'Gateway connection closed for {session_key}')
+                                logger.warning('GlobalListener connection closed')
                                 break
                         
             except asyncio.CancelledError:
-                # 被主动取消
-                logger.info(f'Listener task cancelled: {session_key}')
+                logger.info('GlobalListener task cancelled')
                 break
             except Exception as e:
-                logger.error(f'Listener error for {session_key}: {e}')
-            
-            # 重连延迟
-            await asyncio.sleep(5)
+                logger.error(f'GlobalListener error: {e}')
+                await asyncio.sleep(5)
     
-    async def _complete_handshake(self, gateway_ws) -> bool:
+    async def _complete_handshake(self, ws) -> bool:
         """完成 Gateway 握手"""
-        connect_id = f'conn_listener_{id(gateway_ws)}'
+        connect_id = 'global_listener'
         
         try:
-            async for msg in gateway_ws:
+            async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
                     data = json.loads(msg.data)
                     
@@ -154,93 +152,104 @@ class PersistentSessionListener:
                                 'minProtocol': 4,
                                 'maxProtocol': 4,
                                 'client': {
-                                    'id': 'gateway-client',
+                                    'id': 'global-listener',
                                     'version': '1.0.0',
                                     'platform': 'linux',
                                     'mode': 'backend'
                                 },
                                 'role': 'operator',
-                                'scopes': ['operator.read', 'operator.write'],
+                                'scopes': ['operator.admin'],
                                 'caps': [],
                                 'auth': {'token': self.gateway_token},
                                 'locale': 'zh-CN',
-                                'userAgent': 'quantclaw-listener/1.0.0'
+                                'userAgent': 'quantclaw-global-listener'
                             }
                         }
-                        await gateway_ws.send_json(connect_req)
+                        await ws.send_json(connect_req)
                     
                     elif data.get('type') == 'res' and data.get('id') == connect_id:
-                        if data.get('ok'):
-                            return True
-                        else:
-                            logger.error(f'Handshake failed: {data.get("error")}')
-                            return False
-                elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                    return False
-            
-            return False
-        except asyncio.TimeoutError:
-            return False
-    
-    async def _handle_gateway_message(self, session_key: str, msg_data: str):
-        """处理来自 Gateway 的消息"""
-        try:
-            data = json.loads(msg_data)
-            
-            # 忽略心跳
-            event_type = data.get('event', '')
-            if event_type in ('health', 'tick'):
-                return
-            
-            msg_type = data.get('type', '')
-            payload = data.get('payload', {})
-            
-            # 只处理 event 消息
-            if msg_type != 'event':
-                return
-            
-            # 过滤：只处理当前 session 的消息
-            msg_session_key = payload.get('sessionKey', '')
-            if msg_session_key and msg_session_key != session_key:
-                return
-            
-            state = self.session_states.get(session_key)
-            if not state:
-                return
-            
-            # 处理 agent 事件
-            if event_type == 'agent':
-                stream = payload.get('stream')
-                stream_data = payload.get('data', {})
-                
-                if stream == 'assistant':
-                    # 累积响应文本
-                    text = stream_data.get('text', '')
-                    state['current_response'] = text
-                
-                elif stream == 'lifecycle':
-                    phase = stream_data.get('phase')
-                    
-                    if phase == 'end':
-                        # 保存完整回复
-                        if state['user_id'] and state['current_response'] and not state['response_saved']:
-                            response_text = state['current_response']
-                            logger.info(f'📝 [Listener] Saving response for {state["user_id"]}: {len(response_text)} chars')
-                            self.chat_store.append(state['user_id'], 'assistant', response_text)
-                            state['response_saved'] = True
-                            logger.info(f'✅ [Listener] Message saved, task completed for {session_key}')
-                            
-                            # 任务完成，停止监听器（避免占用资源）
-                            asyncio.create_task(self.stop_listener(session_key))
+                        return data.get('ok', False)
                         
-                        # 重置状态，准备下一轮（虽然监听器会被停止）
-                        state['current_response'] = ''
-                        state['response_saved'] = False
+        except Exception as e:
+            logger.error(f'Handshake error: {e}')
+            return False
+        
+        return False
+    
+    async def _handle_message(self, data: str):
+        """处理 Gateway 消息"""
+        try:
+            message = json.loads(data)
+            
+            # 只处理 agent 事件
+            if message.get('event') != 'agent':
+                return
+            
+            payload = message.get('payload', {})
+            session_key = payload.get('sessionKey', '')
+            
+            if not session_key:
+                return
+            
+            # 从 session_key 提取 user_id
+            # 格式: agent:qc-xxx:main → user_id = u_xxx
+            user_id = self._extract_user_id(session_key)
+            if not user_id:
+                return
+            
+            # 🔑 关键判断：用户是否有消息记录？
+            if not self.chat_store.has_messages(user_id):
+                # 没有消息记录 = 不是活跃用户 → 忽略
+                return
+            
+            # 处理消息
+            stream = payload.get('stream')
+            stream_data = payload.get('data', {})
+            
+            if stream == 'assistant':
+                # 累积回复文本
+                text = stream_data.get('text', '')
+                if text:
+                    self.response_cache[session_key] = text
+            
+            elif stream == 'lifecycle':
+                phase = stream_data.get('phase')
+                
+                if phase == 'end':
+                    # 回复完成，保存消息
+                    response_text = self.response_cache.get(session_key, '')
+                    if response_text:
+                        logger.info(f'📝 [GlobalListener] Saving response for {user_id}: {len(response_text)} chars')
+                        self.chat_store.append(user_id, 'assistant', response_text)
+                        logger.info(f'✅ [GlobalListener] Saved for {user_id}')
+                    
+                    # 清理缓存
+                    self.response_cache.pop(session_key, None)
         
         except json.JSONDecodeError:
             pass
         except Exception as e:
-            logger.error(f'Error handling message in listener: {e}')
+            logger.error(f'[GlobalListener] Handle message error: {e}')
+    
+    def _extract_user_id(self, session_key: str) -> str:
+        """
+        从 session_key 提取 user_id
+        
+        session_key 格式: agent:qc-xxx:main
+        agent_id: qc-xxx
+        user_id: u_xxx
+        """
+        try:
+            parts = session_key.split(':')
+            if len(parts) >= 2:
+                agent_id = parts[1]  # qc-xxx
+                if agent_id.startswith('qc-'):
+                    user_id = 'u_' + agent_id[3:]  # u_xxx
+                    return user_id
+        except Exception as e:
+            logger.error(f'Extract user_id error: {e}')
+        
+        return ''
 
 
 # ============ 聊天记录存储 ============
@@ -254,6 +263,15 @@ class ChatStore:
     
     def _get_file(self, user_id: str) -> Path:
         return self.data_dir / f'{user_id}.json'
+    
+    def has_messages(self, user_id: str) -> bool:
+        """
+        判断用户是否有消息记录
+        
+        有消息记录 = 用户发送过消息 = 是活跃用户
+        """
+        file = self._get_file(user_id)
+        return file.exists()
     
     def load(self, user_id: str) -> list:
         """加载用户的聊天记录"""
@@ -299,7 +317,7 @@ class ChatStore:
 
 # 创建全局实例
 chat_store = ChatStore(CHAT_DIR)
-persistent_listener = None  # 延迟初始化（需要 GATEWAY_TOKEN）
+global_listener = None  # 延迟初始化（需要 GATEWAY_TOKEN）
 
 
 # ============ 认证辅助函数 (调用 quantclaw_webhook.py 服务) ============
@@ -629,8 +647,19 @@ async def handle_new_conversation(request):
 
 # ============ WebSocket 处理器 ============
 
+
+
+# ============ WebSocket 处理器（简化版） ============
+
 async def handle_websocket(request):
-    """WebSocket 代理到 Gateway"""
+    """
+    WebSocket 代理 - 简化版
+    
+    职责：
+    1. 转发用户消息到 Gateway
+    2. 保存用户消息到文件 ✅
+    3. 转发 Gateway 回复到客户端（不保存，由 GlobalListener 保存）
+    """
     ws_client = web.WebSocketResponse()
     await ws_client.prepare(request)
 
@@ -638,263 +667,123 @@ async def handle_websocket(request):
     user_id = request.query.get('userId')
     user_token = request.query.get('token')
     
-    if not session_key:
-        await ws_client.send_json({'type': 'error', 'error': 'Missing sessionKey'})
+    if not session_key or not user_id:
+        await ws_client.send_json({'type': 'error', 'error': 'Missing parameters'})
         await ws_client.close()
         return ws_client
 
     logger.info(f'WS connect: {session_key} (user: {user_id})')
     
-    # 重连时停止该 session 的旧后备监听器（防止重复保存）
-    if persistent_listener and session_key in persistent_listener.active_listeners:
-        logger.info(f'🔄 Reconnected: stopping old backup listener for {session_key}')
-        await persistent_listener.stop_listener(session_key)
-
     try:
         async with aiohttp.ClientSession() as http_session:
             gateway_url = f'{GATEWAY_WS}?token={GATEWAY_TOKEN}'
             
             async with http_session.ws_connect(
                 gateway_url,
-                autoping=True,      # 自动响应 ping
-                heartbeat=30        # 每30秒发送 ping
+                autoping=True,
+                heartbeat=30
             ) as gateway_ws:
                 
-                # 握手
+                # 完成握手
+                connect_id = f'conn_{session_key}'
                 connected = False
-                connect_id = 'conn_' + str(id(gateway_ws))
                 
-                async def complete_handshake():
-                    nonlocal connected
-                    async for msg in gateway_ws:
-                        if msg.type == WSMsgType.TEXT:
-                            data = json.loads(msg.data)
-                            
-                            if data.get('event') == 'connect.challenge':
-                                connect_req = {
-                                    'type': 'req',
-                                    'id': connect_id,
-                                    'method': 'connect',
-                                    'params': {
-                                        'minProtocol': 4,
-                                        'maxProtocol': 4,
-                                        'client': {
-                                            'id': 'gateway-client',
-                                            'version': '1.0.0',
-                                            'platform': 'linux',
-                                            'mode': 'backend'
-                                        },
-                                        'role': 'operator',
-                                        'scopes': ['operator.read', 'operator.write'],
-                                        'caps': [],
-                                        'auth': {'token': GATEWAY_TOKEN},
-                                        'locale': 'zh-CN',
-                                        'userAgent': 'quantclaw-server/1.0.0'
-                                    }
+                # 握手逻辑
+                async for msg in gateway_ws:
+                    if msg.type == WSMsgType.TEXT:
+                        data = json.loads(msg.data)
+                        
+                        if data.get('event') == 'connect.challenge':
+                            connect_req = {
+                                'type': 'req',
+                                'id': connect_id,
+                                'method': 'connect',
+                                'params': {
+                                    'minProtocol': 4,
+                                    'maxProtocol': 4,
+                                    'client': {
+                                        'id': 'quantclaw-client',
+                                        'version': '1.0.0',
+                                        'platform': 'linux',
+                                        'mode': 'backend'
+                                    },
+                                    'role': 'operator',
+                                    'scopes': ['operator.admin'],
+                                    'caps': [],
+                                    'auth': {'token': GATEWAY_TOKEN},
+                                    'locale': 'zh-CN',
+                                    'userAgent': 'quantclaw-websocket'
                                 }
-                                await gateway_ws.send_json(connect_req)
-                            
-                            elif data.get('type') == 'res' and data.get('id') == connect_id:
-                                if data.get('ok'):
-                                    connected = True
-                                    logger.info('Gateway connected!')
-                                    return True
-                                else:
-                                    logger.error(f'Connect failed: {data.get("error")}')
-                                    return False
-                        elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                            return False
-                    return False
+                            }
+                            await gateway_ws.send_json(connect_req)
+                        
+                        elif data.get('type') == 'res' and data.get('id') == connect_id:
+                            connected = data.get('ok', False)
+                            if connected:
+                                logger.info('Gateway connected!')
+                            break
                 
-                if not await asyncio.wait_for(complete_handshake(), timeout=10):
-                    await ws_client.send_json({'type': 'error', 'error': 'Gateway handshake failed'})
+                if not connected:
+                    await ws_client.send_json({'type': 'error', 'error': 'Gateway connection failed'})
                     return ws_client
                 
-                msg_counter = [0]
-                current_response = ['']
-                response_saved = [False]
-                
-                def next_id():
-                    msg_counter[0] += 1
-                    return f'msg_{msg_counter[0]}'
-                
-                async def handle_client_messages():
-                    """处理来自客户端的消息"""
-                    async for msg in ws_client:
-                        if msg.type == WSMsgType.TEXT:
-                            try:
-                                data = json.loads(msg.data)
-                                msg_type = data.get('type', 'message')
-                                
-                                if msg_type == 'ping':
-                                    await ws_client.send_json({'type': 'pong'})
-                                    continue
-                                elif msg_type == 'history':
-                                    if user_id:
-                                        messages = chat_store.load(user_id)
-                                        await ws_client.send_json({
-                                            'type': 'history',
-                                            'messages': messages,
-                                        })
-                                        logger.info(f'Sent local history: {len(messages)} messages')
-                                else:
-                                    text = data.get('text') or data.get('message', '')
-                                    if text:
-                                        current_response[0] = ''
-                                        response_saved[0] = False
-                                        
-                                        rpc_msg = {
-                                            'type': 'req',
-                                            'id': next_id(),
-                                            'method': 'chat.send',
-                                            'params': {
-                                                'sessionKey': session_key,
-                                                'message': text,
-                                                'idempotencyKey': str(uuid.uuid4()),
-                                            }
-                                        }
-                                        await gateway_ws.send_json(rpc_msg)
-                                        if user_id:
-                                            chat_store.append(user_id, 'user', text)
-                                        logger.info(f'Sent to gateway: {text[:50]}...')
-                            except json.JSONDecodeError:
-                                pass
-                        elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                            logger.info(f'🔴 Client WS closed/error for {user_id}: {msg.type}')
-                            break
-
-                async def handle_gateway_messages():
-                    """处理来自 Gateway 的消息"""
-                    async for msg in gateway_ws:
-                        if msg.type == WSMsgType.TEXT:
-                            try:
+                # 双向转发
+                async def forward_client_to_gateway():
+                    """客户端 → Gateway"""
+                    try:
+                        async for msg in ws_client:
+                            if msg.type == WSMsgType.TEXT:
                                 data = json.loads(msg.data)
                                 
-                                event_type = data.get('event', '')
-                                if event_type in ('health', 'tick'):
+                                # 特殊处理：历史记录请求
+                                if data.get('type') == 'history':
+                                    messages = chat_store.load(user_id)
+                                    await ws_client.send_json({
+                                        'type': 'history',
+                                        'messages': messages
+                                    })
                                     continue
                                 
-                                msg_type = data.get('type', '')
-                                payload = data.get('payload', {})
+                                # 🔑 保存用户消息
+                                if data.get('type') == 'message':
+                                    message_text = data.get('message', '').strip()
+                                    if message_text:
+                                        logger.info(f'💬 User message from {user_id}: {len(message_text)} chars')
+                                        chat_store.append(user_id, 'user', message_text)
                                 
-                                if msg_type == 'res':
-                                    if data.get('error'):
-                                        error_msg = data.get('error')
-                                        logger.error(f'RPC error: {error_msg}')
-                                        await ws_client.send_json({
-                                            'type': 'error',
-                                            'error': error_msg,
-                                        })
-                                        await ws_client.send_json({
-                                            'type': 'message',
-                                            'role': 'system',
-                                            'content': f'⚠️ 错误: {error_msg}',
-                                        })
-                                    continue
+                                # 转发到 Gateway
+                                await gateway_ws.send_json(data)
                                 
-                                if msg_type == 'event':
-                                    msg_session_key = payload.get('sessionKey', '')
-                                    
-                                    if msg_session_key != session_key:
-                                        continue
-                                    
-                                    if event_type == 'agent':
-                                        stream = payload.get('stream')
-                                        stream_data = payload.get('data', {})
-                                        
-                                        logger.debug(f'🎯 Agent event: stream={stream}, session={msg_session_key}')
-                                        
-                                        if stream == 'assistant':
-                                            text = stream_data.get('text', '')
-                                            delta = stream_data.get('delta', '')
-                                            current_response[0] = text
-                                            await ws_client.send_json({
-                                                'type': 'stream',
-                                                'text': text,
-                                                'delta': delta,
-                                            })
-                                            if len(text) < 100:
-                                                logger.debug(f'🌊 Streaming to {user_id}: {len(text)} chars')
-                                        elif stream == 'lifecycle':
-                                            phase = stream_data.get('phase')
-                                            error = stream_data.get('error')
-                                            if error:
-                                                logger.error(f'Agent error: {error}')
-                                                await ws_client.send_json({
-                                                    'type': 'error',
-                                                    'error': error,
-                                                })
-                                                await ws_client.send_json({
-                                                    'type': 'message',
-                                                    'role': 'system',
-                                                    'content': f'⚠️ Agent 错误: {error}',
-                                                })
-                                            if phase == 'end':
-                                                if user_id and current_response[0] and not response_saved[0]:
-                                                    response_text = current_response[0]
-                                                    logger.info(f'📝 Saving assistant response for {user_id}: {len(response_text)} chars')
-                                                    chat_store.append(user_id, 'assistant', response_text)
-                                                    response_saved[0] = True
-                                                    logger.info(f'✅ Saved assistant response for {user_id}')
-                                                elif response_saved[0]:
-                                                    logger.info(f'⚠️ Skipped duplicate save for {user_id}')
-                                                
-                                                await ws_client.send_json({
-                                                    'type': 'done',
-                                                })
-                                    
-                                    elif event_type == 'chat':
-                                        logger.debug(f'Ignoring chat event: {payload}')
-                                        continue
-                                    
-                            except json.JSONDecodeError:
-                                pass
-                        elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                            logger.info(f'🔴 Gateway WS closed/error for {user_id}: {msg.type}')
-                            break
-
-                logger.info(f'🔗 Starting message handlers for {session_key}')
+                            elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                                break
+                    except Exception as e:
+                        logger.error(f'Forward client->gateway error: {e}')
                 
+                async def forward_gateway_to_client():
+                    """Gateway → 客户端（只转发，不保存）"""
+                    try:
+                        async for msg in gateway_ws:
+                            if msg.type == WSMsgType.TEXT:
+                                # 只转发，不保存
+                                # GlobalListener 会负责保存
+                                await ws_client.send_str(msg.data)
+                            elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                                break
+                    except Exception as e:
+                        logger.error(f'Forward gateway->client error: {e}')
+                
+                # 并发执行双向转发
                 await asyncio.gather(
-                    handle_client_messages(),
-                    handle_gateway_messages(),
+                    forward_client_to_gateway(),
+                    forward_gateway_to_client(),
                     return_exceptions=True
                 )
-                
-                logger.info(f'🔌 Handlers finished for {session_key}')
-                
-                # 连接结束时的处理
-                if user_id and persistent_listener:
-                    has_incomplete_response = current_response[0] and not response_saved[0]
-                    
-                    if has_incomplete_response:
-                        logger.warning(f'🚨 Connection closed before lifecycle.end for {user_id}')
-                        logger.info(f'📊 Incomplete stream data: {len(current_response[0])} chars (not saving)')
-                        logger.info(f'🎧 Starting backup persistent listener')
-                        await persistent_listener.start_listener(session_key, user_id, user_token)
-
-    except aiohttp.ClientError as e:
-        logger.error(f'Gateway connection error: {e}')
-        try:
-            await ws_client.send_json({'type': 'error', 'error': f'Gateway connection failed: {e}'})
-        except:
-            pass
-        if user_id and session_key and user_token and persistent_listener:
-            logger.info(f'🎧 Starting backup listener due to connection error')
-            await persistent_listener.start_listener(session_key, user_id, user_token)
+    
     except Exception as e:
         logger.error(f'WS error: {e}')
-        try:
-            await ws_client.send_json({'type': 'error', 'error': str(e)})
-        except:
-            pass
-        if user_id and session_key and user_token and persistent_listener:
-            logger.info(f'🎧 Starting backup listener due to error')
-            await persistent_listener.start_listener(session_key, user_id, user_token)
-
+    
     logger.info(f'WS disconnect: {session_key}')
     return ws_client
-
 
 async def handle_health(request):
     return web.json_response({'status': 'ok', 'service': 'quantclaw-docker'})
@@ -956,15 +845,15 @@ async def cors_middleware(request, handler):
 
 
 def create_app():
-    global persistent_listener
+    global global_listener
     
     # 检查必需的环境变量
     if not GATEWAY_TOKEN:
         logger.error('❌ GATEWAY_TOKEN not set!')
         raise ValueError('GATEWAY_TOKEN environment variable is required')
     
-    # 初始化持久监听器
-    persistent_listener = PersistentSessionListener(GATEWAY_WS, GATEWAY_TOKEN, chat_store)
+    # 🌍 初始化 GlobalMessageListener
+    global_listener = GlobalMessageListener(GATEWAY_WS, GATEWAY_TOKEN, chat_store)
     
     middlewares = []
     if CORS_ENABLED:
@@ -972,6 +861,25 @@ def create_app():
         logger.info(f'CORS enabled. Allowed origins: {ALLOWED_ORIGINS}')
     
     app = web.Application(middlewares=middlewares)
+    
+    # 🚀 应用启动时启动 GlobalListener
+    async def on_startup(app):
+        """应用启动回调"""
+        if global_listener:
+            await global_listener.start()
+        logger.info('✅ Application started with GlobalMessageListener')
+    
+    # 🧹 应用关闭时停止 GlobalListener
+    async def on_cleanup(app):
+        """应用关闭回调"""
+        logger.info('🧹 Cleaning up...')
+        if global_listener:
+            await global_listener.stop()
+        await cleanup_auth_session()
+        logger.info('✅ Cleanup complete')
+    
+    app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
     
     app.router.add_get('/', handle_index)
     app.router.add_get('/health', handle_health)
