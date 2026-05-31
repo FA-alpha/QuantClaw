@@ -138,11 +138,14 @@ class GlobalMessageListener:
         connect_id = 'global_listener'
         
         try:
+            logger.debug('Waiting for connect.challenge...')
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
                     data = json.loads(msg.data)
+                    logger.debug(f'Handshake received: {data.get("event")} / {data.get("type")}')
                     
                     if data.get('event') == 'connect.challenge':
+                        logger.debug('Sending connect request...')
                         connect_req = {
                             'type': 'req',
                             'id': connect_id,
@@ -165,9 +168,14 @@ class GlobalMessageListener:
                             }
                         }
                         await ws.send_json(connect_req)
+                        logger.debug('Connect request sent')
                     
                     elif data.get('type') == 'res' and data.get('id') == connect_id:
-                        return data.get('ok', False)
+                        ok = data.get('ok', False)
+                        logger.info(f'Handshake response: ok={ok}, data={data}')
+                        if not ok:
+                            logger.error(f'Handshake rejected: {data.get("error", "unknown")}')
+                        return ok
                         
         except Exception as e:
             logger.error(f'Handshake error: {e}')
