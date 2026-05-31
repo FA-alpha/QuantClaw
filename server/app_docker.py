@@ -749,7 +749,7 @@ async def handle_websocket(request):
                                 
                                 # 🔑 保存用户消息
                                 if data.get('type') == 'message':
-                                    message_text = data.get('message', '').strip()
+                                    message_text = data.get('text', '').strip()  # 前端用 'text' 字段
                                     if message_text:
                                         logger.info(f'💬 User message from {user_id}: {len(message_text)} chars')
                                         chat_store.append(user_id, 'user', message_text)
