@@ -86,7 +86,7 @@ class GlobalMessageListener:
         
         self.running = True
         self.task = asyncio.create_task(self._listen_loop())
-        logger.info('🌍 GlobalMessageListener started')
+        logger.info(f'🌍 GlobalMessageListener started (token: {self.gateway_token[:20]}...)')
     
     async def stop(self):
         """停止监听器"""
