@@ -13,6 +13,7 @@ import json
 import asyncio
 import logging
 import uuid
+import time
 import aiohttp
 import subprocess
 import threading
@@ -663,6 +664,13 @@ async def handle_websocket(request):
     2. 保存用户消息到文件 ✅
     3. 转发 Gateway 回复到客户端（不保存，由 GlobalListener 保存）
     """
+    # 消息 ID 计数器
+    msg_counter = [0]
+    
+    def next_id():
+        msg_counter[0] += 1
+        return f'msg_{msg_counter[0]}'
+    
     ws_client = web.WebSocketResponse()
     await ws_client.prepare(request)
 
@@ -747,14 +755,28 @@ async def handle_websocket(request):
                                     })
                                     continue
                                 
-                                # 🔑 保存用户消息
+                                # 🔑 处理用户消息
                                 if data.get('type') == 'message':
                                     message_text = data.get('text', '').strip()  # 前端用 'text' 字段
                                     if message_text:
                                         logger.info(f'💬 User message from {user_id}: {len(message_text)} chars')
                                         chat_store.append(user_id, 'user', message_text)
+                                        
+                                        # 使用正确的 RPC 格式发送到 Gateway
+                                        rpc_msg = {
+                                            'type': 'req',
+                                            'id': next_id(),
+                                            'method': 'chat.send',
+                                            'params': {
+                                                'sessionKey': session_key,
+                                                'message': message_text,
+                                                'idempotencyKey': str(uuid.uuid4()),
+                                            }
+                                        }
+                                        await gateway_ws.send_json(rpc_msg)
+                                    continue
                                 
-                                # 转发到 Gateway
+                                # 其他消息类型直接转发
                                 await gateway_ws.send_json(data)
                                 
                             elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
