@@ -154,7 +154,7 @@ class GlobalMessageListener:
                                 'minProtocol': 4,
                                 'maxProtocol': 4,
                                 'client': {
-                                    'id': 'global-listener',
+                                    'id': 'quantclaw-global-listener',
                                     'version': '1.0.0',
                                     'platform': 'linux',
                                     'mode': 'backend'
