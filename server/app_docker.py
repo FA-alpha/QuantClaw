@@ -705,17 +705,17 @@ async def handle_websocket(request):
                                     'minProtocol': 4,
                                     'maxProtocol': 4,
                                     'client': {
-                                        'id': 'quantclaw-client',
+                                        'id': 'gateway-client',
                                         'version': '1.0.0',
                                         'platform': 'linux',
                                         'mode': 'backend'
                                     },
                                     'role': 'operator',
-                                    'scopes': ['operator.admin'],
+                                    'scopes': ['operator.read', 'operator.write'],
                                     'caps': [],
                                     'auth': {'token': GATEWAY_TOKEN},
                                     'locale': 'zh-CN',
-                                    'userAgent': 'quantclaw-websocket'
+                                    'userAgent': 'quantclaw-websocket/1.0.0'
                                 }
                             }
                             await gateway_ws.send_json(connect_req)
