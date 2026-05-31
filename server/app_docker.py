@@ -68,9 +68,8 @@ class GlobalMessageListener:
     - 高效：一个连接监听所有消息
     """
     
-    def __init__(self, gateway_ws: str, gateway_token: str, chat_store):
+    def __init__(self, gateway_ws: str, chat_store):
         self.gateway_ws = gateway_ws
-        self.gateway_token = gateway_token
         self.chat_store = chat_store
         self.running = False
         self.task = None
@@ -86,7 +85,7 @@ class GlobalMessageListener:
         
         self.running = True
         self.task = asyncio.create_task(self._listen_loop())
-        logger.info(f'🌍 GlobalMessageListener started (token: {self.gateway_token[:20]}...)')
+        logger.info(f'🌍 GlobalMessageListener started (token: {GATEWAY_TOKEN[:20]}...)')
     
     async def stop(self):
         """停止监听器"""
@@ -104,7 +103,7 @@ class GlobalMessageListener:
         while self.running:
             try:
                 async with aiohttp.ClientSession() as session:
-                    gateway_url = f'{self.gateway_ws}?token={self.gateway_token}'
+                    gateway_url = f'{self.gateway_ws}?token={GATEWAY_TOKEN}'
                     
                     async with session.ws_connect(
                         gateway_url,
@@ -160,7 +159,7 @@ class GlobalMessageListener:
                                 'role': 'operator',
                                 'scopes': ['operator.admin'],
                                 'caps': [],
-                                'auth': {'token': self.gateway_token},
+                                'auth': {'token': GATEWAY_TOKEN},
                                 'locale': 'zh-CN',
                                 'userAgent': 'quantclaw-global-listener'
                             }
@@ -853,7 +852,7 @@ def create_app():
         raise ValueError('GATEWAY_TOKEN environment variable is required')
     
     # 🌍 初始化 GlobalMessageListener
-    global_listener = GlobalMessageListener(GATEWAY_WS, GATEWAY_TOKEN, chat_store)
+    global_listener = GlobalMessageListener(GATEWAY_WS, chat_store)
     
     middlewares = []
     if CORS_ENABLED:
