@@ -358,6 +358,7 @@ def query_backtest(
     search_extend: str = None,
     app_v: str = "2.0.0",
     version_extra: dict = None,
+    agent_id: str = None,
 ) -> dict:
     """
     查询回测列表
@@ -381,6 +382,7 @@ def query_backtest(
         ai_time_id: 时间ID
         search_recommand_type: 推荐类型（1推荐 2交易中策略）
         version: 策略版本
+        agent_id: Agent ID（用于日志记录）
     
     Returns:
         dict: API 响应数据
