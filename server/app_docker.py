@@ -134,18 +134,15 @@ class GlobalMessageListener:
                 await asyncio.sleep(5)
     
     async def _complete_handshake(self, ws) -> bool:
-        """完成 Gateway 握手"""
-        connect_id = 'global_listener'
+        """完成 Gateway 握手（使用成功的方法）"""
+        connect_id = f'conn_listener_{id(ws)}'
         
         try:
-            logger.debug('Waiting for connect.challenge...')
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
                     data = json.loads(msg.data)
-                    logger.debug(f'Handshake received: {data.get("event")} / {data.get("type")}')
                     
                     if data.get('event') == 'connect.challenge':
-                        logger.debug('Sending connect request...')
                         connect_req = {
                             'type': 'req',
                             'id': connect_id,
@@ -154,34 +151,33 @@ class GlobalMessageListener:
                                 'minProtocol': 4,
                                 'maxProtocol': 4,
                                 'client': {
-                                    'id': 'quantclaw-global-listener',
+                                    'id': 'gateway-client',
                                     'version': '1.0.0',
                                     'platform': 'linux',
                                     'mode': 'backend'
                                 },
                                 'role': 'operator',
-                                'scopes': ['operator.admin'],
+                                'scopes': ['operator.read', 'operator.write'],
                                 'caps': [],
                                 'auth': {'token': GATEWAY_TOKEN},
                                 'locale': 'zh-CN',
-                                'userAgent': 'quantclaw-global-listener'
+                                'userAgent': 'quantclaw-listener/1.0.0'
                             }
                         }
                         await ws.send_json(connect_req)
-                        logger.debug('Connect request sent')
                     
                     elif data.get('type') == 'res' and data.get('id') == connect_id:
-                        ok = data.get('ok', False)
-                        logger.info(f'Handshake response: ok={ok}, data={data}')
-                        if not ok:
-                            logger.error(f'Handshake rejected: {data.get("error", "unknown")}')
-                        return ok
-                        
-        except Exception as e:
-            logger.error(f'Handshake error: {e}')
+                        if data.get('ok'):
+                            return True
+                        else:
+                            logger.error(f'Handshake failed: {data.get("error")}')
+                            return False
+                elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                    return False
+            
             return False
-        
-        return False
+        except asyncio.TimeoutError:
+            return False
     
     async def _handle_message(self, data: str):
         """处理 Gateway 消息"""
