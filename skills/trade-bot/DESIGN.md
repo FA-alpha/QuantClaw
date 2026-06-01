@@ -78,10 +78,12 @@ skills/trade-bot/
 ```
 
 **架构约定**：
-- `trade_bot.py` 是唯一入口，`app = typer.Typer()` 定义所有子命令
+- `trade_bot.py` 是唯一入口，用 `argparse` 子命令路由（无外部依赖）
 - 每个功能脚本导出 `def run(token, ..., confirm=False)`，由入口调用
 - Token 解析统一在入口完成，通过 `token` 参数传给各功能脚本
 - 写操作的 `run()` 签名统一包含 `confirm: bool = False`
+- **日志**：所有脚本统一接入 `scripts/logging/api_logger.py`，通过 `log_http_request()` 和 `log_error()` 记录
+- **API 地址**：`BASE_URL = "https://www.fourieralpha.com/Mobile"`
 
 ---
 
