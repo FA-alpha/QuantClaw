@@ -132,7 +132,8 @@ def get_user_token(agent_id: Optional[str] = None) -> Optional[str]:
         log_error(
             error_msg=f"读取用户配置失败: {e}",
             exception=e,
-            context={"function": "get_user_token", "agent_id": agent_id, "users_file": users_file}
+            context={"function": "get_user_token", "agent_id": agent_id, "users_file": users_file},
+            agent_id=agent_id
         )
     
     return None
@@ -2034,7 +2035,8 @@ def main():
         log_error(
             error_msg=str(e),
             error_type=ErrorType.VALIDATION,
-            context={"script": "smart_group_recommend.py", "args": vars(args)}
+            context={"script": "smart_group_recommend.py", "args": vars(args)},
+            agent_id=args.agent_id
         )
         
         error_result = {
@@ -2222,7 +2224,8 @@ if __name__ == "__main__":
         log_error(
             error_msg=str(e),
             exception=e,
-            context={"script": "smart_group_recommend.py", "args": sys.argv[1:]}
+            context={"script": "smart_group_recommend.py", "args": sys.argv[1:]},
+            agent_id=getattr(args, 'agent_id', None) if 'args' in locals() else None
         )
         
         error_result = {
