@@ -67,7 +67,7 @@ def run(
     url = f"{BASE_URL}/TradeStat/leverage_ratio"
 
     try:
-        resp = requests.post(url, json=params, timeout=30)
+        resp = requests.post(url, data=params, timeout=30)
         data = resp.json()
         log_http_request(url, params, response=data, agent_id=agent_id)
 

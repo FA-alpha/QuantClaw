@@ -27,7 +27,7 @@ def get_user_token_by_agent_id(agent_id: str) -> Optional[str]:
 def cmd_list(args):
     """查询交易机器人列表"""
     from list_bots import run
-    token = get_user_token_by_agent_id(args.agent_id)
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -43,7 +43,7 @@ def cmd_list(args):
 def cmd_leverage(args):
     """查询杠杆率统计"""
     from leverage_bot import run
-    token = get_user_token_by_agent_id(args.agent_id)
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -65,7 +65,8 @@ def main():
 
     # ── list ──
     sp = subs.add_parser("list", help="查询交易机器人列表")
-    sp.add_argument("--agent-id", required=True, help="Agent ID")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--status", default="running", help="运行状态: running/sim/stopped/deleted/all")
     sp.add_argument("--exchange-ids", help="交易所账户ID，逗号分隔")
     sp.add_argument("--amt-type", help="交易品种: spot/futures/all")
@@ -82,7 +83,8 @@ def main():
 
     # ── leverage ──
     sp = subs.add_parser("leverage", help="查询杠杆率统计")
-    sp.add_argument("--agent-id", required=True, help="Agent ID")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--status", default="running", help="运行状态: running/sim/stopped/deleted/all")
     sp.add_argument("--exchange-ids", help="交易所账户ID，逗号分隔")
     sp.add_argument("--amt-type", help="交易品种: spot/futures/all")

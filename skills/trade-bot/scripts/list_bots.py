@@ -118,10 +118,8 @@ def run(
     url = f"{BASE_URL}/Trade/lists"
 
     try:
-        resp = requests.post(url, json=params, timeout=30)
+        resp = requests.post(url, data=params, timeout=30)
         data = resp.json()
-
-        # 日志
         log_http_request(url, params, response=data, agent_id=agent_id)
 
         if data.get("status") != 1:
@@ -130,7 +128,7 @@ def run(
 
         # 提取数据
         bots_raw = data.get("info", [])
-        all_count = data.get("url", {}).get("all_count", len(bots_raw))
+        all_count = int(data.get("url", {}).get("all_count", len(bots_raw)))
 
         # 增强字段
         bots = []
