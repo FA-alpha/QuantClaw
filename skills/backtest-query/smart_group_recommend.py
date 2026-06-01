@@ -179,7 +179,7 @@ def build_query_combinations(args, token: str, agent_id: str = None) -> List[Dic
             strategy_version_map = json.loads(args.strategy_version_map)
         except json.JSONDecodeError as e:
             error_msg = f"--strategy-version-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_version_map}, agent_id=args.agent_id if "args" in dir() else None)
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_version_map}, agent_id=agent_id)
             raise ValidationError(error_msg)
     
     if args.strategy_direction_map:
@@ -187,7 +187,7 @@ def build_query_combinations(args, token: str, agent_id: str = None) -> List[Dic
             strategy_direction_map = json.loads(args.strategy_direction_map)
         except json.JSONDecodeError as e:
             error_msg = f"--strategy-direction-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_direction_map}, agent_id=args.agent_id if "args" in dir() else None)
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_direction_map}, agent_id=agent_id)
             raise ValidationError(error_msg)
     
     if args.coin_pct_map:
@@ -195,7 +195,7 @@ def build_query_combinations(args, token: str, agent_id: str = None) -> List[Dic
             coin_pct_map = json.loads(args.coin_pct_map)
         except json.JSONDecodeError as e:
             error_msg = f"--coin-pct-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.coin_pct_map}, agent_id=args.agent_id if "args" in dir() else None)
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.coin_pct_map}, agent_id=agent_id)
             raise ValidationError(error_msg)
     
     # ==================== 第1步：获取独立参数 ====================
