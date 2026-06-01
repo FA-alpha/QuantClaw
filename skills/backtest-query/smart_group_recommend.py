@@ -2111,7 +2111,8 @@ def main():
         'page': 1,
         'limit': -1,
         'search_recommand_type': args.search_recommand_type,
-        'sort_type': args.api_sort if args.api_sort else 2  # 默认按收益排序
+        'sort_type': args.api_sort if args.api_sort else 2,  # 默认按收益排序
+        'agent_id': args.agent_id  # 传递 agent_id
     }
     
     # 6. 并行批量查询
