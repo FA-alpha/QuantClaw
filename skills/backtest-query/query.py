@@ -196,13 +196,14 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False, agent_id: str 
         return {"error": error_msg}
 
 
-def add_strategy(token: str, strategy_token: str) -> dict:
+def add_strategy(token: str, strategy_token: str, agent_id: str = None) -> dict:
     """
     保存单个策略到策略库（收藏策略）
     
     Args:
         token: 用户登录 token
         strategy_token: 策略 token
+        agent_id: Agent ID
     
     Returns:
         dict: API 响应数据，包含策略ID
@@ -312,18 +313,20 @@ def get_backtest_detail(token: str, back_id: int, agent_id: str = None) -> dict:
         return {"error": error_msg}
 
 
-def get_version_info(token: str, strategy_type: int, version: str) -> dict:
+def get_version_info(token: str, strategy_type: int, version: str, agent_id: str = None) -> dict:
     """
     根据策略类型和版本获取版本信息
     
     Args:
+        token: 用户 token
         strategy_type: 策略类型
         version: 策略版本
+        agent_id: Agent ID
     
     Returns:
         dict: 版本信息（不含 id 和 name）
     """
-    strategies = get_ai_strategy_list(token)
+    strategies = get_ai_strategy_list(token, agent_id=agent_id)
     info = strategies.get("info", [])
     
     for strategy in info:
@@ -703,7 +706,7 @@ def main():
         if not args.strategy_token:
             print("错误: 需要 --strategy-token")
             return
-        result = add_strategy(args.token, args.strategy_token)
+        result = add_strategy(args.token, args.strategy_token, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -716,7 +719,7 @@ def main():
         if not args.token:
             print("错误: 需要 --token")
             return
-        result = get_coin_list(args.token, force_refresh=args.refresh_cache)
+        result = get_coin_list(args.token, force_refresh=args.refresh_cache, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -731,7 +734,7 @@ def main():
         if not args.token:
             print("错误: 需要 --token")
             return
-        result = get_ai_time_list(args.token, force_refresh=args.refresh_cache)
+        result = get_ai_time_list(args.token, force_refresh=args.refresh_cache, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -746,7 +749,7 @@ def main():
         if not args.token:
             print("错误: 需要 --token")
             return
-        result = get_ai_strategy_list(args.token, force_refresh=args.refresh_cache)
+        result = get_ai_strategy_list(args.token, force_refresh=args.refresh_cache, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -770,7 +773,7 @@ def main():
         if not args.strategy_tokens:
             print("错误: 需要 --strategy-tokens")
             return
-        result = create_strategy_group(args.token, args.strategy_tokens, args.group_name)
+        result = create_strategy_group(args.token, args.strategy_tokens, args.group_name, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -783,7 +786,7 @@ def main():
         if not args.token:
             print("错误: 查看详情需要 --token")
             return
-        result = get_backtest_detail(args.token, args.back_id)
+        result = get_backtest_detail(args.token, args.back_id, agent_id=args.agent_id)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     
@@ -822,7 +825,7 @@ def main():
     # 获取版本额外信息
     version_extra = None
     if args.strategy_type and args.version:
-        version_extra = get_version_info(args.token, args.strategy_type, args.version)
+        version_extra = get_version_info(args.token, args.strategy_type, args.version, agent_id=args.agent_id)
     
     result = query_backtest(
         token=args.token,
@@ -846,6 +849,7 @@ def main():
         search_recommand_type=args.search_recommand_type,
         leverage=args.leverage,
         search_extend=args.search_extend,
+        agent_id=args.agent_id,
     )
     
     print(format_result(result, args.output_format))
@@ -857,7 +861,8 @@ if __name__ == "__main__":
     except Exception as e:
         # 记录未捕获的异常
         log_error(
-            error_msg=str(e, agent_id=agent_id),
+            error_msg=str(e),
+            agent_id=args.agent_id,
             exception=e,
             context={"script": "query.py", "args": sys.argv[1:]}
         )
