@@ -77,6 +77,11 @@ class GlobalMessageListener:
         
         # 消息缓存：{session_key: current_response}
         self.response_cache = {}
+        
+        # 连接监控
+        self.connection_count = 0  # 总连接次数
+        self.reconnect_count = 0    # 重连次数
+        self.last_connect_time = None
     
     async def start(self):
         """启动全局监听器"""
@@ -101,38 +106,70 @@ class GlobalMessageListener:
     
     async def _listen_loop(self):
         """持久监听循环"""
+        
         while self.running:
+            ws = None
+            session = None
+            
             try:
-                async with aiohttp.ClientSession() as session:
-                    gateway_url = f'{self.gateway_ws}?token={GATEWAY_TOKEN}'
-                    
-                    async with session.ws_connect(
-                        gateway_url,
-                        autoping=True,
-                        heartbeat=30
-                    ) as ws:
-                        # 完成握手
-                        if not await self._complete_handshake(ws):
-                            logger.error('GlobalListener handshake failed')
-                            await asyncio.sleep(5)
-                            continue
-                        
-                        logger.info('🌍 GlobalListener connected to Gateway')
-                        
-                        # 持续监听
-                        async for msg in ws:
-                            if msg.type == WSMsgType.TEXT:
-                                await self._handle_message(msg.data)
-                            elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                                logger.warning('GlobalListener connection closed')
-                                break
+                self.connection_count += 1
+                self.reconnect_count += 1
+                logger.info(f'🔌 GlobalListener connecting... (attempt #{self.reconnect_count}, total: {self.connection_count})')
+                
+                session = aiohttp.ClientSession()
+                gateway_url = f'{self.gateway_ws}?token={GATEWAY_TOKEN}'
+                
+                ws = await session.ws_connect(
+                    gateway_url,
+                    autoping=True,
+                    heartbeat=30
+                )
+                
+                # 完成握手
+                if not await self._complete_handshake(ws):
+                    logger.error('❌ GlobalListener handshake failed')
+                    await ws.close()
+                    await session.close()
+                    await asyncio.sleep(5)
+                    continue
+                
+                self.last_connect_time = time.time()
+                logger.info(f'✅ GlobalListener connected to Gateway (reconnect #{self.reconnect_count}, total: {self.connection_count})')
+                
+                # 持续监听
+                async for msg in ws:
+                    if msg.type == WSMsgType.TEXT:
+                        await self._handle_message(msg.data)
+                    elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                        logger.warning(f'🔴 GlobalListener connection closed: {msg.type}')
+                        break
+                
+                logger.info('🔌 GlobalListener connection ended normally')
                         
             except asyncio.CancelledError:
-                logger.info('GlobalListener task cancelled')
+                logger.info('🛑 GlobalListener task cancelled')
                 break
             except Exception as e:
-                logger.error(f'GlobalListener error: {e}')
-                await asyncio.sleep(5)
+                logger.error(f'❌ GlobalListener error: {e}')
+            finally:
+                # 确保清理资源
+                if ws and not ws.closed:
+                    try:
+                        await ws.close()
+                        logger.debug('🧹 GlobalListener ws closed')
+                    except Exception as e:
+                        logger.error(f'Error closing ws: {e}')
+                
+                if session and not session.closed:
+                    try:
+                        await session.close()
+                        logger.debug('🧹 GlobalListener session closed')
+                    except Exception as e:
+                        logger.error(f'Error closing session: {e}')
+                
+                if self.running:
+                    logger.info('⏳ GlobalListener reconnecting in 5s...')
+                    await asyncio.sleep(5)
     
     async def _complete_handshake(self, ws) -> bool:
         """完成 Gateway 握手（使用成功的方法）"""
@@ -898,6 +935,22 @@ async def handle_health(request):
     return web.json_response({'status': 'ok', 'service': 'quantclaw-docker'})
 
 
+async def handle_connections_status(request):
+    """返回连接状态"""
+    if global_listener:
+        return web.json_response({
+            'globalListener': {
+                'running': global_listener.running,
+                'totalConnections': global_listener.connection_count,
+                'reconnectCount': global_listener.reconnect_count,
+                'lastConnectTime': global_listener.last_connect_time,
+                'responseCacheSize': len(global_listener.response_cache)
+            }
+        })
+    else:
+        return web.json_response({'error': 'GlobalListener not initialized'}, status=500)
+
+
 async def handle_index(request):
     index_file = STATIC_DIR / 'index.html'
     if index_file.exists():
@@ -992,6 +1045,7 @@ def create_app():
     
     app.router.add_get('/', handle_index)
     app.router.add_get('/health', handle_health)
+    app.router.add_get('/api/connections', handle_connections_status)
     app.router.add_post('/api/auth', handle_auth)
     app.router.add_post('/api/chat', handle_chat)
     app.router.add_post('/api/history', handle_history)
