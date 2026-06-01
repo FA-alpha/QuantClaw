@@ -41,6 +41,21 @@ def cmd_list(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_leverage(args):
+    """查询杠杆率统计"""
+    from leverage_bot import run
+    token = get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, exchange_ids=args.exchange_ids,
+        amt_type=args.amt_type, strategy_type=args.strategy_type,
+        account_id=args.account_id, direction=args.direction,
+        search=args.search, coin=args.coin, agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _not_impl(name):
     print(json.dumps({"status": "error", "message": f"{name} 功能尚未实现"}, ensure_ascii=False))
 
@@ -65,6 +80,18 @@ def main():
     sp.add_argument("--page", type=int, default=1, help="第几页")
     sp.add_argument("--limit", type=int, default=10, help="每页条数，-1=全部")
     sp.set_defaults(func=cmd_list)
+
+    # ── leverage ──
+    sp = subs.add_parser("leverage", help="查询杠杆率统计（仅运行中）")
+    sp.add_argument("--agent-id", required=True, help="Agent ID")
+    sp.add_argument("--exchange-ids", help="交易所账户ID，逗号分隔")
+    sp.add_argument("--amt-type", help="交易品种: spot/futures/all")
+    sp.add_argument("--strategy-type", type=int, help="策略类型ID")
+    sp.add_argument("--account-id", type=int, help="交易所账号ID")
+    sp.add_argument("--direction", help="合约方向: long/short/all")
+    sp.add_argument("--search", help="机器人名称搜索")
+    sp.add_argument("--coin", help="币种")
+    sp.set_defaults(func=cmd_leverage)
 
     # ── 占位子命令 ──
     for cmd in ["detail", "balance", "exchange-list", "stop", "apply", "check-status",
