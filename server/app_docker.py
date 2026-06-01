@@ -785,14 +785,91 @@ async def handle_websocket(request):
                         logger.error(f'Forward client->gateway error: {e}')
                 
                 async def forward_gateway_to_client():
-                    """Gateway → 客户端（只转发，不保存）"""
+                    """Gateway → 客户端（处理格式后转发，不保存）"""
+                    current_response = ['']
+                    
                     try:
                         async for msg in gateway_ws:
                             if msg.type == WSMsgType.TEXT:
-                                # 只转发，不保存
-                                # GlobalListener 会负责保存
-                                await ws_client.send_str(msg.data)
+                                try:
+                                    data = json.loads(msg.data)
+                                    
+                                    event_type = data.get('event', '')
+                                    if event_type in ('health', 'tick'):
+                                        continue
+                                    
+                                    msg_type = data.get('type', '')
+                                    payload = data.get('payload', {})
+                                    
+                                    # RPC 响应
+                                    if msg_type == 'res':
+                                        if data.get('error'):
+                                            error_msg = data.get('error')
+                                            logger.error(f'RPC error: {error_msg}')
+                                            await ws_client.send_json({
+                                                'type': 'error',
+                                                'error': error_msg,
+                                            })
+                                            await ws_client.send_json({
+                                                'type': 'message',
+                                                'role': 'system',
+                                                'content': f'⚠️ 错误: {error_msg}',
+                                            })
+                                        continue
+                                    
+                                    # Event 消息
+                                    if msg_type == 'event':
+                                        msg_session_key = payload.get('sessionKey', '')
+                                        
+                                        # 不过滤 sessionKey，接收所有消息
+                                        
+                                        # 处理 agent 流式响应
+                                        if event_type == 'agent':
+                                            stream = payload.get('stream')
+                                            stream_data = payload.get('data', {})
+                                            
+                                            logger.debug(f'🎯 Agent event: stream={stream}, session={msg_session_key}')
+                                            
+                                            if stream == 'assistant':
+                                                text = stream_data.get('text', '')
+                                                delta = stream_data.get('delta', '')
+                                                current_response[0] = text
+                                                # 发送流式数据到客户端
+                                                await ws_client.send_json({
+                                                    'type': 'stream',
+                                                    'text': text,
+                                                    'delta': delta,
+                                                })
+                                                if len(text) < 100:
+                                                    logger.debug(f'🌊 Streaming to {user_id}: {len(text)} chars')
+                                            elif stream == 'lifecycle':
+                                                phase = stream_data.get('phase')
+                                                error = stream_data.get('error')
+                                                if error:
+                                                    logger.error(f'Agent error: {error}')
+                                                    await ws_client.send_json({
+                                                        'type': 'error',
+                                                        'error': error,
+                                                    })
+                                                    await ws_client.send_json({
+                                                        'type': 'message',
+                                                        'role': 'system',
+                                                        'content': f'⚠️ Agent 错误: {error}',
+                                                    })
+                                                if phase == 'end':
+                                                    # 发送完成信号（不保存，GlobalListener 负责）
+                                                    await ws_client.send_json({
+                                                        'type': 'done',
+                                                    })
+                                        
+                                        elif event_type == 'chat':
+                                            logger.debug(f'Ignoring chat event: {payload}')
+                                            continue
+                                    
+                                except json.JSONDecodeError:
+                                    pass
                             elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                                logger.info(f'🔴 Gateway WS closed/error for {user_id}: {msg.type}')
                                 break
                     except Exception as e:
                         logger.error(f'Forward gateway->client error: {e}')
