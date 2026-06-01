@@ -746,6 +746,11 @@ async def handle_websocket(request):
                             if msg.type == WSMsgType.TEXT:
                                 data = json.loads(msg.data)
                                 
+                                # 特殊处理：ping/pong 心跳
+                                if data.get('type') == 'ping':
+                                    await ws_client.send_json({'type': 'pong'})
+                                    continue
+                                
                                 # 特殊处理：历史记录请求
                                 if data.get('type') == 'history':
                                     messages = chat_store.load(user_id)
@@ -821,6 +826,8 @@ async def handle_websocket(request):
                                     if msg_type == 'event':
                                         msg_session_key = payload.get('sessionKey', '')
                                         
+                                        if session_key != msg_session_key:  # 忽略 sessionKey
+                                            continue
                                         # 不过滤 sessionKey，接收所有消息
                                         
                                         # 处理 agent 流式响应
