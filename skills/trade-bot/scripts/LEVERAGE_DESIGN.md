@@ -2,7 +2,7 @@
 
 ## 📋 功能
 
-查询运行中机器人的杠杆率统计。**仅统计运行中状态**，无需传 status 参数。
+查询机器人杠杆率统计。支持按状态、交易所、品种等维度筛选。默认只看运行中。
 
 ---
 
@@ -15,6 +15,7 @@
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `usertoken` | str | ✅ | 用户 token |
+| `search_status` | int | ❌ | 1=实盘 2=模拟 3=已停止；默认不传=全部 |
 | `search_val` | str | ❌ | 搜索机器人名称 |
 | `search_exchange` | str | ❌ | 交易所 ID，多个逗号分隔 |
 | `search_amt_type` | int | ❌ | 1=现货 2=合约；不传=全部 |
@@ -22,7 +23,7 @@
 | `account_id` | int | ❌ | 交易所账号 ID；传 0=全部 |
 | `search_direction` | str | ❌ | `long`=做多, `short`=做空；不传=全部 |
 
-> ⚠️ 与 `Trade/lists` 的区别：无 `search_status`（隐式为运行中）、无 `page/limit/sort`（聚合统计），多了 `app_v`/`lang` 通用字段。
+> ⚠️ 与 `Trade/lists` 的区别：无 `page/limit/sort`（聚合统计）。
 
 ### 返回字段
 
@@ -52,10 +53,11 @@ usdt_assets[]:                        各币种明细
 
 ---
 
-## 🎛️ 筛选参数（复用 list 的筛选，减去 status/page/sort）
+## 🎛️ 筛选参数
 
 | 用户概念 | CLI 参数 | API 参数 |
 |---------|---------|---------|
+| 运行状态 | `--status` | `search_status`（默认 running） |
 | 交易所 | `--exchange-ids` | `search_exchange` |
 | 交易品种 | `--amt-type` | `search_amt_type` |
 | 策略类型 | `--strategy-type` | `strategy_type` |
@@ -75,7 +77,7 @@ cd skills/trade-bot && python3 scripts/trade_bot.py leverage --agent-id qc-xxx
 # 筛选
 python3 scripts/trade_bot.py leverage --agent-id qc-xxx --amt-type futures --direction long
 python3 scripts/trade_bot.py leverage --agent-id qc-xxx --exchange-ids 1,3
-python3 scripts/trade_bot.py leverage --agent-id qc-xxx --search "DOGE"
+python3 scripts/trade_bot.py leverage --agent-id qc-xxx --status all
 ```
 
 ---
@@ -98,14 +100,9 @@ python3 scripts/trade_bot.py leverage --agent-id qc-xxx --search "DOGE"
     "dir_exposure": "long",
     "scale_exposure": 60
   },
-  "assets": [
-    {
-      "symbol": "DOGEUSDT",
-      "nominal_invest_total": 8000,
-      "current_position": 4000
-    }
-  ],
+  "assets": [...],
   "filters": {
+    "status": "running",
     "exchange_ids": null,
     "amt_type": "all",
     "direction": "all"
@@ -118,9 +115,10 @@ python3 scripts/trade_bot.py leverage --agent-id qc-xxx --search "DOGE"
 ## 🚨 Agent 使用规则
 
 1. **无需确认**：`leverage` 是 🟢 只读操作
-2. **仅统计运行中**：无需传 status，API 默认只统计运行中的机器人
-3. **筛选参数**：exchange-ids / amt-type / strategy-type / account-id / direction / search / coin
+2. **默认只看运行中**：`--status running`（默认），传 `all` 看全部
+3. **筛选参数**：status / exchange-ids / amt-type / strategy-type / account-id / direction / search / coin
 4. **典型场景**：
    - "看看杠杆率" → `python3 scripts/trade_bot.py leverage --agent-id qc-xxx`
    - "合约做多的杠杆" → `--amt-type futures --direction long`
-   - "币安机器的杠杆" → 先查 exchange-list → `--exchange-ids <id>`
+   - "币安的杠杆" → 先查 exchange-list → `--exchange-ids <id>`
+   - "所有状态的" → `--status all`

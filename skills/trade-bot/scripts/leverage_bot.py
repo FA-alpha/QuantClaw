@@ -10,11 +10,19 @@ from api_logger import log_http_request, log_error
 
 BASE_URL = "https://www.fourieralpha.com/Mobile"
 
+STATUS_MAP = {"running": "1", "sim": "2", "stopped": "3", "deleted": "-1"}
 AMT_TYPE_MAP = {"spot": "1", "futures": "2"}
+
+
+def _build_search_status(status: str) -> Optional[str]:
+    if not status or status == "all":
+        return None
+    return ",".join(STATUS_MAP[s] for s in status.split(",") if s in STATUS_MAP)
 
 
 def run(
     token: str,
+    status: str = "running",
     exchange_ids: Optional[str] = None,
     amt_type: Optional[str] = None,
     strategy_type: Optional[int] = None,
@@ -31,6 +39,9 @@ def run(
     }
 
     # 筛选参数
+    s_status = _build_search_status(status)
+    if s_status is not None:
+        params["search_status"] = s_status
     if exchange_ids:
         params["search_exchange"] = exchange_ids
     if amt_type and amt_type != "all":
@@ -42,7 +53,7 @@ def run(
     if direction and direction != "all":
         params["search_direction"] = direction
 
-    # search_val: 合并名称 + 币种
+    # search_val
     parts = []
     if search:
         parts.append(search)
@@ -94,6 +105,7 @@ def run(
                 for a in usdt_assets
             ] if usdt_assets else [],
             "filters": {
+                "status": status,
                 "exchange_ids": exchange_ids,
                 "amt_type": amt_type or "all",
                 "strategy_type": strategy_type or "all",

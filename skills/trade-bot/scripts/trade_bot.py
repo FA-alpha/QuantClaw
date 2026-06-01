@@ -2,7 +2,6 @@
 """交易机器人管理 - argparse CLI 入口"""
 import json
 import os
-import sys
 import argparse
 from pathlib import Path
 from typing import Optional
@@ -48,7 +47,7 @@ def cmd_leverage(args):
     if not token:
         return
     result = run(
-        token=token, exchange_ids=args.exchange_ids,
+        token=token, status=args.status, exchange_ids=args.exchange_ids,
         amt_type=args.amt_type, strategy_type=args.strategy_type,
         account_id=args.account_id, direction=args.direction,
         search=args.search, coin=args.coin, agent_id=args.agent_id,
@@ -82,8 +81,9 @@ def main():
     sp.set_defaults(func=cmd_list)
 
     # ── leverage ──
-    sp = subs.add_parser("leverage", help="查询杠杆率统计（仅运行中）")
+    sp = subs.add_parser("leverage", help="查询杠杆率统计")
     sp.add_argument("--agent-id", required=True, help="Agent ID")
+    sp.add_argument("--status", default="running", help="运行状态: running/sim/stopped/deleted/all")
     sp.add_argument("--exchange-ids", help="交易所账户ID，逗号分隔")
     sp.add_argument("--amt-type", help="交易品种: spot/futures/all")
     sp.add_argument("--strategy-type", type=int, help="策略类型ID")
