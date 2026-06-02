@@ -73,14 +73,15 @@ class TradeRequest:
         self._validate_params(data)
 
         try:
+            print("usertoken=")
+            print(self.token)
             # 添加用户token
             data['usertoken'] = self.token
 
             # 添加通用请求参数
             data.update({
                 "app_v": "2.0.0",
-                "lang": 1,
-                "request_source": 4  # 桌面程序
+                "lang": 1
             })
 
             # 发起请求
@@ -100,6 +101,7 @@ class TradeRequest:
                     "API_REQUEST_FAILED"
                 )
 
+            print(f"返回数据详细信息: {result}")
             return result
 
         except requests.RequestException as e:
@@ -304,8 +306,7 @@ class TradeRequest:
                 })
             
             else:
-                raise TradeRequestError(f"不支持的策略类型: {strategy_type}", "UNSUPPORTED_STRATEGY_TYPE")
-
+                required_params = [""]
             return self._make_request("Trade/apply_do", params)
         except TradeRequestError as e:
             self.logger.error(f"添加交易机器人失败: {e.message}")
@@ -331,7 +332,7 @@ def cli_support():
 
     @app.command()
     def get_exchange_lists(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="agent_id"),
         page: int = typer.Option(1, help="页码"),
         limit: int = typer.Option(10, help="每页数量")
     ):
@@ -339,19 +340,19 @@ def cli_support():
         获取交易所账户列表
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - page: int (可选, 默认1) - 页码
         - limit: int (可选, 默认10) - 每页数量
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.get_exchange_lists(page, limit)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
     def get_strategy_lists(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="agent_id"),
         page: int = typer.Option(1, help="页码"),
-        limit: int = typer.Option(10, help="每页数量"),
+        limit: int = typer.Option(-1, help="每页数量"),
         search_val: Optional[str] = typer.Option(None, help="搜索内容"),
         show_type: int = typer.Option(1, help="显示类型（1-有效策略 2-历史策略）"),
         data_grade: int = typer.Option(0, help="数据代次（0-所有策略 1-老策略 2=新策略）")
@@ -360,14 +361,14 @@ def cli_support():
         获取策略列表
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - page: int (可选, 默认1) - 页码
-        - limit: int (可选, 默认10) - 每页数量
+        - limit: int (可选, 默认-1代表查询全部) - 每页数量
         - search_val: Optional[str] (可选) - 搜索内容
         - show_type: int (可选, 默认1) - 显示类型
         - data_grade: int (可选, 默认0) - 数据代次
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         result = requester.get_strategy_lists(
             page=page, 
             limit=limit, 
@@ -406,7 +407,7 @@ def cli_support():
 
     @app.command()
     def apply_trade_bot(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="agent_id"),
         strategy_id: str = typer.Option(..., help="策略记录ID"),
         strategy_type: int = typer.Option(..., help="策略类型"),
         name: str = typer.Option(..., help="机器人名称"),
@@ -427,7 +428,7 @@ def cli_support():
         添加交易机器人
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - strategy_id: str (必填) - 策略记录ID
         - strategy_type: int (必填) - 策略类型
         - name: str (必填) - 机器人名称
@@ -439,7 +440,7 @@ def cli_support():
         - auto_redeem: bool (可选, 默认False) - 资金不足时是否自动赎回理财
         - 特定参数（根据不同策略类型）
         """
-        requester = create_requester(token)
+        requester = create_requester(agent_id)
         
         # 准备策略特定参数
         specific_params = {}
