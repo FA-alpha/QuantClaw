@@ -55,6 +55,19 @@ def cmd_leverage(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_exchange_list(args):
+    """查询交易所账户列表"""
+    from exchange_list import run
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, page=args.page, limit=args.limit,
+        agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _not_impl(name):
     print(json.dumps({"status": "error", "message": f"{name} 功能尚未实现"}, ensure_ascii=False))
 
@@ -95,8 +108,16 @@ def main():
     sp.add_argument("--coin", help="币种")
     sp.set_defaults(func=cmd_leverage)
 
+    # ── exchange-list ──
+    sp = subs.add_parser("exchange-list", help="查询交易所账户列表")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--page", type=int, default=1, help="第几页")
+    sp.add_argument("--limit", type=int, default=-1, help="每页条数，-1=全部")
+    sp.set_defaults(func=cmd_exchange_list)
+
     # ── 占位子命令 ──
-    for cmd in ["detail", "balance", "exchange-list", "stop", "apply", "check-status",
+    for cmd in ["detail", "balance", "stop", "apply", "check-status",
                 "orders", "scale", "margin", "update"]:
         sp = subs.add_parser(cmd, help=f"{cmd}（待实现）")
         sp.add_argument("--agent-id", required=True, help="Agent ID")
