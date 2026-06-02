@@ -15,6 +15,7 @@ QuantClaw 统一日志模块
 """
 
 from .api_logger import (
+    LOG_ENABLED,
     log_http_request,
     log_error,
     get_agent_id,
@@ -25,6 +26,7 @@ from .api_logger import (
 )
 
 __all__ = [
+    'LOG_ENABLED',
     'log_http_request',
     'log_error',
     'get_agent_id',

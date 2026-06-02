@@ -22,6 +22,7 @@ from typing import Any, Optional
 # 日志配置
 LOG_BASE_DIR = os.path.expanduser("~/.quantclaw/logs")
 LOG_RETENTION_DAYS = 7  # 保留最近 7 天的日志
+LOG_ENABLED = os.environ.get("QC_API_LOG") == "1"  # QC_API_LOG=1 才记录日志
 
 # 错误类型常量
 class ErrorType:
@@ -232,6 +233,9 @@ def log_http_request(url: str, data: dict, response: dict = None, error: str = N
         error_type: 错误类型（可选，自动判断）
         agent_id: Agent ID（可选，自动获取）
     """
+    if not LOG_ENABLED:
+        return
+
     # 获取日志文件路径（按 agent_id 和日期分文件）
     log_file = get_log_file_path(agent_id)
     
@@ -304,6 +308,9 @@ def log_error(error_msg: str, error_type: str = None, exception: Exception = Non
             )
             raise  # 继续抛出异常，不改变原有逻辑
     """
+    if not LOG_ENABLED:
+        return
+
     log_file = get_log_file_path(agent_id)
     
     log_entry = {
