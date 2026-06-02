@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-公共 API 客户端 — 平台级 API 查询（不缓存，实时获取）
+平台公共数据模块 — fourieralpha 平台级数据查询（不缓存，实时获取）
 
-各 skill 脚本通过此模块统一调用 fourieralpha API，
-避免重复的 requests.post / 错误处理 / 日志记录。
-
-后续可逐步迁移 backtest-query/query.py 中的同类函数到此。
+提供策略类型、交易所列表等平台公共数据的查询函数，
+各 skill 脚本按需调用，避免重复实现。
 """
 import sys
 import os

@@ -1,1 +1,0 @@
-# QuantClaw scripts package
