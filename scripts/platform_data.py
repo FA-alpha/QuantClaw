@@ -9,13 +9,11 @@ import sys
 import os
 import json
 import time
-import requests
 from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scripts.logging import log_http_request, log_error
+from scripts.api_client import api_post, check_auth
 
-BASE_URL = "https://www.fourieralpha.com/Mobile"
 CACHE_DIR = os.path.expanduser("~/.quantclaw/cache")
 CACHE_TTL_S = 86400  # 24 小时
 
@@ -57,35 +55,7 @@ def _clear_cache(key: str) -> None:
         os.remove(p)
 
 
-# ── 内部请求封装 ──────────────────────────────────────────────
 
-def _post(api_path: str, params: dict, agent_id: Optional[str] = None) -> dict:
-    """通用 POST，返回 API 原始 dict。鉴权失败/网络异常抛出的信息统一包装在返回值中。"""
-    url = f"{BASE_URL}{api_path}"
-    try:
-        resp = requests.post(url, data=params, timeout=30)
-        data = resp.json()
-        log_http_request(url, params, response=data, agent_id=agent_id)
-        return data
-    except requests.RequestException as e:
-        log_error(str(e), exception=e, context={"url": url}, agent_id=agent_id)
-        return {"_error": f"网络请求异常: {str(e)}"}
-    except Exception as e:
-        log_error(str(e), exception=e, context={"url": url}, agent_id=agent_id)
-        return {"_error": f"脚本异常: {str(e)}"}
-
-
-def _check_auth(data: dict) -> tuple:
-    """检查 API 鉴权状态。返回 (ok, message)"""
-    if data.get("_error"):
-        return False, data["_error"]
-    if data.get("status") == 0:
-        info = data.get("info", "未知错误")
-        info_str = str(info)
-        if "Column not found" in info_str and "version" in info_str:
-            return True, ""
-        return False, info_str
-    return True, ""
 
 
 # ── 缓存辅助：只缓存 platform reference data ─────────────────
@@ -102,8 +72,8 @@ def _cached_fetch(
     if cached is not None:
         return cached
 
-    data = _post(api_path, params, agent_id)
-    ok, msg = _check_auth(data)
+    data = api_post(api_path, params, agent_id)
+    ok, msg = check_auth(data)
     if not ok:
         return {"status": "error", "message": msg}
 
@@ -215,7 +185,7 @@ def get_exchange_list(
     agent_id: Optional[str] = None,
 ) -> dict:
     """获取交易所账户列表（不缓存）。API: /User/exchange_lists"""
-    data = _post(
+    data = api_post(
         "/User/exchange_lists",
         {
             "page": page,
@@ -226,7 +196,7 @@ def get_exchange_list(
         },
         agent_id,
     )
-    ok, msg = _check_auth(data)
+    ok, msg = check_auth(data)
     if not ok:
         return {"status": "error", "message": msg}
 
