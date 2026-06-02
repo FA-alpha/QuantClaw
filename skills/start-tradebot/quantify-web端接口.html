@@ -1,0 +1,2557 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<title></title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+</head>
+<body>
+<p style="font-size:25px;">接口域名：待定</p>
+<p style="font-size:25px;">返回参数(info)：返回信息，若失败返回错误信息</p>
+<p style="font-size:25px;">返回参数(status)：1:成功,0:失败</p>
+<p style="font-size:25px;">返回参数(url)：扩展参数，一般为空</p>
+<p style="font-size:25px;">接口请求方式：http,post请求</p>
+
+<p style="color:red;">更新信息</p>
+<p><font style="font-size:20px;">2024-03-06：</font>初始版本</p>
+<p>&quot;save_type&quot;: 操作类型（1-新增 2-修改 3-删除 4-停止 5-重启 6-增加保证金 7-减少保证金 8-手动加仓 9-取消手动加仓 10-复制 11-增加投资 12-赎回投资）</p>
+<p>&quot;link_type&quot;: 跳转类型 （0-不跳转 4-外链 5-内链）</p>
+<p>&quot;target&quot;: 跳转目标ID/链接(若不跳转则为null)</p>
+
+
+<p style="color:red;">接口目录</p>
+
+<p><a href="#user"><font style="font-size:20px;">用户接口</font></a></p>
+<p><a href="#strategyType"><font style="font-size:20px;">策略类型接口</font></a></p>
+<p><a href="#strategy"><font style="font-size:20px;">策略接口</font></a></p>
+<p><a href="#backtrack"><font style="font-size:20px;">回测接口</font></a></p>
+<p><a href="#Extend"><font style="font-size:20px;">通用接口</font></a></p>
+<p><a href="#Stat"><font style="font-size:20px;">统计接口</font></a></p>
+<p><a href="#Bill"><font style="font-size:20px;">账单接口</font></a></p>
+<p><a href="#CryptoIndex"><font style="font-size:20px;">加密指数</font></a></p>
+
+
+<p >所有接口请求参数新增：</p>
+<p>&quot;yb_v&quot;: 接口版本号</p>
+<p>&quot;request_source&quot;: 请求来源（1-微信小程序 2-抖音小程序 3-APP 4-桌面程序 5-云电脑 6-web ）</p>
+<p>&quot;mobile_system&quot;: 手机系统（1-IOS 2-安卓 3-windows）</p>
+<p>&quot;app_v&quot;: app版本</p>
+<p>&quot;local_env&quot;: 本地打包环境（1-未打包 2-已打包）</p>
+<p>&quot;lang&quot;: 语言版本（1-中文 2-英文）</p>
+
+
+<a id="user">用户接口</a>
+
+
+
+<h5>用户-首页信息</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/index_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;: 用户登录token
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;icon_url&quot;: 头像地址
+&quot;nickname&quot;: 昵称
+</code></pre>
+</li>
+</ul>
+
+
+<h5>用户谷歌登录</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/google_login</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;redirect_uri&quot;: 回调页面
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;url&quot;: 跳转地址
+</code></pre>
+</li>
+</ul>
+
+
+<h5>用户登录/注册后直接登录</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/login_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;type&quot;: 登录类型（1-微信手机号授权登录 2-手机号验证码 3-抖音手机号授权登录 4-邮箱登录 5-google登录 6-apple登录）
+&quot;save_type&quot;: 操作类型（1-新增登录）
+
+手机号验证码登录时传
+&quot;mobile&quot;: 手机号
+&quot;ver_code&quot;: 短信验证码
+邮箱登录
+&quot;email&quot;: 邮箱
+&quot;password&quot;: 密码（md5加密一次）
+google登录
+&quot;id_token&quot;: 谷歌登录的id_token
+&quot;code&quot;: 谷歌登录的code（id_token/code必须传一个）
+apple登录
+&quot;id_token&quot;: 苹果登录的id_token
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;has_password&quot;: 是否有密码（1-是 0-否）
+&quot;check_token&quot;: 若需要设置密码则返回
+&quot;usertoken&quot;: 用户登录token
+</code></pre>
+</li>
+</ul>
+
+
+<h5>检测账户是否有效</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/check_account</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;mobile&quot;: 手机号
+&quot;email&quot;: 邮箱
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;status&quot;: 状态（1-有效用户 2-无效）
+&quot;is_google&quot;: 是否google账户（1-是 0-否）
+&quot;is_apple&quot;: 是否apple账户（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>验证原先手机号/邮箱</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/check_old_mobile</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;mobile&quot;: 手机号
+&quot;email&quot;: 邮箱
+&quot;ver_code&quot;: 验证码
+&quot;type&quot;: 类型（1-修改密码）
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;check_info&quot;: 原先手机号验证结果token
+</code></pre>
+</li>
+</ul>
+
+
+<h5>修改密码</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/chg_password</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;password&quot;: 密码（md5加密一道）
+&quot;check_token&quot;: 原先手机号验证结果token
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+<h5>交易所账户列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/exchange_lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;page&quot;: 第几页（默认第一页）
+&quot;limit&quot;: 每页几个（默认10个,若获取全部则传-1）
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 记录ID
+&quot;exchange_name&quot;: 交易所名称
+&quot;name&quot;: 名称
+&quot;api_key&quot;: 加密的
+&quot;status&quot;: 状态（1-未连接 2-已连接）
+</code></pre>
+</li>
+
+<li><strong>返回参数(url)：</strong><pre><code>&quot;is_end&quot;: 是否加载完成（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>交易所账户信息</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/exchange_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;id&quot;: 记录ID
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 记录ID
+&quot;name&quot;: 名称
+&quot;exchange_id&quot;: 交易所ID
+</code></pre>
+</li>
+</ul>
+
+
+<h5>交易所账户添加/更新</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/exchange_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;save_type&quot;: 操作类型（1-新增 2-修改 3-删除）
+&quot;account_id&quot;: 记录ID
+&quot;name&quot;: 名称
+&quot;exchange_id&quot;: 交易所ID
+&quot;api_key&quot;: 交易所key
+&quot;api_secret&quot;: 交易所密钥
+&quot;api_password&quot;: 交易所密码
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 记录ID
+</code></pre>
+</li>
+</ul>
+
+
+
+<h5>投资余额列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/invest_lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;page&quot;: 第几页（默认第一页）
+&quot;limit&quot;: 每页几个（默认10个,若获取全部则传-1）
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 记录ID
+&quot;account_id&quot;: 账户ID
+&quot;name&quot;: 名称
+&quot;chgval&quot;: 变动金额
+&quot;endval&quot;: 最新余额
+&quot;ptype&quot;: 类型（1-增加 2-减少）
+&quot;create_time&quot;: 操作时间
+</code></pre>
+</li>
+
+<li><strong>返回参数(url)：</strong><pre><code>&quot;is_end&quot;: 是否加载完成（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>投资余额添加/更新</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/invest_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;save_type&quot;: 操作类型（11-增加投资 12-赎回投资）
+&quot;account_id&quot;: 账户ID
+&quot;amt&quot;: 变动金额
+&quot;ptype&quot;: 类型（1-增加 2-减少）
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+<h5>用户使用量信息</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/usage_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;: 用户登录token
+&quot;show_type&quot;: 显示类型（1-仅使用量 2-使用量+用户信息）
+</code></pre>
+</li>
+
+<li><strong>返回参数(info)：</strong><pre><code>&quot;email&quot;: 邮箱
+&quot;permission_type&quot;: 权限类型（1-全部权限 2-只读权限）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>子账户列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/sub_account_lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;page&quot;: 第几页（默认第一页）
+&quot;limit&quot;: 每页几个（默认10个,若获取全部则传-1）
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 账号ID
+&quot;name&quot;: 用户名
+&quot;email&quot;: 邮箱
+&quot;permission_type&quot;: 权限类型（1-全部 2-只读）
+&quot;create_time&quot;: 创建时间
+</code></pre>
+</li>
+
+<li><strong>返回参数(url)：</strong><pre><code>&quot;is_end&quot;: 是否加载完成（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>子账户添加/编辑/删除</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/sub_account_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;save_type&quot;: 操作类型（1-新增 2-修改 3-删除）
+&quot;account_id&quot;: 账号ID（save_type= 2，3时必传）
+
+&quot;name&quot;: 名称
+&quot;email&quot;: 邮箱
+&quot;password&quot;: 密码（md5加密一次）
+&quot;permission_type&quot;: 权限类型（1-全部 2-只读）
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+<h5>自动赚币配置</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/earn_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;: 用户登录token
+</code></pre>
+</li>
+
+<li><strong>返回参数(info)：</strong><pre><code>&quot;is_earn&quot;: 是否自动赚币（1-是 0-否）
+&quot;min_rate&quot;: 最低出借利率
+&quot;ft_amt_rate&quot;: 风霆预留资金比例
+</code></pre>
+</li>
+</ul>
+
+<h5>自动赚币配置更新</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/earn_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;is_earn&quot;: 是否自动赚币（1-是 0-否）
+&quot;min_rate&quot;: 最低出借利率
+&quot;ft_amt_rate&quot;: 风霆预留资金比例
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+<h5>自动赚币可以赚币的数量</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/User/earn_amt</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;ft_amt_rate&quot;: 风霆预留资金比例
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;amt&quot;: 币的数量
+&quot;type&quot;: 类型（0-无可用操作 1-出借 2-赎回）
+</code></pre>
+</li>
+</ul>
+
+
+<a id="strategyType">策略类型接口</a>
+
+<h5>所有策略类型列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/StrategyType/all_param_config</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>
+"strategy_params_config_map": 策略类型与参数配置的映射
+    &quot;策略类型1&quot;:参数配置1
+    &quot;策略类型2&quot;:参数配置2
+    &quot;策略类型3&quot;:参数配置3
+
+"strategy_type_list": 策略类型列表
+    &quot;策略类型1&quot;: 策略策略
+    &quot;type&quot;: 策略类型编号
+    &quot;type_name&quot;: 策略类型名称
+    &quot;param_config_id&quot;: 策略类型参数配置
+    &quot;status&quot;: 策略类型状态
+
+"strategy_params_config_list": 策略类型参数配置列表
+    &quot;参数配置1&quot;: 参数配置的JSON SCHEMA
+    &quot;参数配置2&quot;: 参数配置的JSON SCHEMA
+
+"update_time": 策略类型参数配置更新时间
+</code></pre>
+</li>
+
+
+
+
+<h5>策略类型列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/StrategyType/lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;page&quot;: 第几页（默认第一页）
+&quot;limit&quot;: 每页几个（默认10个,若获取全部则传-1）
+&quot;search_val&quot;: 搜索内容
+&quot;show_type&quot;: 显示类型（1-有效策略类型 2-已禁用策略类型 3-已删除策略类型）
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 策略类型ID
+&quot;type&quot;: 策略类型
+&quot;type_name&quot;: 类型名称
+&quot;param_config_id&quot;: 策略参数配置ID
+&quot;status&quot;: 状态（1-待发布 2-已发布 -1已删除 0-禁用）
+&quot;create_time&quot;: 创建时间
+</code></pre>
+</li>
+
+<li><strong>返回参数(url)：</strong><pre><code>&quot;is_end&quot;: 是否加载完成（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+
+<h5>策略类型详情</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/StrategyType/info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;strategy_type_id&quot;: 策略类型ID
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 策略类型ID
+&quot;type&quot;: 策略类型
+&quot;type_name&quot;: 类型名称
+&quot;param_config_id&quot;: 策略参数配置ID
+&quot;status&quot;: 状态（1-待发布 2-已发布 -1已删除 0-禁用）
+&quot;param_config&quot;: 策略类型参数配置
+
+</code></pre>
+    </li>
+</ul>
+
+
+
+<h5>策略类型添加/更新</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/StrategyType/update_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>
+&quot;save_type&quot;: 操作类型（1=添加||2=编辑||3=删除||4=发布||5=禁用） ，其中3、4、5只传strategy_type_id参数
+&quot;strategy_type_id&quot;: 策略ID（save_type= 2，3，4，5时必传）
+&quot;type&quot;: 策略类型
+&quot;type_name&quot;: 类型名称
+&quot;param_config&quot;: 策略类型参数配置
+
+
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 策略类型ID
+</code></pre>
+</li>
+</ul>
+
+
+
+<a id="strategy">策略接口</a>
+
+
+<h5>策略列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;page&quot;: 第几页（默认第一页）
+&quot;limit&quot;: 每页几个（默认10个,若获取全部则传-1）
+&quot;search_val&quot;: 搜索内容
+&quot;show_type&quot;: 显示类型（1-有效策略 2-历史策略）
+&quot;data_grade&quot;: 数据代次（0-所有策略 1-老策略 2=新策略）
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 策略ID
+&quot;type_name&quot;: 类型名称
+&quot;name&quot;: 名称
+&quot;coin&quot;: 币种
+&quot;type&quot;: 策略类型（1-现货马丁 2-合约马丁 3-鲲鹏v1 4-鲲鹏V2）
+&quot;fst_capital&quot;: 初次下单金额
+&quot;each_capital&quot;: 加仓下单金额
+&quot;max_grid_size&quot;: 最大加仓次数
+&quot;multiple_num&quot;: 倍数（合约马丁有）
+&quot;add_amt_multiples&quot;: 加仓金额倍数
+&quot;direction&quot;: 类型（long-做多  short-做空）
+&quot;status&quot;: 状态（1-正常 2-运行中）
+&quot;create_time&quot;: 创建时间
+&quot;is_backtest_single&quot;: 是否支持回测交易信号（1-是 0-否）
+&quot;strategy_param_config_id&quot;: 策略参数配置
+&quot;ai_time_id&quot;: AI时间ID
+&quot;ai_time_name&quot;: AI时间名称
+</code></pre>
+</li>
+
+<li><strong>返回参数(url)：</strong><pre><code>&quot;is_end&quot;: 是否加载完成（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>策略组列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/group_lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;page&quot;: 第几页（默认第一页）
+&quot;limit&quot;: 每页几个（默认10个,若获取全部则传-1）
+&quot;search_val&quot;: 搜索内容
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 策略组ID
+&quot;name&quot;: 名称
+&quot;strategy_lists&quot;: 策略列表（数组）
+  &quot;id&quot;: 策略ID
+  &quot;type_name&quot;: 类型名称
+  &quot;name&quot;: 名称
+  &quot;coin&quot;: 币种
+  &quot;type&quot;: 策略类型（1-现货马丁 2-合约马丁 3-鲲鹏v1 4-鲲鹏V2）
+  &quot;fst_capital&quot;: 初次下单金额
+  &quot;each_capital&quot;: 加仓下单金额
+  &quot;max_grid_size&quot;: 最大加仓次数
+  &quot;multiple_num&quot;: 倍数（合约马丁有）
+  &quot;add_amt_multiples&quot;: 加仓金额倍数
+  &quot;direction&quot;: 类型（long-做多  short-做空）
+  &quot;status&quot;: 状态（1-正常 2-运行中）
+  &quot;create_time&quot;: 创建时间
+  &quot;is_backtest_single&quot;: 是否支持回测交易信号（1-是 0-否）
+  &quot;strategy_param_config_id&quot;: 策略参数配置
+  &quot;ai_time_id&quot;: AI时间ID
+  &quot;ai_time_name&quot;: AI时间名称
+</code></pre>
+</li>
+
+<li><strong>返回参数(url)：</strong><pre><code>&quot;is_end&quot;: 是否加载完成（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+
+<h5>计算策略保证金</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/calc_margin</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;leverage&quot;: 保证金对应杠杆
+&quot;long_pct&quot;: 做多保证金占比
+&quot;short_pct&quot;: 做空保证金占比
+&quot;long_coin_pcts&quot;: 做多币种保证金占比（json格式）
+  &quot;coin&quot;: 币种
+  &quot;pct&quot;: 占比
+&quot;short_coin_pcts&quot;: 做空币种保证金占比（json格式）
+  &quot;coin&quot;: 币种
+  &quot;pct&quot;: 占比
+&quot;long_ai_time_pcts&quot;: 做多AI回测时间类型占比（json格式）
+  &quot;ai_time_id&quot;: AI回测时间ID
+  &quot;pct&quot;: 占比
+&quot;short_ai_time_pcts&quot;: 做空AI回测时间类型占比（json格式）
+  &quot;ai_time_id&quot;: AI回测时间ID
+  &quot;pct&quot;: 占比
+
+&quot;strategys_json&quot;: 多策略（json格式）
+  &quot;id&quot;: 策略id
+  &quot;multiple_num&quot;: 倍数（合约马丁有）
+  &quot;direction&quot;: 类型（long-做多  short-做空）
+  &quot;ai_time_id&quot;: AI时间ID
+  &quot;coin&quot;: 币种
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 策略ID
+&quot;margin&quot;: 保证金
+</code></pre>
+</li>
+</ul>
+
+
+
+<h5>策略详情</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;strategy_id&quot;: 策略ID
+&quot;show_type&quot;: 显示类型（1-策略详情 2-策略交易支持详情）
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;name&quot;: 名称
+show_type = 2时返回
+&quot;backtest_bgn_date&quot;: 回测信号开始日期（若没有则按照默认的来）
+
+show_type = 1时返回
+&quot;desc&quot;: 描述
+&quot;type&quot;: 类型（1-现货马丁格尔 2-合约马丁格尔 3-FA趋势策略）
+&quot;strategy_param_config_id&quot;: 策略参数配置
+&quot;rule&quot;: 策略信息
+  &quot;coin&quot;: 币种
+  &quot;direction&quot;: 类型（long-做多  short-做空）
+  &quot;is_add_amt&quot;: 是否复投（1-是 0-否）
+  &quot;multiple_num&quot;: 倍数（type=2，3时返回）
+  &quot;max_loss_pct&quot;: 最大止损
+  &quot;max_loss_type&quot;: 最大止损类型（1-市价 2-限价）
+
+  type = 1,2时返回
+  &quot;fst_capital&quot;: 初次下单金额
+  &quot;each_capital&quot;: 加仓下单金额
+  &quot;max_grid_size&quot;: 最大加仓次数
+  &quot;up_pct&quot;: 上涨多少买入/卖出
+  &quot;down_pct&quot;: 下跌多少买入/卖出
+  
+  
+  &quot;rsi_signal&quot;: RSI信号(1-是 0-否)
+  &quot;rsi_period&quot;: RSI信号时间段
+  &quot;rsi_time_grain&quot;: RSI计算时间颗粒（1m，3m）
+  &quot;rsi_buy_threshold&quot;: RSI买点
+  &quot;rsi_signal_type&quot;: RSI计算方式（below-向下穿过 above-向上穿过 low-低于 high-高于）
+
+  &quot;add_amt_multiples&quot;: 加仓金额倍数
+  &quot;add_spread_multiples&quot;: 加仓价差倍数
+
+  type = 3时返回
+  &quot;initial_capital&quot;: 投资总金额
+  &quot;up_pct&quot;: 短趋势做多止盈（默认5）
+  &quot;down_pct&quot;: 短趋势做空止盈（默认5）
+  &quot;pause_short_counter&quot;: 锤子形态暂停开空k线周期（默认2）
+  &quot;ema_fast_period&quot;: EMA快线时间跨度（默认12）
+  &quot;ema_slow_period&quot;: EMA慢线时间跨度（默认24）
+  &quot;ema_long_period&quot;: EMA长线时间跨度（默认89）
+  &quot;ema_time_grain&quot;: EMA时间刻度（默认1D, 先不加其他选项）
+
+  &quot;strategy_param_config_id&quot;: 策略参数配置
+
+  
+</code></pre>
+</li>
+</ul>
+
+
+<h5>策略配置项详情</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/field_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;strategy_id&quot;: 策略ID(若编辑必传)
+&quot;strategy_type&quot;: 策略类型
+&quot;strategy_version&quot;: 策略版本（3.1/4.1/4.2）
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;name&quot;: 父级名称
+&quot;field_lists&quot;: 字段列表（数组）
+  &quot;name&quot;: 名称
+  &quot;variable&quot;: 变量字段
+  &quot;dvalue&quot;: 默认值（若没有则为null）
+  &quot;type&quot;: 类型（input-输入框 select-选择框 multiple-可添加多组）
+  &quot;options&quot;: 选择框选项（可能为null）
+    &quot;name&quot;: 名称
+    &quot;value&quot;: 值
+
+  &quot;multiples&quot;: 多组信息（数组）
+    &quot;fields&quot;: 字段列表（数组）
+      &quot;name&quot;: 名称
+      &quot;variable&quot;: 变量字段
+      &quot;dvalue&quot;: 默认值（若没有则为null）
+      &quot;type&quot;: 类型（input-输入框）
+
+  
+多维数组保存传值示例：
+"tiered_take_profit": [  // 新添加的分层止盈参数（可选，默认3层）
+    {"layer": 1, "position_ratio": 20, "profit_ratio": 20},
+    {"layer": 2, "position_ratio": 30, "profit_ratio": 60},
+    {"layer": 3, "position_ratio": 50, "profit_ratio": 100}
+]
+</code></pre>
+</li>
+</ul>
+
+
+
+<h5>策略信号过去30天触发次数获取</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>http://127.0.0.1:8012/calc_buy_count</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;symbol&quot;: 币的code
+&quot;rsi_signal&quot;: RSI信号(1-是 0-否)
+&quot;rsi_period&quot;: RSI信号时间段
+&quot;rsi_buy_threshold&quot;: RSI买点
+&quot;rsi_time_grain&quot;: RSI计算时间颗粒（1m，3m）
+&quot;rsi_signal_type&quot;: RSI计算方式（below-向下穿过 above-向上穿过 low-低于 high-高于）
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;num&quot;: 次数
+</code></pre>
+</li>
+</ul>
+
+
+
+<h5>策略添加/更新</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/update_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;save_type&quot;: 操作类型（1-新增 2-修改 3-删除 10-复制）
+&quot;strategy_id&quot;: 策略ID（save_type= 2，3，10时必传）
+strategy_id=10时不用传
+&quot;name&quot;: 名称
+&quot;desc&quot;: 描述
+&quot;type&quot;: 类型（1-现货马丁格尔 2-合约马丁格尔 3-FA趋势策略 11-风霆V4）
+&quot;rule&quot;: 策略信息(JSON)
+  &quot;coin&quot;: 币种
+  &quot;direction&quot;: 类型（long-做多  short-做空）
+  &quot;max_loss_pct&quot;: 最大止损
+  &quot;max_loss_type&quot;: 最大止损类型（1-市价 2-限价）
+  &quot;multiple_num&quot;: 倍数
+  &quot;is_add_amt&quot;: 是否复投（1-是 0-否）
+  &quot;version&quot;: 策略版本（若没有则不传）
+
+  type = 1,2,11时传
+  &quot;fst_capital&quot;: 初次下单金额
+  &quot;each_capital&quot;: 加仓下单金额
+  &quot;max_grid_size&quot;: 最大加仓次数
+  &quot;up_pct&quot;: 上涨多少买入/卖出
+  &quot;down_pct&quot;: 下跌多少买入/卖出
+  &quot;rsi_signal&quot;: RSI信号(1-是 0-否)
+  &quot;rsi_period&quot;: RSI信号时间段
+  &quot;rsi_time_grain&quot;: RSI信号时间颗粒度
+  &quot;rsi_buy_threshold&quot;: RSI买点
+  &quot;rsi_signal_type&quot;: RSI计算方式（below-向下穿过 above-向上穿过 low-低于 high-高于）
+  &quot;add_amt_multiples&quot;: 加仓金额倍数
+  &quot;add_spread_multiples&quot;: 加仓价差倍数
+  &quot;take_profit_type&quot;: 止盈类型（1-默认止盈 3-移动止盈）
+  &quot;stop_profit_multiple&quot;: 止盈比例倍数
+  &quot;first_take_profit_ratio&quot;: 初次止盈仓位比例
+
+  type = 11时传
+  &quot;is_split_add_amt&quot;: 分仓是否复投（1-是 0-否，默认1）
+  &quot;split_trigger_time_period&quot;: 开始分仓套住天数
+  &quot;split_trigger_pct&quot;: 开始分仓下跌比例
+  &quot;split_sell_pct&quot;: 分仓止盈比例
+  &quot;version&quot;: 版本（4.0/4.1，原始默认是4.0）
+
+  version=4.1时传
+  牛熊分割线:
+  &quot;ema_slow_period&quot;: EMA时间跨度,默认：60
+  &quot;ema_time_grain&quot;: EMA时间刻度，默认：1天
+  复投参数:
+  &quot;add_amt_pct&quot;: 顺趋势复投比例(%),默认：60
+  &quot;oppo_add_amt_pct&quot;: 逆趋势复投比例(%)，默认：20
+  逆趋势策略配置
+  &quot;oppo_fst_capital&quot;: 初次下单金额
+  &quot;oppo_each_capital&quot;: 加仓下单金额
+  &quot;oppo_max_grid_size&quot;: 最大加仓次数
+  &quot;oppo_up_pct&quot;: 上涨多少买入/卖出
+  &quot;oppo_down_pct&quot;: 下跌多少买入/卖出
+  &quot;oppo_rsi_signal&quot;: RSI信号(1-是 0-否)
+  &quot;oppo_rsi_period&quot;: RSI信号时间段
+  &quot;oppo_rsi_time_grain&quot;: RSI信号时间颗粒度
+  &quot;oppo_rsi_buy_threshold&quot;: RSI买点
+  &quot;oppo_rsi_signal_type&quot;: RSI计算方式（below-向下穿过 above-向上穿过 low-低于 high-高于）
+  逆趋势分仓配置
+  &quot;oppo_split_trigger_time_period&quot;: 开始分仓套住天数
+  &quot;oppo_split_trigger_pct&quot;: 开始分仓下跌比例
+  &quot;oppo_split_sell_pct&quot;: 分仓止盈比例
+
+
+  type = 3时传
+  &quot;initial_capital&quot;: 投资总金额
+  &quot;up_pct&quot;: 短趋势做多止盈（默认5）
+  &quot;down_pct&quot;: 短趋势做空止盈（默认5）
+  &quot;pause_short_counter&quot;: 锤子形态暂停开空k线周期（默认2）
+  &quot;ema_fast_period&quot;: EMA快线时间跨度（默认12）
+  &quot;ema_slow_period&quot;: EMA慢线时间跨度（默认24）
+  &quot;ema_long_period&quot;: EMA长线时间跨度（默认89）
+  &quot;ema_time_grain&quot;: EMA时间刻度（默认1D, 先不加其他选项）
+
+  type = 4时传
+  &quot;initial_capital&quot;: 投资总金额
+  &quot;pause_short_counter&quot;: 锤子形态暂停开空k线周期（默认2）
+  &quot;ema_fast_period&quot;: EMA快线时间跨度（默认12）
+  &quot;ema_slow_period&quot;: EMA慢线时间跨度（默认24）
+  &quot;ema_long_period&quot;: EMA长线时间跨度（默认89）
+  &quot;ema_time_grain&quot;: EMA时间刻度（默认1D, 先不加其他选项）
+  &quot;macd_fast_period&quot;: macd短期指数
+  &quot;macd_slow_period&quot;: macd长期指数
+  &quot;macd_period&quot;: macd信号周期
+  &quot;macd_sell_diff&quot;: macd卖出长短差值
+  &quot;loss_time_period&quot;: 第几个周期开始判断止损
+  &quot;reversal_pct&quot;: 趋势上涨/下影线比例
+  &quot;max_loss_pct&quot;: 最大止损
+  &quot;max_loss_type&quot;: 最大止损类型（1-市价 2-限价）
+
+
+  type = 5时传
+  &quot;initial_capital&quot;: 投资总金额
+  &quot;ema_fast_period&quot;: EMA快线时间跨度（默认21）
+  &quot;ema_slow_period&quot;: EMA慢线时间跨度（默认42）
+  &quot;ema_long_period&quot;: EMA长线时间跨度（默认89）
+  &quot;ema_time_grain&quot;: EMA时间刻度（默认1h, 先不加其他选项）
+  &quot;macd_fast_period&quot;: macd短期指数（默认值：15）
+  &quot;macd_slow_period&quot;: macd长期指数（默认值：54）
+  &quot;macd_period&quot;: macd信号周期（默认值：13）
+  &quot;macd_sell_diff&quot;: macd卖出长短差值（默认值：33）
+  &quot;min_macd&quot;: 开仓macd最低值（默认值：43）
+  &quot;max_long_macd&quot;: 停止多转空macd最大值（默认值：321）
+  &quot;max_medium_term_macd&quot;: 中周期停止开仓macd最大值（默认值：600）
+  &quot;max_long_term_macd&quot;: 长周期停止开仓macd最大值（默认值：1400）
+  &quot;loss_time_period&quot;: 过几个周期，中周期控制风险卖出（默认值:5）
+  &quot;bollinger_period&quot;: 布林带周期，（默认值：25）
+  &quot;bollinger_time_grain&quot;: 布林带时间刻度（默认1h, 先不加其他选项）
+  &quot;reversal_pct&quot;: 趋势上涨/下影线比例（默认:4.38）
+  &quot;max_loss_pct&quot;: 最大止损，（默认: 2）
+  &quot;max_loss_type&quot;: 最大止损类型（1-市价 2-限价）
+
+
+  type = 7时传
+  &quot;initial_capital&quot;: 投资总金额
+  &quot;max_grid_size&quot;: 网格数量
+  &quot;enable_stop_loss&quot;: 是否启用止损
+  &quot;stop_loss_type&quot;: 止损类型（1：按照收益率，2按照价格）
+  &quot;stop_loss&quot;: 止损收益率/价格
+  &quot;enable_take_profit&quot;: 是否启用止盈
+  &quot;take_profit_type&quot;: 止盈类型（1：按照收益率，2按照价格）
+  &quot;take_profit&quot;: 止盈收益率/价格
+  &quot;base_price&quot;: 基准价格（中性策略使用，默认使用初始价格）
+  &quot;base_price_type&quot;: 基准价格类型（当前价/指定价格）
+  &quot;neutral_strategy&quot;: 是否启用中性策略（默认False）
+  &quot;enable_start_opened&quot;: 是否开启立即建仓 
+  &quot;grid_period&quot;: 检测最低和最高价的周期
+  &quot;grid_low_ratio&quot;: 最低价系数 （最低价=grid_period计算的最低价 * 最低价比例 ）
+  &quot;grid_high_ratio&quot;: 最高价系数 （最高价=grid_period计算的最高价 * 最高价比例 ）
+  &quot;grid_type&quot;: 网格类型 （1等差 2等比）
+  &quot;grid_percentage&quot;: 网格等比时的比例
+  &quot;enable_check_period&quot;: 是否启动周期自定义网格（默认true）
+  &quot;price_high&quot;: 最高价
+  &quot;price_low&quot;: 最低价
+
+
+  type = 8时传
+  &quot;initial_capital&quot;: 投资总金额
+  &quot;kalman_short_len&quot;: kalman短周期（默认20）
+  &quot;kalman_long_len&quot;: kalman长周期（默认60）
+  &quot;kalman_time_grain&quot;: kalman时间刻度（默认30m）
+  &quot;bollinger_period&quot;: 布林带周期，（默认值：25）
+  &quot;bollinger_time_grain&quot;: 布林带时间刻度（默认30m）
+  &quot;up_cpt&quot;: 做多止盈比例（默认1.5）
+  &quot;down_pct&quot;: 做空止盈比例（默认1.5）
+  &quot;max_loss_pct&quot;: 止损比例（默认值：1.2）
+  &quot;trade_model&quot;: 交易类型（all-做多做空 long-仅做多 short-仅做空）
+
+  type = 10时传
+  &quot;initial_capital&quot;: 投资总金额
+  &quot;direction&quot;: 交易方向(long-做多 short-做空)
+  &quot;is_add_amt&quot;: 是否复投（1-是 0-否）
+  &quot;leverage&quot;: 杠杆倍数
+  &quot;multiple_num&quot;: 倍数
+  &quot;rsi_signal&quot;: RSI信号(1-是 0-否)
+  &quot;rsi_period&quot;: RSI信号时间段
+  &quot;rsi_time_grain&quot;: RSI信号时间颗粒度
+  &quot;rsi_buy_threshold&quot;: RSI买点
+  &quot;rsi_signal_type&quot;: RSI计算方式（below-向下穿过 above-向上穿过 low-低于 high-高于）
+  &quot;open_second_martingale&quot;: 第一个仓位开仓价格相较于开启第二个仓位的价格差百分比
+  &quot;open_thired_martingale&quot;: 第一个仓位开仓价格相较于开启第三个仓位的价格差百分比
+  &quot;first_martingale_pct&quot;: 第一个仓位占总投资比例
+  &quot;second_martingale_pct&quot;: 第二个仓位占总投资比例
+  &quot;third_martingale_pct&quot;: 第三个仓位占总投资比例
+  &quot;first_martingale_add_pct&quot;: 第一个仓位价格每变化多少加仓
+  &quot;second_martingale_add_pct&quot;: 第二个仓位价格每变化多少加仓
+  &quot;third_martingale_add_pct&quot;: 第三个仓位价格每变化多少加仓
+  &quot;first_martingale_sell_pct&quot;: 第一个仓位止盈比例
+  &quot;second_martingale_sell_pct&quot;: 第二个仓位止盈比例
+  &quot;third_martingale_sell_pct&quot;: 第三个仓位止盈比例
+  &quot;first_martingale_total_count&quot;: 第一个仓位总仓位数
+  &quot;second_martingale_total_count&quot;: 第二个仓位总仓位数
+  &quot;third_martingale_total_count&quot;: 第三个仓位总仓位数
+
+  
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 策略ID
+</code></pre>
+</li>
+</ul>
+
+
+<h5>币种列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/coin_lists</code></p>
+</li>
+<li><p><strong>POST数据：无</strong></p>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;coin&quot;: 币种值
+&quot;name&quot;: 币种名称
+</code></pre>
+</li>
+</ul>
+
+
+<h5>策略批量操作</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/status_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;save_type&quot;: 操作类型（3-删除）
+&quot;ids&quot;: 策略ID(多个逗号分割)
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+
+<h5>加入到我的策略</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/adds_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;strategy_token&quot;:策略token
+</code></pre>
+</li>
+
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 策略ID
+&quot;type_name&quot;: 类型名称
+&quot;name&quot;: 名称
+&quot;coin&quot;: 币种
+&quot;type&quot;: 策略类型（1-现货马丁 2-合约马丁 3-鲲鹏v1 4-鲲鹏V2）
+&quot;fst_capital&quot;: 初次下单金额
+&quot;each_capital&quot;: 加仓下单金额
+&quot;max_grid_size&quot;: 最大加仓次数
+&quot;multiple_num&quot;: 倍数（合约马丁有）
+&quot;add_amt_multiples&quot;: 加仓金额倍数
+&quot;direction&quot;: 类型（long-做多  short-做空）
+&quot;status&quot;: 状态（1-正常 2-运行中）
+&quot;create_time&quot;: 创建时间
+&quot;is_backtest_single&quot;: 是否支持回测交易信号（1-是 0-否）
+&quot;backtest_bgn_date&quot;: 回测信号开始日期（若没有则按照默认的来）
+</code></pre>
+</li>
+
+</ul>
+
+
+
+<h5>添加策略组</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Strategy/group_adds_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;strategy_token&quot;:策略token(多个逗号分隔)
+&quot;name&quot;:策略组名称
+</code></pre>
+</li>
+
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 策略组ID
+</code></pre>
+</li>
+
+</ul>
+
+
+<a id="trade">交易机器人接口</a>
+
+
+<h5>交易所账户测试连接</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>未定</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;account_id&quot;: 交易账户ID
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;status&quot;: 状态（1-成功 0-失败）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>获取余额</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/balance_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;account_id&quot;:交易所账户ID
+&quot;basic_unit&quot;:币本位/U本位（USD-币本位 USDT-U本位）
+&quot;coin&quot;: 币种
+&quot;strategy_id&quot;: 策略ID，用于判断是现货还是合约
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;balance&quot;: 余额
+&quot;finance_balance&quot;: 理财余额
+&quot;unit&quot;: 单位（USDT/ETH/BTC）
+&quot;multiple_num&quot;:杠杆倍数
+</code></pre>
+</li>
+</ul>
+
+
+<h5>添加交易机器人</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/apply_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;strategy_id&quot;:策略记录ID
+&quot;name&quot;:名称
+&quot;account_id&quot;:交易所账户ID
+&quot;trade_type&quot;:交易类型（1-模拟盘 2-实盘）
+&quot;multiple_num&quot;:杠杆倍数
+&quot;basic_unit&quot;:币本位/U本位（USD-币本位 USDT-U本位）
+&quot;backtest_date&quot;:回测信号开启日期
+&quot;auto_redeem&quot;: 资金不足时是否自动赎回理财
+
+strategy_type=1,2时传
+&quot;fst_capital&quot;: 初次下单金额
+&quot;each_capital&quot;: 加仓下单金额
+&quot;max_grid_size&quot;: 最大加仓次数
+
+strategy_type=3、4、5时传
+&quot;initial_capital&quot;: 投资总金额
+
+strategy_type=5时传
+&quot;each_capital&quot;: 单笔买入/卖出金额
+
+strategy_type=4、8时传
+&quot;trade_buy_type&quot;: 买入类型（market-吃单 limit-挂单）
+
+strategy_type=8时传
+&quot;trade_model&quot;: 交易类型（all-两者全选 long-做多 short-做空）
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;bot_id&quot;: 交易机器人ID
+</code></pre>
+</li>
+</ul>
+
+
+<h5>停止/重启交易机器人</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/status_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;bot_id&quot;:交易机器人ID
+&quot;save_type&quot;:操作类型（4-停止 5-停止当周期 6-预约停止 7-取消预约终止）
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;status&quot;: 状态（0-未运行 1-实盘运行中 2-模拟运行 3-已停止 ）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>交易机器人列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;page&quot;: 第几页（默认第一页）
+&quot;limit&quot;: 每页几个（默认10个,若获取全部则传-1）
+&quot;search_val&quot;: 搜索机器人名称
+&quot;search_status&quot;: 回测状态（-1-已删除 1-实盘运行中 2-模拟运行 3-已停止，默认不传，全部）
+&quot;search_exchange&quot;: 交易所ID（多个逗号分割）
+&quot;search_amt_type&quot;: 类型（1-现货 2-合约，默认不传，全部）
+&quot;sort_type&quot;: 排序类型（1-最新记录 2-收益率 3-运行时间 4-投资额 5-按净值 6-按停止时间）
+&quot;sort_desc_type&quot;: 排序升降类型（1-降序 2-升序） 
+&quot;strategy_type&quot;: 策略类型（默认全部，传0）
+&quot;account_id&quot;: 交易所账号ID（默认全部，传0）
+&quot;search_direction&quot;: 方向（long-做多，short-做空，默认不传，全部）
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 记录ID
+&quot;name&quot;: 名称
+&quot;account_name&quot;: 账户名称
+&quot;exchange_name&quot;: 交易所名称
+&quot;amt_type&quot;: 类型（1-现货 2-合约）
+&quot;strategy_name&quot;: 策略名称
+&quot;run_time&quot;: 运行时间（单位：秒）
+&quot;net_value&quot;: 净值
+&quot;initial_capital&quot;: 总金额
+&quot;profit_rate&quot;: 收益率
+&quot;status&quot;: 状态（0-未运行 1-实盘运行中 2-模拟运行 3-已停止 4-模拟已停止）
+&quot;reserve_status&quot;: 预约状态（0-未预约 1-预约停止中 2-预约已终止）
+&quot;is_info&quot;: 是否可以查看详情（1-是 0-否）
+&quot;trade_status&quot;: 交易状态（1-交易中 2-待启动）
+&quot;create_time&quot;: 开始时间
+&quot;basic_unit&quot;: 交易类型（USDT-U本位 USD-币本位）
+</code></pre>
+</li>
+<li><strong>返回参数(url)：</strong><pre><code>&quot;all_count&quot;: 总条数
+</code></pre>
+</li>
+</ul>
+
+
+<h5>交易机器人详情</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;bot_id&quot;: 交易机器人ID
+&quot;is_strategy&quot;: 是否返回策略
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 记录ID
+&quot;name&quot;: 名称
+&quot;strategy_type&quot;: 策略类型（1-现货马丁 2-合约马丁 3-鲲鹏V1）
+&quot;amt_type&quot;: 类型（1-现货 2-合约）
+&quot;run_time&quot;: 运行时间（单位：秒）
+&quot;status&quot;: 状态（0-未运行 1-实盘运行中 2-模拟运行 3-已停止 4-模拟已停止 ）
+&quot;reserve_status&quot;: 预约状态（0-未预约 1-预约停止）
+&quot;is_edit&quot;: 是否可以编辑（1-是 0-否）
+&quot;unit&quot;: 投资收益单位（USDT/ETH/BTC）
+&quot;is_margin_btn&quot;: 是否可以调整保证金（1-是 0-否）
+&quot;is_manual_btn&quot;: 是否可以手动加仓（1-是 0-否）
+&quot;is_reserve_stop_btn&quot;: 是否可以预约终止（1-是 0-否）
+
+&quot;trade_info&quot;: 运行情况
+  &quot;coin&quot;: 币种信息
+  &quot;create_time&quot;: 开始时间
+  &quot;initial_capital&quot;: 总金额
+  &quot;max_grid_size&quot;: 最大加仓次数
+  &quot;grids_used&quot;: 已经加仓次数
+  &quot;total_cost&quot;: 累计投入保证金
+  &quot;avg_price&quot;: 平均持仓成本
+  &quot;float_amt&quot;: 浮动收益（金额）
+  &quot;float_profit&quot;: 浮动收益率
+  &quot;liquidation_price&quot;: 预估强评价
+  &quot;win_price&quot;: 止盈目标
+  &quot;loss_price&quot;: 止损目标
+  &quot;trade_token&quot;: 机器人token
+  &quot;win_rate&quot;: 胜率
+
+&quot;grids_info&quot;: 当周期信息
+  &quot;coin&quot;: 币种名称
+  &quot;liquidation_price&quot;: 预估强评价
+  &quot;float_amt&quot;: 浮动收益（金额）
+  &quot;avg_price&quot;: 平均持仓成本
+  &quot;holdings&quot;: 持仓量
+  &quot;real_leverage&quot;: 实际杠杆
+  &quot;total_cost&quot;: 累计投入保证金
+  &quot;maintenance_margin&quot;: 维持保证金率
+  &quot;grids_token&quot;: 当周期token
+  &quot;trade_direction&quot;: 开仓方式
+
+
+&quot;cycle_record&quot;: 成交记录（数组）
+  &quot;parent_id&quot;: 周期父级ID
+  &quot;id&quot;: 周期ID
+  &quot;name&quot;: 周期名称
+  &quot;trade_time&quot;: 开始时间
+  &quot;run_time&quot;: 运行时间（单位：秒）
+  &quot;avg_price&quot;: 平均持仓成本
+  &quot;sell_price&quot;: 止盈价格
+  &quot;total_cost&quot;: 累计投入保证金
+  &quot;profit_amt&quot;: 周期收益
+  &quot;auto_grids_used&quot;: 自动加仓次数
+  &quot;hand_grids_used&quot;: 手动加仓次数
+
+  &quot;move_record&quot;: 移动止盈记录
+    &quot;parent_id&quot;: 周期父级ID
+    &quot;id&quot;: 周期ID
+    &quot;name&quot;: 周期名称
+    &quot;trade_time&quot;: 开始时间
+    &quot;run_time&quot;: 运行时间（单位：秒）
+    &quot;avg_price&quot;: 平均持仓成本
+    &quot;sell_price&quot;: 止盈价格
+    &quot;total_cost&quot;: 累计投入保证金
+    &quot;profit_amt&quot;: 移动止盈收益
+    &quot;total_profit_amt&quot;: 周期总收益
+    &quot;old_total_profit_amt&quot;: 周期原总收益
+    &quot;diff_profit_amt&quot;: 收益变化
+
+&quot;profit_chart&quot;: 收益图表
+  &quot;max&quot;: 最大值
+  &quot;min&quot;: 最小值
+  &quot;lists&quot;: 列表（数组）
+    &quot;date&quot;: 日期
+    &quot;net&quot;: 净值
+
+&quot;strategy_rule&quot;: 策略信息
+  &quot;coin&quot;: 币种
+  &quot;fst_capital&quot;: 初次下单金额
+  &quot;each_capital&quot;: 加仓下单金额
+  &quot;max_grid_size&quot;: 最大加仓次数
+  &quot;up_pct&quot;: 上涨多少买入/卖出
+  &quot;down_pct&quot;: 下跌多少买入/卖出
+  &quot;max_loss_pct&quot;: 最大止损
+  &quot;max_loss_type&quot;: 最大止损类型（1-市价 2-限价）
+  &quot;multiple_num&quot;: 倍数（合约马丁有）
+
+  &quot;rsi_signal&quot;: RSI信号(1-是 0-否)
+  &quot;rsi_period&quot;: RSI信号时间段
+  &quot;rsi_time_grain&quot;: RSI计算时间颗粒（1m，3m）
+  &quot;rsi_buy_threshold&quot;: RSI买点
+  &quot;rsi_signal_type&quot;: RSI计算方式（below-向下穿过 above-向上穿过 low-低于 high-高于）
+
+
+  &quot;add_amt_multiples&quot;: 加仓金额倍数
+  &quot;add_spread_multiples&quot;: 加仓价差倍数
+  &quot;is_add_amt&quot;: 是否复投（1-是 0-否）
+  &quot;backtest_date&quot;: 回测信号日期（若没有则为null）
+</code></pre>
+</li>
+</ul>
+
+
+
+
+<h5>交易机器人详情-2.0</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/new_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;bot_id&quot;: 交易机器人ID
+&quot;is_strategy&quot;: 是否返回策略
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;id&quot;: 记录ID
+&quot;name&quot;: 名称
+&quot;exchange_name&quot;: 交易所名称
+&quot;amt_type&quot;: 类型（1-现货 2-合约）
+&quot;run_time&quot;: 运行时间（单位：秒）
+&quot;status&quot;: 状态（0-未运行 1-实盘运行中 2-模拟运行 3-已停止 ）
+
+&quot;trade_info&quot;: 总的运行情况
+  &quot;coin&quot;: 币种信息
+  &quot;create_time&quot;: 开始时间
+  &quot;initial_capital&quot;: 投资金额
+  &quot;total_amt&quot;: 总资产
+  &quot;float_amt&quot;: 总收益（金额）
+  &quot;float_profit&quot;: 总收益率
+  &quot;grid_num&quot;: 已完成周期
+  &quot;grid_avg_time&quot;: 平均周期天数
+  
+  合约返回
+  &quot;add_margin&quot;: 已增加保证金
+  &quot;take_profit&quot;: 已提取收益
+  &quot;fund_fee&quot;: 预留资金费
+  &quot;fund_radio&quot;: 资金费率
+
+&quot;amt_info&quot;: 金额信息
+  &quot;total_amt&quot;: 当前总金额
+
+&quot;grids_info&quot;: 当周期信息
+  &quot;grids_token&quot;: 当周期token
+  &quot;float_amt&quot;: 浮动收益（金额）
+  &quot;avg_price&quot;: 平均持仓成本
+  &quot;holdings&quot;: 持仓量
+  &quot;total_cost&quot;: 累计投入金额/保证金
+  &quot;max_grid_size&quot;: 最大加仓次数
+  &quot;grids_used&quot;: 已经加仓次数
+  合约返回
+  &quot;liquidation_price&quot;: 预估强评价
+  &quot;real_leverage&quot;: 实际杠杆
+  &quot;maintenance_margin&quot;: 维持保证金率
+  
+&quot;cycle_record&quot;: 成交记录（数组）
+  &quot;id&quot;: 周期ID
+  &quot;name&quot;: 周期名称
+  &quot;trade_time&quot;: 开始时间
+  &quot;run_time&quot;: 运行时间（单位：秒）
+  &quot;avg_price&quot;: 平均持仓成本
+  &quot;sell_price&quot;: 止盈价格
+  &quot;total_cost&quot;: 累计投入保证金
+  &quot;profit_amt&quot;: 周期收益
+  &quot;auto_grids_used&quot;: 自动加仓次数
+  &quot;hand_grids_used&quot;: 手动加仓次数
+
+&quot;profit_chart&quot;: 收益图表
+  &quot;max&quot;: 最大值
+  &quot;min&quot;: 最小值
+  &quot;lists&quot;: 列表（数组）
+    &quot;date&quot;: 日期
+    &quot;net&quot;: 净值
+
+&quot;strategy_rule&quot;: 策略信息
+  &quot;fst_capital&quot;: 初次下单金额
+  &quot;each_capital&quot;: 加仓下单金额
+  &quot;max_grid_size&quot;: 最大加仓次数
+  &quot;up_pct&quot;: 上涨多少买入/卖出
+  &quot;down_pct&quot;: 下跌多少买入/卖出
+  &quot;max_loss_pct&quot;: 最大止损
+  &quot;max_loss_type&quot;: 最大止损类型（1-市价 2-限价）
+  &quot;multiple_num&quot;: 倍数（合约马丁有）
+  &quot;rsi_signal&quot;: RSI信号(1-是 0-否)
+  &quot;rsi_period&quot;: RSI信号时间段
+  &quot;rsi_time_grain&quot;: RSI计算时间颗粒（1m，3m）
+  &quot;rsi_buy_threshold&quot;: RSI买点
+  &quot;rsi_signal_type&quot;: RSI计算方式（below-向下穿过 above-向上穿过 low-低于 high-高于）
+  &quot;add_amt_multiples&quot;: 加仓金额倍数
+  &quot;add_spread_multiples&quot;: 加仓价差倍数
+  &quot;is_add_amt&quot;: 是否复投（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+
+<h5>交易机器人网格订单详情</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/grid_lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;bot_id&quot;: 交易机器人ID
+&quot;grid_id&quot;: 周期ID
+</code></pre>
+</li>
+<li><strong>返回参数(info)(数组)：</strong><pre><code>&quot;id&quot;: 记录ID
+&quot;order_id&quot;: 订单ID
+&quot;coin&quot;: 币种信息
+&quot;type&quot;: 类型（SELL-卖出 BUY-买入）
+&quot;title&quot;: 标题（类似：加仓单 #19）
+&quot;status&quot;: 状态（filled-已成交 active-等待成交 ）
+&quot;price&quot;: 成交价格/委托价格
+&quot;revenue&quot;: 成交金额
+&quot;quantify&quot;: 数量
+&quot;fee&quot;: 手续费
+&quot;trade_time&quot;: 成交时间/委托时间
+&quot;action_type&quot;: 操作类型（1-不能操作 2-可以取消）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>交易机器人详情-轮询-更新浮动的一些内容数据</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/check_status</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;bot_id&quot;: 交易机器人ID
+&quot;grids_token&quot;: 当周期token
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;status&quot;: 状态（0-未运行 1-实盘运行中 2-模拟运行 3-已停止 ）
+&quot;is_refresh_info&quot;: 是否需要更新整个详情（1-是 0-否，需要更新整个详情的时候，再整个更新）
+&quot;trade_info&quot;: 运行情况
+  &quot;float_amt&quot;: 浮动收益（金额）
+  &quot;float_profit&quot;: 浮动收益率
+&quot;grids_info&quot;: 当周期信息
+  &quot;float_amt&quot;: 浮动收益（金额）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>增加/取消手动加仓</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/scale_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;bot_id&quot;: 交易机器人ID
+&quot;save_type&quot;: 操作类型（8-手动加仓 9-取消手动加仓）
+save_type = 8必传
+&quot;price&quot;: 加仓价格
+&quot;amt&quot;: 加仓金额
+save_type = 9必传
+&quot;order_id&quot;: 网格订单ID
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+<h5>增加/减少保证金</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/margin_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;bot_id&quot;: 交易机器人ID
+&quot;amt&quot;: 保证金金额
+&quot;save_type&quot;: 操作类型（6-增加保证金 7-减少保证金）
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+
+<h5>交易策略更新</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Trade/strategy_update_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;update_type&quot;: 更新类型（1-永久更新 2-当周期更新-下周期恢复）
+&quot;rule&quot;: 策略信息(JSON)
+  当周期生效可修改
+  &quot;max_grid_size&quot;: 最大加仓次数
+  &quot;up_pct&quot;: 上涨多少买入/卖出
+  &quot;down_pct&quot;: 下跌多少买入/卖出
+
+  当周期生效不可修改
+  &quot;fst_capital&quot;: 初次下单金额
+  &quot;each_capital&quot;: 加仓下单金额
+  &quot;multiple_num&quot;: 杠杆倍数
+  &quot;max_loss_pct&quot;: 最大止损
+  &quot;max_loss_type&quot;: 最大止损类型（1-市价 2-限价）
+  &quot;multiple_num&quot;: 倍数（合约马丁有）
+  &quot;rsi_signal&quot;: RSI信号(1-是 0-否)
+  &quot;rsi_period&quot;: RSI信号时间段
+  &quot;rsi_time_grain&quot;: RSI信号时间颗粒度
+  &quot;rsi_buy_threshold&quot;: RSI买点
+  &quot;rsi_signal_type&quot;: RSI计算方式（below-向下穿过 above-向上穿过 low-低于 high-高于）
+  &quot;add_amt_multiples&quot;: 加仓金额倍数
+  &quot;add_spread_multiples&quot;: 加仓价差倍数
+  &quot;is_add_amt&quot;: 是否复投（1-是 0-否）
+  
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+
+
+<a id="backtrack">回测接口</a>
+
+
+<h5>回测申请</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Backtrack/apply_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;strategy_id&quot;:策略记录ID（多个逗号分割）
+&quot;data_type&quot;:数据来源
+&quot;margin_mode_config&quot;:保证金模式配置
+    &quot;is_shared_margin&quot;:是否是共享保证金模式
+    &quot;global_margin_limit&quot;:共享保证金上限
+    &quot;strategy_margin_limit&quot;:策略保证金上限: strategy_id -> margin_limit
+        &quot;strategy_id_1 -> 3000&quot;:策略保证金上限
+        &quot;strategy_id_2 -> 8000&quot;:策略保证金上限
+&quot;date_lists&quot;:时间源（LIST-OBJECT）
+  &quot;bgn_date&quot;:开始日期
+  &quot;end_date&quot;:结束日期
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;back_id&quot;: 回测记录ID（多个逗号分割）
+&quot;status&quot;: 状态（1-排队中 2-回测中 3-回测成功 4-回测失败）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>回测列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Backtrack/lists</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;page&quot;: 第几页（默认第一页）
+&quot;limit&quot;: 每页几个（默认10个,若获取全部则传-1）
+&quot;search_val&quot;: 策略名称
+&quot;search_status&quot;: 回测状态（-1-已删除 2-回测中 3-回测成功 4-回测失败，默认不传，全部）
+&quot;search_bgn_date&quot;: 回测搜索开始日期
+&quot;search_end_date&quot;: 回测搜索结束日期
+&quot;search_amt_type&quot;: 类型（1-现货 2-合约，默认不传，全部）
+&quot;sort_type&quot;: 排序类型（1-最新记录 2-收益率最高 3-夏普率最高 4-回撤率最低）
+&quot;search_coin&quot;: 币种选择（多选逗号分割）
+&quot;type&quot;: 类型（1-个人回测 2-AI回测推荐 3-别人回测推荐）
+&quot;search_year&quot;: 年份
+&quot;search_pct&quot;: 比例选择
+&quot;strategy_type&quot;: 策略类型（1-风霆 3-鲲鹏v1）
+&quot;search_direction&quot;: 方向选择（long-做多，short-做空，默认全部）
+&quot;ai_time_id&quot;: 时间ID (如果选择按时间来显示的话，必传)
+&quot;search_recommand_type&quot;: 推荐类型（1-推荐 2-交易中策略，默认1）
+&quot;version&quot;: 策略版本
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 回测记录ID
+&quot;name&quot;: 名称
+&quot;bgn_date&quot;: 开始日期
+&quot;end_date&quot;: 结束日期
+&quot;year_rate&quot;: 年化收益率
+&quot;sharp_rate&quot;: 夏普比率
+&quot;max_loss&quot;: 最大回撤
+&quot;amt_type&quot;: 类型（1-现货 2-合约）
+&quot;win_rate&quot;: 胜率
+&quot;score&quot;: 策略评分（若没有则为null）
+&quot;trade_num&quot;: 交易次数
+&quot;status&quot;: 状态（1-排队中 2-回测中 3-回测成功 4-回测失败）
+&quot;dele_status&quot;: 删除状态 （1-有效 0-删除）
+&quot;back_time&quot;: 回测时间
+&quot;strategy_token&quot;: 策略token
+&quot;strategy_id&quot;: 策略ID
+&quot;version&quot;: 策略版本
+</code></pre>
+</li>
+<li><strong>返回参数(url)：</strong><pre><code>&quot;is_end&quot;: 是否加载完成（1-是 0-否）
+</code></pre>
+</li>
+</ul>
+
+
+
+
+<h5>回测状态查询</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Backtrack/check_status</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;back_ids&quot;:回测记录ID(多个逗号分割)
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 回测ID
+&quot;status&quot;: 状态（1-排队中 2-回测中 3-回测成功 4-回测失败）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>回测统计</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Backtrack/stat_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;back_id&quot;:回测记录ID
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;status&quot;: 回测状态（1-待回测 2-回测中 3-回测成功 4-回测失败）
+&quot;bgn_date&quot;: 开始时间
+&quot;end_date&quot;: 结束时间
+&quot;data_type&quot;: 数据来源
+&quot;trade_detail_url&quot;: 交易明细下载表（若没有则为null）
+&quot;statement_url&quot;: 交易收益下载表（若没有则为null）
+
+&quot;strategy&quot;: 策略信息（数组）
+  &quot;id&quot;: 策略ID
+  &quot;name&quot;: 名称
+  &quot;desc&quot;: 描述
+  &quot;direction&quot;: 类型（long-做多  short-做空）
+  &quot;coin&quot;: 币种
+  &quot;ai_time_id&quot;: AI时间ID
+  &quot;ai_time_name&quot;: AI时间名称
+  &quot;multiple_num&quot;: 倍数（合约马丁有）
+  
+  &quot;total_stat&quot;: 回测统计
+    &quot;total_amt&quot;: 投资金额
+    &quot;last_amt&quot;: 净值
+    &quot;profit_rate&quot;: 收益率
+    &quot;total_profit&quot;: 净利润
+    &quot;year_rate&quot;: 年化收益
+    &quot;max_loss&quot;: 最大回撤
+    &quot;sharp_rate&quot;: 夏普率
+    &quot;buy_num&quot;: 买入次数
+    &quot;sell_num&quot;: 卖出次数
+    &quot;win_rate&quot;: 胜率
+    &quot;odds&quot;: 赔率（显示：1/xxx）（若没有这个字段则不显示）
+    &quot;max_recovery_time&quot;: 最大修复时间（若没有这个字段则不显示）
+    &quot;drawdown_over_10pct_count&quot;: 回撤超过10%的次数
+
+    &quot;net_value&quot;: 净值信息
+      &quot;max&quot;: 最大值
+      &quot;min&quot;: 最小值
+      &quot;lists&quot;: 列表（数组）
+        &quot;date&quot;: 日期
+        &quot;net&quot;: 净值
+  
+  &quot;trade_lists&quot;: 交易信息（数组）
+    &quot;date&quot;: 日期
+    &quot;time&quot;: 时间
+    &quot;symbol&quot;: 币种
+    &quot;action&quot;: 操作（buy/sell）
+    &quot;price&quot;: 价格
+    &quot;quantity&quot;: 数量
+    &quot;revenue&quot;: 金额
+    &quot;amount&quot;: 可用余额
+    &quot;position&quot;: 仓位
+    &quot;avg_price&quot;: 持仓均价
+    &quot;grids&quot;: 仓位数量
+    &quot;profit&quot;: 利润
+    &quot;reason&quot;: 操作原因
+    &quot;is_stop_loss&quot;: 是否止损（True-止损 False-没止损）
+    &quot;fee_amt&quot;: 手续费
+
+
+&quot;total_stat&quot;: 回测统计（总览）
+  &quot;total_amt&quot;: 投资金额
+  &quot;last_amt&quot;: 净值
+  &quot;profit_rate&quot;: 收益率
+  &quot;total_profit&quot;: 净利润
+  &quot;year_rate&quot;: 年化收益
+  &quot;max_loss&quot;: 最大回撤
+  &quot;sharp_rate&quot;: 夏普率
+  &quot;buy_num&quot;: 买入次数
+  &quot;sell_num&quot;: 卖出次数
+  &quot;win_rate&quot;: 胜率
+  &quot;odds&quot;: 赔率
+  &quot;max_recovery_time&quot;: 最大修复时间
+  &quot;take_profit_rate&quot;: 止盈点卖出比例
+
+  &quot;net_value&quot;: 净值信息
+    &quot;max&quot;: 最大值
+    &quot;min&quot;: 最小值
+    &quot;lists&quot;: 列表（数组）
+      &quot;date&quot;: 日期
+      &quot;net&quot;: 净值
+  
+  &quot;trade_lists&quot;: 交易信息（数组）
+    &quot;date&quot;: 日期
+    &quot;time&quot;: 时间
+    &quot;symbol&quot;: 币种
+    &quot;action&quot;: 操作（buy/sell）
+    &quot;price&quot;: 价格
+    &quot;quantity&quot;: 数量
+    &quot;revenue&quot;: 金额
+    &quot;amount&quot;: 可用余额
+    &quot;position&quot;: 仓位
+    &quot;avg_price&quot;: 持仓均价
+    &quot;grids&quot;: 仓位数量
+    &quot;profit&quot;: 利润
+    &quot;reason&quot;: 操作原因
+    &quot;is_stop_loss&quot;: 是否止损（True-止损 False-没止损）
+    &quot;fee_amt&quot;: 手续费
+    &quot;liquidation_price&quot;: 预估强评价
+    &quot;profit_ratio&quot;: 盈利比例
+
+  &quot;margin_mode_config&quot;:保证金模式配置
+    &quot;is_shared_margin&quot;:是否是共享保证金模式
+    &quot;global_margin_limit&quot;:共享保证金上限
+    &quot;strategy_margin_limit&quot;:策略保证金上限: strategy_id -> margin_limit
+      &quot;strategy_id_1 -> 3000&quot;:策略保证金上限
+      &quot;strategy_id_2 -> 8000&quot;:策略保证金上限
+</code></pre>
+</li>
+</ul>
+
+
+<h5>回测批量操作</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Backtrack/status_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;save_type&quot;: 操作类型（3-删除）
+&quot;ids&quot;: 回测ID(多个逗号分割)
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败</code></pre></li>
+</ul>
+
+
+<h5>推荐回测统计</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Backtrack/recommend_stat_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;back_id&quot;:回测记录ID
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;bgn_date&quot;: 开始时间
+&quot;end_date&quot;: 结束时间
+&quot;data_type&quot;: 数据来源
+&quot;trade_detail_url&quot;: 交易明细下载表（若没有则为null）
+&quot;statement_url&quot;: 交易收益下载表（若没有则为null）
+
+&quot;strategy&quot;: 策略信息（数组）
+  &quot;id&quot;: 策略ID
+  &quot;name&quot;: 名称
+  &quot;desc&quot;: 描述
+  
+  &quot;total_stat&quot;: 回测统计
+    &quot;total_amt&quot;: 投资金额
+    &quot;last_amt&quot;: 净值
+    &quot;profit_rate&quot;: 收益率
+    &quot;total_profit&quot;: 净利润
+    &quot;year_rate&quot;: 年化收益
+    &quot;max_loss&quot;: 最大回撤
+    &quot;sharp_rate&quot;: 夏普率
+    &quot;buy_num&quot;: 买入次数
+    &quot;sell_num&quot;: 卖出次数
+    &quot;win_rate&quot;: 胜率
+
+    &quot;net_value&quot;: 净值信息
+      &quot;max&quot;: 最大值
+      &quot;min&quot;: 最小值
+      &quot;lists&quot;: 列表（数组）
+        &quot;date&quot;: 日期
+        &quot;net&quot;: 净值
+  
+  &quot;trade_lists&quot;: 交易信息（数组）
+    &quot;date&quot;: 日期
+    &quot;time&quot;: 时间
+    &quot;symbol&quot;: 币种
+    &quot;action&quot;: 操作（buy/sell）
+    &quot;price&quot;: 价格
+    &quot;quantity&quot;: 数量
+    &quot;revenue&quot;: 金额
+    &quot;amount&quot;: 可用余额
+    &quot;position&quot;: 仓位
+    &quot;avg_price&quot;: 持仓均价
+    &quot;grids&quot;: 仓位数量
+    &quot;profit&quot;: 利润
+    &quot;reason&quot;: 操作原因
+    &quot;is_stop_loss&quot;: 是否止损（True-止损 False-没止损）
+
+
+&quot;total_stat&quot;: 回测统计（总览）
+  &quot;total_amt&quot;: 投资金额
+  &quot;last_amt&quot;: 净值
+  &quot;profit_rate&quot;: 收益率
+  &quot;total_profit&quot;: 净利润
+  &quot;year_rate&quot;: 年化收益
+  &quot;max_loss&quot;: 最大回撤
+  &quot;sharp_rate&quot;: 夏普率
+  &quot;buy_num&quot;: 买入次数
+  &quot;sell_num&quot;: 卖出次数
+  &quot;win_rate&quot;: 胜率
+
+  &quot;net_value&quot;: 净值信息
+    &quot;max&quot;: 最大值
+    &quot;min&quot;: 最小值
+    &quot;lists&quot;: 列表（数组）
+      &quot;date&quot;: 日期
+      &quot;net&quot;: 净值
+  
+  &quot;trade_lists&quot;: 交易信息（数组）
+    &quot;date&quot;: 日期
+    &quot;time&quot;: 时间
+    &quot;symbol&quot;: 币种
+    &quot;action&quot;: 操作（buy/sell）
+    &quot;price&quot;: 价格
+    &quot;quantity&quot;: 数量
+    &quot;revenue&quot;: 金额
+    &quot;amount&quot;: 可用余额
+    &quot;position&quot;: 仓位
+    &quot;avg_price&quot;: 持仓均价
+    &quot;grids&quot;: 仓位数量
+    &quot;profit&quot;: 利润
+    &quot;reason&quot;: 操作原因
+    &quot;is_stop_loss&quot;: 是否止损（True-止损 False-没止损）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>获取过去多少时间的最高最低价</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Backtrack/price_interval</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;time_period&quot;:时间区间（默认天）
+&quot;symbol&quot;:币种
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;min_price&quot;: 最低价
+&quot;max_price&quot;: 最高价
+</code></pre>
+</li>
+</ul>
+
+
+
+<a id="Stat">统计接口</a>
+
+<h5>首页dashborad统计数据展示</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Stat/dashboard</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+</code></pre>
+</li>
+
+<li><strong>返回参数(info)：</strong><pre><code>&quot;amt_info&quot;: 资产详情
+  &quot;total_amt&quot;: 总金额
+  &quot;cash_amt&quot;: 可用资金
+  &quot;trade_amt&quot;: 交易中资金
+  &quot;exchanges&quot;: 交易所分布（数组）
+    &quot;name&quot;: 交易所名称
+    &quot;total_amt&quot;: 总金额
+    &quot;percent&quot;: 百分比
+
+&quot;profit_chart&quot;: 收益分析表（数组）
+    &quot;exchange_id&quot;: 交易所ID（若总览则为0）
+    &quot;exchange_name&quot;: 交易所名称
+    &quot;times&quot;: 时间列表（数组）分别：（1d/1w/1m/3m/6m/1y）
+      &quot;type&quot;: 类型（1d/1w/1m/3m/6m/1y）
+      &quot;total_profit&quot;: 总收益
+      &quot;profit_rate&quot;: 收益率
+      &quot;min&quot;: 最小值
+      &quot;max&quot;: 最小值
+      &quot;lists&quot;: 列表（数组）
+        &quot;date&quot;: 日期/时间/月
+        &quot;rate&quot;: 收益率
+
+&quot;fund_account&quot;: 资金账户信息（数组）
+    &quot;id&quot;: 交易所ID（若总览则为0）
+    &quot;name&quot;: 交易所名称
+    &quot;total_amt&quot;: 预估金额
+    &quot;coin&quot;: 币的信息（数组）
+      &quot;name&quot;: 名称
+      &quot;total&quot;: 总计
+      &quot;used&quot;: 冻结
+
+&quot;trade_account&quot;: 交易账户信息（数组）
+    &quot;id&quot;: 交易所ID（若总览则为0）
+    &quot;name&quot;: 交易所名称
+    &quot;total_amt&quot;: 预估金额
+    &quot;coin&quot;: 币的信息（数组）
+      &quot;name&quot;: 名称
+      &quot;total&quot;: 总计
+      &quot;used&quot;: 冻结
+
+&quot;finance_account&quot;: 理财账户信息（数组）
+    &quot;id&quot;: 交易所ID（若总览则为0）
+    &quot;name&quot;: 交易所名称
+    &quot;total_amt&quot;: 预估金额
+    &quot;coin&quot;: 币的信息（数组）
+      &quot;name&quot;: 名称
+      &quot;total&quot;: 总计
+      &quot;used&quot;: 冻结
+
+&quot;trade_bots&quot;: 交易机器人(数组)
+  &quot;name&quot;: 名称
+  &quot;account_name&quot;: 账户名称
+  &quot;trade_status&quot;: 交易状态（1-交易中 2-待启动）
+  &quot;exchange_name&quot;: 交易所名称
+  &quot;strategy_name&quot;: 策略名称
+  &quot;total_profit&quot;: 当前收益
+  &quot;initial_capital&quot;: 总金额
+  &quot;profit_rate&quot;: 收益率
+  &quot;unit&quot;: 投资收益单位（USDT/ETH/BTC）
+</code></pre>
+</li>
+
+<li><strong>返回参数(url)：</strong><pre><code>&quot;cny&quot;: 人民币汇率 (乘以)
+&quot;btc&quot;: btc汇率 (乘以)
+&quot;bot_num&quot;: 运行机器人数量
+</code></pre>
+</li>
+</ul>
+
+
+<h5>实时获取资金/价格</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Stat/realtime_info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;trade_token&quot;: 机器人信息
+&quot;show_type&quot;: 显示类型（1-最新币价价格 2-可用余额 3-可减少保证金,多个逗号分割）
+&quot;coin&quot;:币种
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;amt&quot;: 最新币价/可用余额/3-可减少保证金
+&quot;type&quot;: 类型（1-最新币价价格 2-可用余额 3-可减少保证金）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>投资者总览</h5>
+<ul>
+  <li><p><strong>uri：</strong><br><code>/TradeStat/dashboard</code></p>
+  </li>
+  <li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+</code></pre>
+  </li>
+
+  <li><strong>返回参数(info)：</strong><pre><code>&quot;summary&quot;: 汇总统计项
+  &quot;total_amt&quot;: 总资产
+  &quot;cash_amt&quot;: 资金账户
+  &quot;trade_amt&quot;: 交易账户
+  &quot;running_rate&quot;: 持仓收益率
+  &quot;year_rate&quot;: 年化收益率
+  &quot;today_profit&quot;: 当日收益
+  &quot;running_profit&quot;: 持有收益
+  &quot;total_profit&quot;: 累计收益
+
+&quot;total_amt_chart&quot;: 总资产趋势（数组）分别：（1w/1m/1y）
+  &quot;type&quot;: 类型（1w/1m/1y）
+  &quot;lists&quot;: 列表（数组）
+    &quot;date&quot;: 日期/时间/月
+    &quot;amt&quot;: 总资产
+
+&quot;net_value_chart&quot;: 基金净值趋势（数组）分别：（1w/1m/1y）
+  &quot;type&quot;: 类型（1w/1m/1y）
+  &quot;lists&quot;: 列表（数组）
+    &quot;date&quot;: 日期/时间/月
+    &quot;net&quot;: 基金净值
+    &quot;btc&quot;: BTC基准
+
+&quot;rate_chart&quot;: 收益率趋势（数组）分别：（1w/1m/1y）
+  &quot;type&quot;: 类型（1w/1m/1y）
+  &quot;lists&quot;: 列表（数组）
+    &quot;date&quot;: 日期/时间/月
+    &quot;rate&quot;: 收益率
+
+&quot;profit_chart&quot;: 收益金额趋势（数组）分别：（1w/1m/1y）
+  &quot;type&quot;: 类型（1w/1m/1y）
+  &quot;lists&quot;: 列表（数组）
+    &quot;date&quot;: 日期/时间/月
+    &quot;profit&quot;: 收益额
+
+&quot;robot_stat&quot;: 机器人收益分析
+  &quot;current&quot;: 当前收益（数组）分别：（1d/1w/1m/1y）
+    &quot;type&quot;: 类型（1d/1w/1m/1y）
+    &quot;lists&quot;: 列表（数组）
+      &quot;name&quot;: 机器人名称
+      &quot;profit&quot;: 收益额
+  &quot;history_robot&quot;: 历史收益（数组）
+    &quot;name&quot;: 机器人名称
+    &quot;profit&quot;: 累计收益
+    &quot;month_rate&quot;: 月均收益率
+    &quot;total_trade_count&quot;: 总交易次数
+  &quot;history_time&quot;: 历史分析
+    &quot;total_profit&quot;: 累计收益
+    &quot;total_trade_count&quot;: 总交易次数
+    &quot;win_rate&quot;: 平均胜率
+    &quot;month_rate&quot;: 月均收益率
+    &quot;lists&quot;: 列表（数组）
+      &quot;date&quot;: 日期/时间/月
+      &quot;profit&quot;: 收益额
+      &quot;trade_count&quot;: 交易次数
+      &quot;win_rate&quot;: 胜率
+</code></pre>
+  </li>
+</ul>
+
+
+<h5>收益日历最早可用日期</h5>
+<ul>
+    <li><p><strong>uri：</strong><br><code>/TradeStat/profit_calendar_start_date</code></p>
+    </li>
+    <li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+</code></pre>
+    </li>
+
+    <li><strong>返回参数(info)：</strong><pre><code>&quot;start_date&quot;: 开始日期</code></pre>
+    </li>
+</ul>
+
+
+<h5>收益日历</h5>
+<ul>
+  <li><p><strong>uri：</strong><br><code>/TradeStat/profit_calendar</code></p>
+  </li>
+  <li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;start_date&quot;:开始日期
+&quot;end_date&quot;:结束日期
+&quot;date_type&quot;:时间周期类型（d/w/m/y）
+</code></pre>
+  </li>
+
+  <li><strong>返回参数(info)：</strong><pre><code>&quot;profit_calendar&quot;: 收益额日历（数组）分别：（1d/1w/1m/1y）
+  &quot;date&quot;: 日期/时间/月
+  &quot;profit&quot;: 收益额
+
+&quot;rate_calendar&quot;: 收益率日历（数组）分别：（1d/1w/1m/1y）
+  &quot;date&quot;: 日期/时间/月
+  &quot;rate&quot;: 收益率
+</code></pre>
+  </li>
+</ul>
+
+
+
+<h5>杠杆率统计</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/TradeStat/leverage_ratio</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+&quot;search_val&quot;: 搜索机器人名称
+&quot;search_exchange&quot;: 交易所ID（多个逗号分割）
+&quot;search_amt_type&quot;: 类型（1-现货 2-合约，默认不传，全部）
+&quot;strategy_type&quot;: 策略类型（默认全部，传0）
+&quot;account_id&quot;: 交易所账号ID（默认全部，传0）
+&quot;search_direction&quot;: 方向（long-做多，short-做空，默认不传，全部）
+</code></pre>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;amt_info&quot;: 总资产
+  &quot;total_amt&quot;: 总金额
+&quot;leverage_info&quot;: 杠杆率概览
+  &quot;nominal_invest_total&quot;: 名义总投资
+  &quot;nominal_invest_total_exposure&quot;: 名义总投资（long-多 short-空）
+  &quot;actual_invest_total&quot;: 实际总投资
+  &quot;used_margin&quot;: 已用保证金
+  &quot;used_margin_pct&quot;: 已用保证金占比
+  &quot;available_margin&quot;: 可用保证金
+  &quot;available_margin_pct&quot;: 可用保证金占比
+  &quot;nominal_leverage&quot;: 名义杠杆
+  &quot;real_leverage&quot;: 实际杠杆率
+  &quot;real_leverage_exposure&quot;: 实际杠杆率方向（long-多 short-空）
+  
+  &quot;dir_exposure&quot;: 方向暴露（long-多 short-空）
+  &quot;scale_exposure&quot;: 暴露比例
+&quot;usdt_assets&quot;: U本位资产标的(数组)
+  &quot;symbol&quot;: 币种
+  &quot;nominal_invest_total&quot;: 投资总额
+  &quot;current_position&quot;: 当前总仓位
+  &quot;real_leverage&quot;: 名义杠杆
+  &quot;direction&quot;: 方向（long-多 short-空）
+&quot;usd_assets&quot;: 币本位资产标的(数组)
+  &quot;symbol&quot;: 币种
+  &quot;nominal_invest_total&quot;: 投资总额
+  &quot;current_position&quot;: 当前总仓位
+  &quot;real_leverage&quot;: 名义杠杆
+  &quot;direction&quot;: 方向（long-多 short-空）
+</code></pre>
+</li>
+</ul>
+
+
+<a id="Extend">通用接口</a>
+
+
+<h5>交易所列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Extend/exchange_lists</code></p>
+</li>
+<li><p><strong>POST数据：无</strong></p>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 交易所ID
+&quot;name&quot;: 交易所名称
+</code></pre>
+</li>
+</ul>
+
+
+<h5>获取图片验证码</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Extend/image_verify</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;mobile&quot;: 手机号
+</code></pre>
+</li>
+<li><strong>返回参数：图片内容</strong></li>
+</ul>
+
+<h5>发送短信/邮箱验证码</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Extend/sms_send_do</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;mobile&quot;: 手机号
+&quot;email&quot;: 邮箱
+&quot;img_code&quot;: 图片验证码（默认为空，当需要验证码时不能为空）
+</code></pre>
+</li>
+<li><pre><code>根据status判断成功或失败,当status=0且info=image时,需要显示图片验证码</code></pre></li>
+</ul>
+
+
+<h5>文档信息</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Extend/document</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;source&quot;:来源 (20-web端隐私政策  21-web服务条款)
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;type&quot;: 类型（1-字段 2-图片 3-图标 4-弹框 5-编辑器）
+&quot;title&quot;: 标题(type=4时不为空)
+&quot;desc&quot;: 内容(type=1文本内容,type=2,3图片地址,type=4弹框内容,type=5 html内容)
+&quot;source_name&quot;: 来源名称
+</code></pre>
+</li>
+</ul>
+
+
+<h5>上传图片</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Extend/ueditor_upload</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;file&quot;: base64图片
+&quot;save_type&quot;: 保存类型（1-植物照片 2-反馈照片 3-IM对话图片 4-植物种养日志）
+&quot;usertoken&quot;: 用户token
+</code></pre>
+</li>
+
+<li><strong>返回参数(info)：</strong><pre><code>&quot;image_url&quot;: 小图片地址（用于页面小图显示）
+&quot;image&quot;: 小图片目录
+&quot;big_image_url&quot;: 大图片地址（用于生成图片/大图显示使用）
+&quot;big_image&quot;: 大图片目录
+&quot;image_id&quot;: 图片ID
+&quot;width&quot;: 图片宽度
+&quot;height&quot;: 图片高度
+</code></pre>
+</li>
+</ul>
+
+
+<h5>AI回测时间列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Extend/ai_time_lists</code></p>
+</li>
+<li><p><strong>POST数据：无</strong></p>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 时间id
+&quot;name&quot;: 时间名称
+</code></pre>
+</li>
+</ul>
+
+<h5>AI回测策略列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/Extend/ai_strategy_lists</code></p>
+</li>
+<li><p><strong>POST数据：无</strong></p>
+</li>
+<li><strong>返回参数(info)（数组）：</strong><pre><code>&quot;id&quot;: 策略id
+&quot;name&quot;: 名称
+&quot;strategy_type&quot;: 策略类型
+&quot;versions&quot;: 策略版本列表（数组）
+  &quot;id&quot;: 名称ID
+  &quot;name&quot;: 名称
+  &quot;version&quot;: 版本
+  &quot;leverage&quot;: 杠杆
+</code></pre>
+</li>
+</ul>
+
+
+<a id="Bill">账单接口</a>
+
+<h5>投资者端-账单总览</h5>
+<ul>
+    <li><p><strong>uri：</strong><br><code>/Bill/user_summary</code></p>
+    </li>
+    <li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+</code></pre>
+    </li>
+
+    <li><strong>返回参数(info)：</strong><pre><code>&quot;total&quot;: 待支付总额（数组）
+  &quot;fee&quot;: 服务费金额
+  &quot;unit&quot;: 金额单位
+  &quot;address&quot;: 支付地址
+
+&quot;all_paid&quot;: 是否所有账单已支付（true/false）
+</code></pre>
+    </li>
+</ul>
+
+<h5>投资者端-账单列表</h5>
+<ul>
+    <li><p><strong>uri：</strong><br><code>/Bill/user_list</code></p>
+    </li>
+    <li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+  &quot;name&quot;: 账单名称
+  &quot;status&quot;: 账单状态
+  &quot;page&quot;: 第几页（默认第一页）
+  &quot;limit&quot;: 每页几个（默认10个）
+</code></pre>
+    </li>
+
+    <li><strong>返回参数(info)：</strong><pre><code>&quot;lists&quot;: 账单列表（数组）
+  &quot;id&quot;: 账单ID
+  &quot;bill_no&quot;: 账单编号
+  &quot;name&quot;: 账单名称
+  &quot;status&quot;: 账单状态
+  &quot;profit&quot;: 收益金额
+  &quot;fee&quot;: 服务费金额
+  &quot;unit&quot;: 金额单位
+  &quot;address&quot;: 支付地址
+  &quot;create_time&quot;: 生成时间
+  &quot;start_date&quot;: 起始日期
+  &quot;end_date&quot;: 截止日期
+  &quot;details&quot;: 收益明细列表（数组）
+    &quot;type&quot;: 收益类型，robot: 机器人收益，funding_fee: 资金费支出
+    &quot;exchange_name&quot;: 交易所名称
+    &quot;robot_id&quot;: 机器人ID
+    &quot;robot_name&quot;: 机器人名称
+    &quot;profit&quot;: 收益金额
+    &quot;unit&quot;: 金额单位
+</code></pre>
+    </li>
+
+    <li><strong>返回参数(url)：</strong><pre><code>&quot;all_count&quot;: 总条数
+</code></pre>
+    </li>
+</ul>
+
+<h5>管理端-账单总览及列表</h5>
+<ul>
+    <li><p><strong>uri：</strong><br><code>/Bill/admin_list</code></p>
+    </li>
+    <li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+  &quot;month&quot;: 账单月份
+  &quot;email&quot;: 用户邮箱
+  &quot;robot_id&quot;: 机器人编号
+  &quot;page&quot;: 第几页（默认第一页）
+  &quot;limit&quot;: 每页几个（默认10个）
+</code></pre>
+    </li>
+
+    <li><strong>返回参数(info)：</strong><pre><code>&quot;summary&quot;: 统计
+  &quot;pending_count&quot;: 未核销数量
+  &quot;partial_count&quot;: 部分核销数量
+  &quot;total_amount&quot;: 总服务费
+&quot;lists&quot;: 账单列表（数组）
+  &quot;id&quot;: 账单ID
+  &quot;bill_no&quot;: 账单编号
+  &quot;name&quot;: 账单名称
+  &quot;email&quot;: 用户邮箱
+  &quot;status&quot;: 账单状态
+  &quot;profit&quot;: 收益金额
+  &quot;fee&quot;: 服务费金额
+  &quot;unit&quot;: 金额单位
+  &quot;create_time&quot;: 生成时间
+  &quot;write_off_time&quot;: 核销时间
+  &quot;start_date&quot;: 起始日期
+  &quot;end_date&quot;: 截止日期
+  &quot;details&quot;: 收益明细列表（数组）
+    &quot;type&quot;: 收益类型，robot: 机器人收益，funding_fee: 资金费支出
+    &quot;exchange_name&quot;: 交易所名称
+    &quot;robot_id&quot;: 机器人ID
+    &quot;robot_name&quot;: 机器人名称
+    &quot;profit&quot;: 收益金额
+    &quot;unit&quot;: 金额单位
+</code></pre>
+    </li>
+
+    <li><strong>返回参数(url)：</strong><pre><code>&quot;all_count&quot;: 总条数
+</code></pre>
+    </li>
+</ul>
+
+<h5>管理端-核销账单</h5>
+<ul>
+    <li><p><strong>uri：</strong><br><code>/Bill/admin_write_off</code></p>
+    </li>
+    <li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+  &quot;ids&quot;: 账单ID（数组）
+  &quot;type&quot;: 0: 全部核销，1: 部分核销
+  &quot;amount&quot;: 核销金额
+</code></pre>
+    </li>
+</ul>
+
+<h5>管理端-生成账单</h5>
+<ul>
+    <li><p><strong>uri：</strong><br><code>/Bill/admin_generate_bill</code></p>
+    </li>
+    <li><p><strong>POST数据：</strong></p><pre><code>&quot;usertoken&quot;:用户登录token
+  &quot;month&quot;: 账单月份
+</code></pre>
+    </li>
+</ul>
+
+
+<a id="CryptoIndex">加密指数</a>
+
+<h5>加密指数-数值列表历史</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/CryptoIndex/value_list_history</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;index_code&quot;: 指数编号
+&quot;spec_enum&quot;: 指定时间枚举（1W、1M、3M、1Y、ALL）
+&quot;start_time&quot;: 开始时间（2026-01-01 00:00:00）
+&quot;end_time&quot;: 结束时间（2026-01-01 00:00:00）
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;value_list&quot;: 数值列表
+    &quot;value&quot;: 数值
+    &quot;time&quot;: 时间（时间戳 秒）
+&quot;statistics&quot;: 统计
+    &quot;annualized&quot;: 年化收益
+    &quot;max_drawdown&quot;: 最大回撤
+    &quot;sharp_rate&quot;: 夏普比率
+    &quot;change&quot;: 涨跌幅度
+    &quot;max&quot;: 最大值
+    &quot;min&quot;: 最小值
+</code></pre>
+</li>
+</ul>
+
+
+<h5>加密指数-数值最新</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/CryptoIndex/value_list_latest</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;index_code&quot;: 指数编号
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;value_list&quot;: 数值列表
+    &quot;value&quot;: 数值
+    &quot;time&quot;: 时间（时间戳 秒）
+&quot;statistics&quot;: 统计
+    &quot;change&quot;: 涨跌幅度
+&quot;update_time&quot;: 更新时间（时间戳 秒）
+</code></pre>
+</li>
+</ul>
+
+
+<h5>加密指数-加密指数列表</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/CryptoIndex/index_list</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quot;index_list&quot;: 加密指数列表
+    &quot;index_code&quot;: 指数编码
+    &quot;index_name&quot;: 指数名称
+</code></pre>
+</li>
+</ul>
+
+<h5>加密指数-加密指数详情</h5>
+<ul>
+<li><p><strong>uri：</strong><br><code>/CryptoIndex/info</code></p>
+</li>
+<li><p><strong>POST数据：</strong></p><pre><code>&quot;index_code&quot;: 指数编号
+</code></pre>
+</li>
+<li><strong>返回参数(info)：</strong><pre><code>&quotstart_time&quot;: 配置生效时间
+&quot;weight_config_list&quot;: 资产配置权重
+    &quot;coin_name&quot;: 资产名称
+    &quot;weight&quot;: 权重值
+&quot;ticker_list&quot;: 资产价格列表
+    &quot;coin_name&quot;: 资产名称
+    &quot;price &quot;: 资产价格
+    &quot;change &quot;: 涨跌幅度
+&quot;time_lists&quot;: 各时间纬度统计（数组）
+    &quot;time&quot;: 时间名称
+    &quot;change_pct&quot;: 涨跌幅度（乘以100后的）
+    &quot;year_rate&quot;: 年化（乘以100后的）
+</code></pre>
+</li>
+</ul>
+
+
+
+<style type="text/css">
+html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code, del, dfn, em, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var, b, u, i, center, dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, embed, figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary, time, mark, audio, video {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+body {
+  font-family: Helvetica, arial, freesans, clean, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+  background-color: #fff;
+  padding: 20px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+body>*:first-child {
+  margin-top: 0 !important;
+}
+
+body>*:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* BLOCKS
+=============================================================================*/
+
+p, blockquote, ul, ol, dl, table, pre {
+  margin: 15px 0;
+}
+
+/* HEADERS
+=============================================================================*/
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 20px 0 10px;
+  padding: 0;
+  font-weight: bold;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 tt, h1 code, h2 tt, h2 code, h3 tt, h3 code, h4 tt, h4 code, h5 tt, h5 code, h6 tt, h6 code {
+  font-size: inherit;
+}
+
+h1 {
+  font-size: 28px;
+  color: #000;
+}
+
+h2 {
+  font-size: 24px;
+  border-bottom: 1px solid #ccc;
+  color: #000;
+}
+
+h3 {
+  font-size: 18px;
+}
+
+h4 {
+  font-size: 16px;
+}
+
+h5 {
+  font-size: 14px;
+}
+
+h6 {
+  color: #777;
+  font-size: 14px;
+}
+
+body>h2:first-child, body>h1:first-child, body>h1:first-child+h2, body>h3:first-child, body>h4:first-child, body>h5:first-child, body>h6:first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+a:first-child h1, a:first-child h2, a:first-child h3, a:first-child h4, a:first-child h5, a:first-child h6 {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+h1+p, h2+p, h3+p, h4+p, h5+p, h6+p {
+  margin-top: 10px;
+}
+
+/* LINKS
+=============================================================================*/
+
+a {
+  color: #4183C4;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* LISTS
+=============================================================================*/
+
+ul, ol {
+  padding-left: 30px;
+}
+
+ul li > :first-child,
+ol li > :first-child,
+ul li ul:first-of-type,
+ol li ol:first-of-type,
+ul li ol:first-of-type,
+ol li ul:first-of-type {
+  margin-top: 0px;
+}
+
+ul ul, ul ol, ol ol, ol ul {
+  margin-bottom: 0;
+}
+
+dl {
+  padding: 0;
+}
+
+dl dt {
+  font-size: 14px;
+  font-weight: bold;
+  font-style: italic;
+  padding: 0;
+  margin: 15px 0 5px;
+}
+
+dl dt:first-child {
+  padding: 0;
+}
+
+dl dt>:first-child {
+  margin-top: 0px;
+}
+
+dl dt>:last-child {
+  margin-bottom: 0px;
+}
+
+dl dd {
+  margin: 0 0 15px;
+  padding: 0 15px;
+}
+
+dl dd>:first-child {
+  margin-top: 0px;
+}
+
+dl dd>:last-child {
+  margin-bottom: 0px;
+}
+
+/* CODE
+=============================================================================*/
+
+pre, code, tt {
+  font-size: 12px;
+  font-family: Consolas, "Liberation Mono", Courier, monospace;
+}
+
+code, tt {
+  margin: 0 0px;
+  padding: 0px 0px;
+  white-space: nowrap;
+  border: 1px solid #eaeaea;
+  background-color: #f8f8f8;
+  border-radius: 3px;
+}
+
+pre>code {
+  margin: 0;
+  padding: 0;
+  white-space: pre;
+  border: none;
+  background: transparent;
+}
+
+pre {
+  background-color: #f8f8f8;
+  border: 1px solid #ccc;
+  font-size: 13px;
+  line-height: 19px;
+  overflow: auto;
+  padding: 6px 10px;
+  border-radius: 3px;
+}
+
+pre code, pre tt {
+  background-color: transparent;
+  border: none;
+}
+
+kbd {
+    -moz-border-bottom-colors: none;
+    -moz-border-left-colors: none;
+    -moz-border-right-colors: none;
+    -moz-border-top-colors: none;
+    background-color: #DDDDDD;
+    background-image: linear-gradient(#F1F1F1, #DDDDDD);
+    background-repeat: repeat-x;
+    border-color: #DDDDDD #CCCCCC #CCCCCC #DDDDDD;
+    border-image: none;
+    border-radius: 2px 2px 2px 2px;
+    border-style: solid;
+    border-width: 1px;
+    font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
+    line-height: 10px;
+    padding: 1px 4px;
+}
+
+/* QUOTES
+=============================================================================*/
+
+blockquote {
+  border-left: 4px solid #DDD;
+  padding: 0 15px;
+  color: #777;
+}
+
+blockquote>:first-child {
+  margin-top: 0px;
+}
+
+blockquote>:last-child {
+  margin-bottom: 0px;
+}
+
+/* HORIZONTAL RULES
+=============================================================================*/
+
+hr {
+  clear: both;
+  margin: 15px 0;
+  height: 0px;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  border-bottom: 4px solid #ddd;
+  padding: 0;
+}
+
+/* TABLES
+=============================================================================*/
+
+table th {
+  font-weight: bold;
+}
+
+table th, table td {
+  border: 1px solid #ccc;
+  padding: 6px 13px;
+}
+
+table tr {
+  border-top: 1px solid #ccc;
+  background-color: #fff;
+}
+
+table tr:nth-child(2n) {
+  background-color: #f8f8f8;
+}
+
+/* IMAGES
+=============================================================================*/
+
+img {
+  max-width: 100%
+}
+</style>
+</body>
+</html>
+
