@@ -68,6 +68,18 @@ def cmd_exchange_list(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_list_strategies(args):
+    """查询 AI 策略类型列表"""
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    from scripts.api_client import get_ai_strategy_list
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = get_ai_strategy_list(token=token, agent_id=args.agent_id)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _not_impl(name):
     print(json.dumps({"status": "error", "message": f"{name} 功能尚未实现"}, ensure_ascii=False))
 
@@ -115,6 +127,12 @@ def main():
     sp.add_argument("--page", type=int, default=1, help="第几页")
     sp.add_argument("--limit", type=int, default=-1, help="每页条数，-1=全部")
     sp.set_defaults(func=cmd_exchange_list)
+
+    # ── list-strategies ──
+    sp = subs.add_parser("list-strategies", help="查询 AI 策略类型列表")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.set_defaults(func=cmd_list_strategies)
 
     # ── 占位子命令 ──
     for cmd in ["detail", "balance", "stop", "apply", "check-status",
