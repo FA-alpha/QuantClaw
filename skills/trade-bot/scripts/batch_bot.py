@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""批量操作交易机器人 — /Trade/batch_do"""
+"""批量操作交易机器人 — /Trade/batch_do（含预检 /Trade/batch_check_status）"""
 from typing import Optional
 
 from api_client import api_post, check_auth
+from bot_check import check_bots, filter_executable, STATUS_LABEL
 
 SAVE_TYPE_LABEL = {
     "4": "停止",
@@ -21,11 +22,8 @@ def run(
     """
     批量操作机器人（停止 / 预约停止 / 取消预约终止）
 
-    Args:
-        token: 用户 token
-        bot_ids: 机器人 ID，多个逗号分隔
-        save_type: 4=停止, 6=预约停止, 7=取消预约终止
-        confirm: False=预览, True=执行
+    - 预览时查询所有 bot 当前状态，标记可执行/不可执行
+    - 确认执行时只对可执行的 bot 调 API
 
     Returns:
         {"status": "preview"|"ok"|"error", ...}
@@ -36,17 +34,35 @@ def run(
 
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
 
+    # ── 预检 ──
+    pre = check_bots(token, ids, save_type, agent_id)
+
     if not confirm:
         return {
             "status": "preview",
             "action": f"批量{action_label}",
             "danger_level": "red",
+            "bots": pre["bots"],
+            "executable_count": pre["executable_count"],
+            "blocked_count": pre["blocked_count"],
             "summary": {
                 "操作类型": f"{action_label} (save_type={save_type})",
-                "机器人数量": len(ids),
-                "机器人 ID": ids,
+                "总数": len(ids),
+                "可执行": pre["executable_count"],
+                "被阻止": pre["blocked_count"],
             },
-            "warning": f"⚠️ 即将对 {len(ids)} 个机器人执行「{action_label}」操作",
+            "warning": f"⚠️ 即将对 {pre['executable_count']} 个机器人执行「{action_label}」"
+                if pre["executable_count"] > 0
+                else "❌ 所有机器人均不可执行此操作",
+        }
+
+    # ── 执行前过滤 ──
+    exec_ids = filter_executable(pre["bots"])
+    if not exec_ids:
+        return {
+            "status": "error",
+            "message": "所有机器人均不可执行此操作",
+            "bots": pre["bots"],
         }
 
     data = api_post(
@@ -54,7 +70,7 @@ def run(
         {
             "usertoken": token,
             "app_v": "2.0.0",
-            "bot_id": ",".join(ids),
+            "bot_id": ",".join(exec_ids),
             "save_type": save_type,
         },
         agent_id,
@@ -69,6 +85,7 @@ def run(
     return {
         "status": "ok",
         "action": f"批量{action_label}",
-        "bot_count": len(ids),
-        "bot_ids": ids,
+        "executed": len(exec_ids),
+        "skipped": len(ids) - len(exec_ids),
+        "bot_ids": exec_ids,
     }
