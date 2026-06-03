@@ -18,7 +18,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.logging import log_http_request, log_error
 
-BASE_URL = os.environ.get("FA_API_BASE", "https://www.fourieralpha.com/Mobile")
+BASE_URL = "https://www.fourieralpha.com/Mobile"
 
 
 def api_post(
