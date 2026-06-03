@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""查询交易机器人详情 — /Trade/info + /Trade/check_status"""
+"""查询交易机器人详情 — /Trade/info"""
 from typing import Optional
 
 from api_client import api_post, check_auth
@@ -134,56 +134,3 @@ def run(
     }
 
     return {"status": "ok", "detail": detail}
-
-
-def run_check_status(
-    token: str,
-    bot_id: str,
-    grids_token: str,
-    agent_id: Optional[str] = None,
-) -> dict:
-    """
-    轮询机器人实时状态。
-
-    API: /Trade/check_status
-
-    Returns:
-        {"status": "ok"|"error", "detail": {...}}
-    """
-    data = api_post(
-        "/Trade/check_status",
-        {
-            "usertoken": token,
-            "app_v": "2.0.0",
-            "bot_id": bot_id,
-            "grids_token": grids_token,
-        },
-        agent_id,
-    )
-    ok, msg = check_auth(data)
-    if not ok:
-        return {"status": "error", "message": msg}
-
-    if data.get("status") != 1:
-        return {"status": "error", "message": data.get("msg", data.get("info", "未知错误")), "raw": data}
-
-    info = data.get("info", {})
-    trade_info = info.get("trade_info") or {}
-
-    return {
-        "status": "ok",
-        "detail": {
-            "bot_id": bot_id,
-            "status": info.get("status"),
-            "status_label": STATUS_LABEL.get(str(info.get("status")), ""),
-            "trade_info": {
-                "float_amt": trade_info.get("float_amt"),
-                "float_profit": trade_info.get("float_profit"),
-                "total_amt": trade_info.get("total_amt"),
-                "win_rate": trade_info.get("win_rate"),
-                "add_margin": trade_info.get("add_margin"),
-                "take_profit": trade_info.get("take_profit"),
-                "create_time": trade_info.get("create_time"),
-            } if trade_info else None,
-        },
-    }
