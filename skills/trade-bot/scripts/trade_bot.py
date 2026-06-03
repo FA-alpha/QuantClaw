@@ -78,6 +78,19 @@ def cmd_detail(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_stop(args):
+    """停止/重启/预约停止/取消预约"""
+    from stop_bot import run
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, bot_id=args.bot_id, save_type=args.save_type,
+        confirm=args.confirm, agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def cmd_batch(args):
     """批量停止/预约停止/取消预约终止"""
     from batch_bot import run
@@ -156,8 +169,18 @@ def main():
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.set_defaults(func=cmd_detail)
 
+    # ── stop ──
+    sp = subs.add_parser("stop", help="停止/重启/预约停止/取消预约")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
+    sp.add_argument("--save-type", required=True, choices=["4", "5", "6", "7"],
+                    help="4=停止, 5=停止当周期, 6=预约停止, 7=取消预约终止")
+    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
+    sp.set_defaults(func=cmd_stop)
+
     # ── 占位子命令 ──
-    for cmd in ["balance", "stop", "apply", "check-status",
+    for cmd in ["balance", "apply", "check-status",
                 "orders", "scale", "margin", "update"]:
         sp = subs.add_parser(cmd, help=f"{cmd}（待实现）")
         sp.add_argument("--agent-id", required=True, help="Agent ID")
