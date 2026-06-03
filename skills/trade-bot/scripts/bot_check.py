@@ -21,12 +21,10 @@ _allowed_status = {
     "7": {"1", "2"},    # 取消预约终止 → 仅运行中
 }
 
-# 各操作允许的 reserve_status
+# 各操作允许的 reserve_status（未列出的 save_type 不检查 reserve_status）
 _allowed_reserve = {
-    "4": {"0"},    # 停止 → 不在预约中
-    "5": {"0"},    # 停止当周期 → 不在预约中
-    "6": {"0"},    # 预约停止 → 不在预约中
-    "7": {"1", "2"},  # 取消预约 → 仅在预约中
+    "6": {"0"},          # 预约停止 → 不在预约中
+    "7": {"1", "2"},     # 取消预约 → 仅在预约中
 }
 
 
@@ -68,6 +66,7 @@ def check_bots(
 
     allowed_status = _allowed_status.get(save_type, set())
     allowed_reserve = _allowed_reserve.get(save_type, set())
+    check_reserve = save_type in _allowed_reserve  # 仅 6,7 检查
 
     bots = []
     executable = 0
@@ -86,7 +85,7 @@ def check_bots(
             if s not in allowed_status:
                 can_exec = False
                 reason = f"当前状态为「{STATUS_LABEL.get(s, s)}」，不支持此操作"
-            elif r not in allowed_reserve:
+            elif check_reserve and r not in allowed_reserve:
                 can_exec = False
                 reason = f"预约状态为「{RESERVE_STATUS_LABEL.get(r, r)}」，不支持此操作"
 
