@@ -61,29 +61,51 @@ Agent: cd skills/trade-bot && python3 scripts/trade_bot.py apply --agent-id qc-x
 
 ```
 skills/trade-bot/
-├── DESIGN.md               ← 设计文档（本文件）
-├── SKILL.md                ← Agent 使用指南（待创建）
-├── requirements.txt        ← Python 依赖（typer, requests）
-└── scripts/                ← 所有脚本
-    ├── trade_bot.py        ← 🔑 入口文件（typer CLI，路由 + token 解析）
-    ├── apply_bot.py        ← 创建机器人
-    ├── list_bots.py        ← 机器人列表查询
-    ├── detail_bot.py       ← 机器人详情 + 轮询状态
-    ├── stop_bot.py         ← 停止/重启/预约停止
-    ├── balance.py          ← 余额查询 + 交易所列表
-    ├── scale_bot.py        ← 手动加仓/取消加仓
-    ├── margin_bot.py       ← 保证金调整
-    ├── strategy_update.py  ← 策略参数更新
-    └── grid_orders.py      ← 周期网格订单明细
+├── DESIGN.md                    ← 设计文档（本文件）
+├── SKILL.md                     ← Agent 使用指南
+└── scripts/                     ← 所有脚本（自包含，无外部依赖）
+    │
+    ├── trade_bot.py             ← 🔑 入口（argparse CLI，路由 + token 解析）
+    ├── list_bots.py             ← 机器人列表查询（/Trade/lists）
+    ├── leverage_bot.py          ← 杠杆率统计（/TradeStat/leverage_ratio）
+    ├── exchange_list.py         ← 交易所账户列表（/User/exchange_lists）
+    │
+    ├── api_client.py            ← 🔧 通用 HTTP 请求封装
+    ├── platform_data.py         ← 🔧 平台参考数据（币种/策略/时间，24h 缓存）
+    └── qc_log/                  ← 🔧 统一日志模块（本地副本，避 stdlib logging 冲突）
+        ├── __init__.py
+        └── api_logger.py
 ```
 
-**架构约定**：
-- `trade_bot.py` 是唯一入口，用 `argparse` 子命令路由（无外部依赖）
-- 每个功能脚本导出 `def run(token, ..., confirm=False)`，由入口调用
-- Token 解析统一在入口完成，通过 `token` 参数传给各功能脚本
-- 写操作的 `run()` 签名统一包含 `confirm: bool = False`
-- **日志**：所有脚本统一接入 `scripts/logging/api_logger.py`，通过 `log_http_request()` 和 `log_error()` 记录
-- **API 地址**：`BASE_URL = "https://www.fourieralpha.com/Mobile"`
+### 内部模块说明
+
+**`qc_log/`** — API 请求日志 & 错误日志
+- 来源：`scripts/logging/api_logger.py`（本地副本，自包含）
+- 目录名 `qc_log` 而非 `logging`，避免遮蔽 Python 标准库 `logging`（urllib3 依赖它）
+- `log_http_request(url, params, response, agent_id)` — 记录 API 请求/响应到 `~/.quantclaw/logs/{agent_id}/{date}.log`
+- `log_error(msg, exception, context, agent_id)` — 记录脚本错误（含 traceback）
+- 自动清理 7 天前的旧日志
+
+**`api_client.py`** — 通用 HTTP 请求封装
+- `api_post(path, params, agent_id)` — 统一 POST 请求，内置日志 + 网络异常兜底
+- `check_auth(data)` — 检查 API 鉴权状态，返回 `(ok, message)`
+- `check_status(data)` — 检查业务状态（status == 1）
+- 目的：消除各脚本重复的 `requests.post` + `log_http_request` + `try/except` 模式
+
+**`platform_data.py`** — 平台级参考数据（带 24h 磁盘缓存）
+- `get_coin_list(token)` → `/Strategy/coin_lists` — 可用币种列表
+- `get_ai_time_list(token)` → `/Extend/ai_time_lists` — AI 回测时间列表
+- `get_ai_strategy_list(token)` → `/Extend/ai_strategy_lists` — AI 策略类型列表
+- `get_exchange_list(token, page, limit)` → `/User/exchange_lists` — 交易所账户（不缓存）
+- 缓存目录：`~/.quantclaw/cache/{key}.json`，TTL 24h
+- 依赖 `api_client`（`api_post` / `check_auth`）
+
+### 架构约定
+- `trade_bot.py` 是唯一入口，用 `argparse` 子命令路由（零外部 CLI 依赖）
+- 每个功能脚本导出 `def run(...)`，由入口 import 调用，不做 `if __name__` 独立运行
+- Token 解析统一在入口 `get_user_token_by_agent_id()` 完成
+- 所有 import 均为本地引用（`from qc_log import ...` / `from api_client import ...`），不依赖项目根 `scripts/`
+- skill 完全自包含，可独立复制/安装/分发
 
 ---
 
