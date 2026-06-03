@@ -64,11 +64,16 @@ def _cached_fetch(
     params: dict,
     parser: callable,
     agent_id: Optional[str] = None,
+    force_refresh: bool = False,
 ) -> dict:
-    """缓存优先：命中 → 直接返回；未命中 → 调 API → 写缓存 → 返回"""
-    cached = _cache_read(cache_key)
-    if cached is not None:
-        return cached
+    """缓存优先：命中 → 直接返回；未命中 → 调 API → 写缓存 → 返回
+    
+    force_refresh=True 时跳过缓存，强制重新请求并更新缓存。
+    """
+    if not force_refresh:
+        cached = _cache_read(cache_key)
+        if cached is not None:
+            return cached
 
     data = api_post(api_path, params, agent_id)
     ok, msg = check_auth(data)
@@ -98,14 +103,17 @@ def _parse_coin_list(data: dict) -> dict:
 def get_coin_list(
     token: str,
     agent_id: Optional[str] = None,
+    force_refresh: bool = False,
 ) -> dict:
-    """获取可用币种列表（24h 缓存）。API: /Strategy/coin_lists"""
+    """获取可用币种列表（24h 缓存）。force_refresh=True 跳过缓存。
+    API: /Strategy/coin_lists"""
     return _cached_fetch(
         cache_key="coins",
         api_path="/Strategy/coin_lists",
         params={"usertoken": token, "app_v": "2.0.0"},
         parser=_parse_coin_list,
         agent_id=agent_id,
+        force_refresh=force_refresh,
     )
 
 
@@ -123,14 +131,17 @@ def _parse_ai_time_list(data: dict) -> dict:
 def get_ai_time_list(
     token: str,
     agent_id: Optional[str] = None,
+    force_refresh: bool = False,
 ) -> dict:
-    """获取 AI 回测时间列表（24h 缓存）。API: /Extend/ai_time_lists"""
+    """获取 AI 回测时间列表（24h 缓存）。force_refresh=True 跳过缓存。
+    API: /Extend/ai_time_lists"""
     return _cached_fetch(
         cache_key="ai_times",
         api_path="/Extend/ai_time_lists",
         params={"usertoken": token, "app_v": "2.0.0"},
         parser=_parse_ai_time_list,
         agent_id=agent_id,
+        force_refresh=force_refresh,
     )
 
 
@@ -161,14 +172,17 @@ def _parse_ai_strategy_list(data: dict) -> dict:
 def get_ai_strategy_list(
     token: str,
     agent_id: Optional[str] = None,
+    force_refresh: bool = False,
 ) -> dict:
-    """获取 AI 策略类型列表（24h 缓存）。API: /Extend/ai_strategy_lists"""
+    """获取 AI 策略类型列表（24h 缓存）。force_refresh=True 跳过缓存。
+    API: /Extend/ai_strategy_lists"""
     return _cached_fetch(
         cache_key="ai_strategies",
         api_path="/Extend/ai_strategy_lists",
         params={"usertoken": token, "app_v": "2.0.0"},
         parser=_parse_ai_strategy_list,
         agent_id=agent_id,
+        force_refresh=force_refresh,
     )
 
 
