@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """查询交易机器人列表"""
-import sys
-import os
 import requests
 from typing import Optional
 
-# 日志模块路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'scripts', 'logging'))
-from api_logger import log_http_request, log_error
+from qc_log import log_http_request, log_error
 
 BASE_URL = "https://www.fourieralpha.com/Mobile"
 

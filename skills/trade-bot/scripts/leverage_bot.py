@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """查询运行中机器人的杠杆率统计"""
-import sys
-import os
 import requests
 from typing import Optional
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'scripts', 'logging'))
-from api_logger import log_http_request, log_error
+from qc_log import log_http_request, log_error
 
 BASE_URL = "https://www.fourieralpha.com/Mobile"
 
