@@ -68,6 +68,29 @@ def cmd_exchange_list(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_detail(args):
+    """查询机器人详情"""
+    from detail_bot import run
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(token=token, bot_id=args.bot_id, agent_id=args.agent_id)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_check_status(args):
+    """轮询机器人实时状态"""
+    from detail_bot import run_check_status
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run_check_status(
+        token=token, bot_id=args.bot_id,
+        grids_token=args.grids_token, agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def cmd_batch(args):
     """批量停止/预约停止/取消预约终止"""
     from batch_bot import run
@@ -139,8 +162,23 @@ def main():
     sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_batch)
 
+    # ── detail ──
+    sp = subs.add_parser("detail", help="查询机器人详情")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
+    sp.set_defaults(func=cmd_detail)
+
+    # ── check-status ──
+    sp = subs.add_parser("check-status", help="轮询机器人实时状态")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
+    sp.add_argument("--grids-token", required=True, help="grids_token（从 detail 获取）")
+    sp.set_defaults(func=cmd_check_status)
+
     # ── 占位子命令 ──
-    for cmd in ["detail", "balance", "stop", "apply", "check-status",
+    for cmd in ["balance", "stop", "apply",
                 "orders", "scale", "margin", "update"]:
         sp = subs.add_parser(cmd, help=f"{cmd}（待实现）")
         sp.add_argument("--agent-id", required=True, help="Agent ID")
