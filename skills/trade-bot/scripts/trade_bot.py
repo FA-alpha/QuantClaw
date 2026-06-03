@@ -68,6 +68,19 @@ def cmd_exchange_list(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_batch(args):
+    """批量停止/预约停止/取消预约终止"""
+    from batch_bot import run
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, bot_ids=args.bot_ids, save_type=args.save_type,
+        confirm=args.confirm, agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _not_impl(name):
     print(json.dumps({"status": "error", "message": f"{name} 功能尚未实现"}, ensure_ascii=False))
 
@@ -115,6 +128,16 @@ def main():
     sp.add_argument("--page", type=int, default=1, help="第几页")
     sp.add_argument("--limit", type=int, default=-1, help="每页条数，-1=全部")
     sp.set_defaults(func=cmd_exchange_list)
+
+    # ── batch ──
+    sp = subs.add_parser("batch", help="批量操作机器人（停止/预约停止/取消预约）")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--bot-ids", required=True, help="机器人 ID，多个逗号分隔")
+    sp.add_argument("--save-type", required=True, choices=["4", "6", "7"],
+                    help="4=停止, 6=预约停止, 7=取消预约终止")
+    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
+    sp.set_defaults(func=cmd_batch)
 
     # ── 占位子命令 ──
     for cmd in ["detail", "balance", "stop", "apply", "check-status",
