@@ -12,6 +12,14 @@ SAVE_TYPE_LABEL = {
     "7": "取消预约终止",
 }
 
+# 各操作的状态检查规则
+_STOP_RULES = {
+    "4": ({"1", "2"}, None),      # 停止: 仅运行中, 不查 reserve
+    "5": ({"1", "2"}, None),      # 停止当周期: 仅运行中
+    "6": ({"1", "2"}, {"0"}),     # 预约停止: 仅运行中 + 不在预约中
+    "7": ({"1", "2"}, {"1", "2"}),  # 取消预约: 仅运行中 + 仅在预约中
+}
+
 
 def run(
     token: str,
@@ -32,7 +40,8 @@ def run(
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
 
     # ── 预检 ──
-    pre = check_bots(token, [bot_id], save_type, agent_id)
+    statuses, reserves = _STOP_RULES.get(save_type, (set(), None))
+    pre = check_bots(token, [bot_id], statuses, reserves, agent_id)
     bot_state = pre["bots"][0]
 
     if not confirm:

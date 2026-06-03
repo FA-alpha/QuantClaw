@@ -104,6 +104,33 @@ def cmd_batch(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_scale(args):
+    """手动加仓/取消加仓"""
+    from scale_bot import run
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, bot_id=args.bot_id, save_type=args.save_type,
+        price=args.price, amt=args.amt, order_id=args.order_id,
+        confirm=args.confirm, agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_margin(args):
+    """调整保证金"""
+    from margin_bot import run
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, bot_id=args.bot_id, amt=args.amt, save_type=args.save_type,
+        confirm=args.confirm, agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _not_impl(name):
     print(json.dumps({"status": "error", "message": f"{name} 功能尚未实现"}, ensure_ascii=False))
 
@@ -179,9 +206,33 @@ def main():
     sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_stop)
 
+    # ── scale ──
+    sp = subs.add_parser("scale", help="手动加仓/取消加仓")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
+    sp.add_argument("--save-type", required=True, choices=["8", "9"],
+                    help="8=手动加仓, 9=取消加仓")
+    sp.add_argument("--price", type=float, help="加仓价格（save_type=8 必传）")
+    sp.add_argument("--amt", type=float, help="加仓金额（save_type=8 必传）")
+    sp.add_argument("--order-id", help="网格订单ID（save_type=9 必传）")
+    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
+    sp.set_defaults(func=cmd_scale)
+
+    # ── margin ──
+    sp = subs.add_parser("margin", help="调整保证金")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
+    sp.add_argument("--amt", type=float, required=True, help="保证金金额")
+    sp.add_argument("--save-type", required=True, choices=["6", "7"],
+                    help="6=增加保证金, 7=减少保证金")
+    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
+    sp.set_defaults(func=cmd_margin)
+
     # ── 占位子命令 ──
     for cmd in ["balance", "apply", "check-status",
-                "orders", "scale", "margin", "update"]:
+                "orders", "update"]:
         sp = subs.add_parser(cmd, help=f"{cmd}（待实现）")
         sp.add_argument("--agent-id", required=True, help="Agent ID")
         sp.set_defaults(func=lambda a, n=cmd: _not_impl(n))
