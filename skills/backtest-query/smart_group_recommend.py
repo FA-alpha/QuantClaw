@@ -16,15 +16,8 @@ from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from query import query_backtest, get_backtest_detail, get_version_info
 from analysis import recommend_combinations
-import sys
-from pathlib import Path
 
-# 添加项目根目录到 sys.path
-project_root = Path(__file__).resolve().parent.parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
-from scripts.logging import log_error, ErrorType
+from qc_log import log_error, ErrorType
 
 
 # ==================== 全局日志控制 ====================

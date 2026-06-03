@@ -11,15 +11,8 @@ import os
 import time
 from datetime import datetime
 import requests
-import sys
-from pathlib import Path
 
-# 添加项目根目录到 sys.path
-project_root = Path(__file__).resolve().parent.parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
-from scripts.logging import log_http_request, log_error
+from qc_log import log_http_request, log_error
 
 # API 配置
 API_BASE = "https://www.fourieralpha.com/Mobile"
