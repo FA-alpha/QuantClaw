@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """查询交易机器人列表"""
-import requests
 from typing import Optional
 
-from qc_log import log_http_request, log_error
-
-BASE_URL = "https://www.fourieralpha.com/Mobile"
+from api_client import api_post, check_auth
 
 # 筛选映射表
 STATUS_MAP = {"running": "1", "sim": "2", "stopped": "3", "deleted": "-1"}
@@ -111,69 +108,59 @@ def run(
     # usertoken 独立字段
     params["usertoken"] = token
 
-    url = f"{BASE_URL}/Trade/lists"
+    data = api_post("/Trade/lists", params, agent_id)
+    ok, msg = check_auth(data)
+    if not ok:
+        return {"status": "error", "message": msg}
 
-    try:
-        resp = requests.post(url, data=params, timeout=30)
-        data = resp.json()
-        log_http_request(url, params, response=data, agent_id=agent_id)
+    if data.get("status") != 1:
+        return {"status": "error", "message": data.get("msg", "未知错误"), "raw": data}
 
-        if data.get("status") != 1:
-            msg = data.get("msg", "未知错误")
-            return {"status": "error", "message": msg, "raw": data}
+    # 提取数据
+    bots_raw = data.get("info", [])
+    all_count = int(data.get("url", {}).get("all_count", len(bots_raw)))
 
-        # 提取数据
-        bots_raw = data.get("info", [])
-        all_count = int(data.get("url", {}).get("all_count", len(bots_raw)))
+    # 增强字段
+    bots = []
+    for b in bots_raw:
+        bots.append({
+            "id": b.get("id"),
+            "name": b.get("name"),
+            "account_name": b.get("account_name"),
+            "exchange_name": b.get("exchange_name"),
+            "amt_type": b.get("amt_type"),
+            "amt_type_label": AMT_TYPE_LABEL.get(str(b.get("amt_type")), ""),
+            "strategy_name": b.get("strategy_name"),
+            "status": b.get("status"),
+            "status_label": STATUS_LABEL.get(str(b.get("status")), ""),
+            "profit_rate": b.get("profit_rate"),
+            "net_value": b.get("net_value"),
+            "initial_capital": b.get("initial_capital"),
+            "run_time": b.get("run_time"),
+            "run_time_label": _fmt_runtime(b.get("run_time")),
+            "reserve_status": b.get("reserve_status"),
+            "trade_status": b.get("trade_status"),
+            "basic_unit": b.get("basic_unit"),
+            "create_time": b.get("create_time"),
+            "is_info": b.get("is_info"),
+        })
 
-        # 增强字段
-        bots = []
-        for b in bots_raw:
-            bots.append({
-                "id": b.get("id"),
-                "name": b.get("name"),
-                "account_name": b.get("account_name"),
-                "exchange_name": b.get("exchange_name"),
-                "amt_type": b.get("amt_type"),
-                "amt_type_label": AMT_TYPE_LABEL.get(str(b.get("amt_type")), ""),
-                "strategy_name": b.get("strategy_name"),
-                "status": b.get("status"),
-                "status_label": STATUS_LABEL.get(str(b.get("status")), ""),
-                "profit_rate": b.get("profit_rate"),
-                "net_value": b.get("net_value"),
-                "initial_capital": b.get("initial_capital"),
-                "run_time": b.get("run_time"),
-                "run_time_label": _fmt_runtime(b.get("run_time")),
-                "reserve_status": b.get("reserve_status"),
-                "trade_status": b.get("trade_status"),
-                "basic_unit": b.get("basic_unit"),
-                "create_time": b.get("create_time"),
-                "is_info": b.get("is_info"),
-            })
-
-        return {
-            "status": "ok",
-            "total": all_count,
-            "page": page,
-            "limit": limit,
-            "filters": {
-                "status": status,
-                "exchange_ids": exchange_ids,
-                "amt_type": amt_type or "all",
-                "strategy_type": strategy_type or "all",
-                "account_id": account_id or "all",
-                "direction": direction or "all",
-                "search": search,
-                "coin": coin,
-                "sort": sort,
-                "order": order,
-            },
-            "bots": bots,
-        }
-
-    except requests.RequestException as e:
-        log_error(str(e), exception=e, context={"url": url}, agent_id=agent_id)
-        return {"status": "error", "message": f"网络请求异常: {str(e)}"}
-    except Exception as e:
-        log_error(str(e), exception=e, context={"url": url}, agent_id=agent_id)
-        return {"status": "error", "message": f"脚本异常: {str(e)}"}
+    return {
+        "status": "ok",
+        "total": all_count,
+        "page": page,
+        "limit": limit,
+        "filters": {
+            "status": status,
+            "exchange_ids": exchange_ids,
+            "amt_type": amt_type or "all",
+            "strategy_type": strategy_type or "all",
+            "account_id": account_id or "all",
+            "direction": direction or "all",
+            "search": search,
+            "coin": coin,
+            "sort": sort,
+            "order": order,
+        },
+        "bots": bots,
+    }

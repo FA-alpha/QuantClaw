@@ -4,7 +4,7 @@ API 通用请求模块 — fourieralpha 平台 HTTP 请求封装
 
 统一管理：
   - BASE_URL / POST 请求
-  - 日志记录（通过 scripts/logging）
+  - 日志记录（通过 qc_log）
   - 鉴权检查
   - 错误处理
 

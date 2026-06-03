@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """查询运行中机器人的杠杆率统计"""
-import requests
 from typing import Optional
 
-from qc_log import log_http_request, log_error
-
-BASE_URL = "https://www.fourieralpha.com/Mobile"
+from api_client import api_post, check_auth
 
 STATUS_MAP = {"running": "1", "sim": "2", "stopped": "3", "deleted": "-1"}
 AMT_TYPE_MAP = {"spot": "1", "futures": "2"}
@@ -61,61 +58,51 @@ def run(
 
     params["usertoken"] = token
 
-    url = f"{BASE_URL}/TradeStat/leverage_ratio"
+    data = api_post("/TradeStat/leverage_ratio", params, agent_id)
+    ok, msg = check_auth(data)
+    if not ok:
+        return {"status": "error", "message": msg}
 
-    try:
-        resp = requests.post(url, data=params, timeout=30)
-        data = resp.json()
-        log_http_request(url, params, response=data, agent_id=agent_id)
+    if data.get("status") != 1:
+        return {"status": "error", "message": data.get("msg", "未知错误")}
 
-        if data.get("status") != 1:
-            msg = data.get("msg", "未知错误")
-            return {"status": "error", "message": msg}
+    info = data.get("info", {})
+    amt_info = info.get("amt_info", {})
+    leverage_info = info.get("leverage_info", {})
+    usdt_assets = info.get("usdt_assets", [])
 
-        info = data.get("info", {})
-        amt_info = info.get("amt_info", {})
-        leverage_info = info.get("leverage_info", {})
-        usdt_assets = info.get("usdt_assets", [])
-
-        return {
-            "status": "ok",
-            "total_amt": amt_info.get("total_amt"),
-            "leverage": {
-                "actual_invest_total": leverage_info.get("actual_invest_total"),
-                "nominal_invest_total": leverage_info.get("nominal_invest_total"),
-                "used_margin": leverage_info.get("used_margin"),
-                "used_margin_pct": leverage_info.get("used_margin_pct"),
-                "available_margin": leverage_info.get("available_margin"),
-                "available_margin_pct": leverage_info.get("available_margin_pct"),
-                "nominal_leverage": leverage_info.get("nominal_leverage"),
-                "real_leverage": leverage_info.get("real_leverage"),
-                "real_leverage_exposure": leverage_info.get("real_leverage_exposure"),
-                "dir_exposure": leverage_info.get("dir_exposure"),
-                "scale_exposure": leverage_info.get("scale_exposure"),
-            },
-            "assets": [
-                {
-                    "symbol": a.get("symbol"),
-                    "nominal_invest_total": a.get("nominal_invest_total"),
-                    "current_position": a.get("current_position"),
-                }
-                for a in usdt_assets
-            ] if usdt_assets else [],
-            "filters": {
-                "status": status,
-                "exchange_ids": exchange_ids,
-                "amt_type": amt_type or "all",
-                "strategy_type": strategy_type or "all",
-                "account_id": account_id or "all",
-                "direction": direction or "all",
-                "search": search,
-                "coin": coin,
-            },
-        }
-
-    except requests.RequestException as e:
-        log_error(str(e), exception=e, context={"url": url}, agent_id=agent_id)
-        return {"status": "error", "message": f"网络请求异常: {str(e)}"}
-    except Exception as e:
-        log_error(str(e), exception=e, context={"url": url}, agent_id=agent_id)
-        return {"status": "error", "message": f"脚本异常: {str(e)}"}
+    return {
+        "status": "ok",
+        "total_amt": amt_info.get("total_amt"),
+        "leverage": {
+            "actual_invest_total": leverage_info.get("actual_invest_total"),
+            "nominal_invest_total": leverage_info.get("nominal_invest_total"),
+            "used_margin": leverage_info.get("used_margin"),
+            "used_margin_pct": leverage_info.get("used_margin_pct"),
+            "available_margin": leverage_info.get("available_margin"),
+            "available_margin_pct": leverage_info.get("available_margin_pct"),
+            "nominal_leverage": leverage_info.get("nominal_leverage"),
+            "real_leverage": leverage_info.get("real_leverage"),
+            "real_leverage_exposure": leverage_info.get("real_leverage_exposure"),
+            "dir_exposure": leverage_info.get("dir_exposure"),
+            "scale_exposure": leverage_info.get("scale_exposure"),
+        },
+        "assets": [
+            {
+                "symbol": a.get("symbol"),
+                "nominal_invest_total": a.get("nominal_invest_total"),
+                "current_position": a.get("current_position"),
+            }
+            for a in usdt_assets
+        ] if usdt_assets else [],
+        "filters": {
+            "status": status,
+            "exchange_ids": exchange_ids,
+            "amt_type": amt_type or "all",
+            "strategy_type": strategy_type or "all",
+            "account_id": account_id or "all",
+            "direction": direction or "all",
+            "search": search,
+            "coin": coin,
+        },
+    }
