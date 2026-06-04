@@ -132,15 +132,35 @@ def cmd_margin(args):
 
 
 def cmd_edit(args):
-    """编辑策略参数（默认预览模式，加 --confirm 执行）"""
-    from edit_bot import run
+    """编辑策略参数（三步流程：预览 → 差异对比 → 确认执行）"""
+    from edit_bot import run, run_diff, run_execute
     token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
-    result = run(
-        token=token, bot_id=args.bot_id,
-        agent_id=args.agent_id,
-    )
+
+    if args.merged_rule:
+        # 第③步：确认执行
+        merged = json.loads(args.merged_rule)
+        result = run_execute(
+            token=token, bot_id=args.bot_id,
+            merged_rule=merged,
+            update_type=args.update_type,
+            agent_id=args.agent_id,
+        )
+    elif args.rule:
+        # 第②步：差异对比
+        proposed = json.loads(args.rule)
+        result = run_diff(
+            token=token, bot_id=args.bot_id,
+            proposed=proposed,
+            agent_id=args.agent_id,
+        )
+    else:
+        # 第①步：预览可编辑参数
+        result = run(
+            token=token, bot_id=args.bot_id,
+            agent_id=args.agent_id,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
@@ -244,11 +264,14 @@ def main():
     sp.set_defaults(func=cmd_margin)
 
     # ── edit ──
-    sp = subs.add_parser("edit", help="编辑策略参数（默认预览，需确认）")
+    sp = subs.add_parser("edit", help="编辑策略参数（预览→差异→确认）")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
     sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
-    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
+    sp.add_argument("--rule", help="提议修改的参数 (JSON)，不传则预览")
+    sp.add_argument("--merged-rule", dest="merged_rule", help="合并后的完整参数 (JSON)，确认执行")
+    sp.add_argument("--update-type", dest="update_type", type=int, default=1,
+                    choices=[1, 2], help="更新方式: 1=永久 2=仅当前周期 (默认1)")
     sp.set_defaults(func=cmd_edit)
 
     # ── 占位子命令 ──
