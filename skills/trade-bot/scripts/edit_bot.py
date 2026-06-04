@@ -17,8 +17,8 @@ from typing import Optional
 from api_client import api_post, check_auth, check_status
 
 
-# ── 详情缓存目录（与 detail_bot.py 保持一致） ──
-DETAIL_CACHE_DIR = os.path.expanduser("~/.quantclaw/cache/bot_details")
+# ── 详情缓存目录（临时数据，与 detail_bot.py 保持一致） ──
+DETAIL_CACHE_DIR = "/tmp/quantclaw/bot_details"
 
 # ── 可编辑的状态（只有运行中 / 模拟运行可编辑） ──
 EDITABLE_STATUSES = {"1", "2"}

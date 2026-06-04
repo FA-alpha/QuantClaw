@@ -6,8 +6,8 @@ from typing import Optional
 
 from api_client import api_post, check_auth
 
-# 详情缓存目录
-DETAIL_CACHE_DIR = os.path.expanduser("~/.quantclaw/cache/bot_details")
+# 详情缓存目录（临时数据，存 /tmp 下）
+DETAIL_CACHE_DIR = "/tmp/quantclaw/bot_details"
 
 STATUS_LABEL = {
     "0": "未运行", "1": "实盘运行中", "2": "模拟运行",
