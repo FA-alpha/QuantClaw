@@ -164,6 +164,20 @@ def cmd_edit(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_realtime(args):
+    """查询实时数据（币价/余额）"""
+    from realtime_info import run
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, bot_id=args.bot_id,
+        show_type=args.show_type,
+        agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _not_impl(name):
     print(json.dumps({"status": "error", "message": f"{name} 功能尚未实现"}, ensure_ascii=False))
 
@@ -273,6 +287,15 @@ def main():
     sp.add_argument("--update-type", dest="update_type", type=int, default=1,
                     choices=[1, 2], help="更新方式: 1=永久 2=仅当前周期 (默认1)")
     sp.set_defaults(func=cmd_edit)
+
+    # ── realtime ──
+    sp = subs.add_parser("realtime", help="查询实时数据（币价/可用余额）")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
+    sp.add_argument("--show-type", dest="show_type", default="1,2",
+                    help="类型: 1=币价 2=余额 3=可减少保证金 (默认1,2)")
+    sp.set_defaults(func=cmd_realtime)
 
     # ── 占位子命令 ──
     for cmd in ["balance", "apply", "check-status",

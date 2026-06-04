@@ -92,6 +92,7 @@ def run(
         "total_amt": trade_info.get("total_amt"),
         "float_profit": trade_info.get("float_profit"),
         "win_rate": trade_info.get("win_rate"),
+        "trade_token": trade_info.get("trade_token", ""),
     }
 
     # 网格
