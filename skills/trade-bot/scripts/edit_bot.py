@@ -101,17 +101,17 @@ ST2_FIELD_SCHEMA = {
     },
     # ── 止盈相关 ──
     "take_profit_type": {
-        "type": "select", "label": "止盈类型",
-        # TODO: 需确认具体选项值
-        "options": {"1": "类型1", "2": "类型2", "3": "类型3(含止盈倍数)"},
+        "type": "switch", "label": "移动止盈",
+        "options": {"1": "关闭", "3": "开启"},
         "children": {"3": ["stop_profit_multiple", "first_take_profit_ratio"]},
     },
     "stop_profit_multiple": {
-        "type": "number", "label": "止盈倍数", "condition": "take_profit_type=3",
+        "type": "number", "label": "止盈比例倍数", "condition": "take_profit_type=3",
+        "hint": "倍数",
     },
     "first_take_profit_ratio": {
-        "type": "number", "label": "首次止盈比例", "condition": "take_profit_type=3",
-        "hint": "百分比",
+        "type": "number", "label": "止盈仓位比例", "condition": "take_profit_type=3",
+        "hint": "%",
     },
 }
 
@@ -207,7 +207,152 @@ def get_strategy_rule_for_edit(info: dict) -> dict:
     return dict(strategy_rule)
 
 
-def build_field_list(info: dict) -> list:
+def fetch_trade_field_info(
+    token: str,
+    strategy_id: str,
+    strategy_type: str,
+    strategy_version: str,
+    robot_id: str,
+    agent_id: Optional[str] = None,
+) -> dict:
+    """
+    获取策略类型 != 2 的可编辑字段定义。
+
+    API: /Strategy/trade_field_info
+
+    Returns:
+        {"ok": bool, "info": list|None, "error": str}
+
+    info 结构（数组，按分组）：
+        [
+          {
+            "name": "基础设置",
+            "field_lists": [
+              {"name":"杠杆倍数","variable":"multiple_num","dvalue":3,
+               "type":"input","options":null},
+              {"name":"方向","variable":"direction","dvalue":"long",
+               "type":"select","options":[{"name":"做多","value":"long"},
+                                            {"name":"做空","value":"short"}]},
+              ...
+            ]
+          },
+          ...
+        ]
+        也可能包含 multiples 多维数组字段
+    """
+    data = api_post(
+        "/Strategy/trade_field_info",
+        {
+            "usertoken": token,
+            "app_v": "2.0.0",
+            "strategy_id": strategy_id,
+            "strategy_type": strategy_type,
+            "strategy_version": strategy_version,
+            "robot_id": robot_id,
+        },
+        agent_id,
+    )
+    ok, msg = check_auth(data)
+    if not ok:
+        return {"ok": False, "error": msg}
+
+    if not check_status(data):
+        return {"ok": False, "error": data.get("msg", data.get("info", "未知错误"))}
+
+    return {"ok": True, "info": data.get("info", [])}
+
+
+def _api_type_to_field_type(api_type: str) -> str:
+    """将 trade_field_info 的 type 映射为统一的 field type"""
+    mapping = {
+        "input": "number",
+        "input_fixed": "fixed",  # 固定值，不能修改
+        "select": "select",
+        "multiple": "multiple",  # 可添加多组
+    }
+    return mapping.get(api_type, api_type)
+
+
+def build_field_list_from_api(trade_fields: list, strategy_rule: dict) -> list:
+    """
+    将 /Strategy/trade_field_info 返回的数据转为统一的字段列表格式。
+
+    Args:
+        trade_fields: API 返回的 info 数组（按分组）
+        strategy_rule: 当前策略参数（从缓存 info 取）
+
+    Returns:
+        [
+          {
+            "group": "基础设置",
+            "fields": [
+              {"key":"multiple_num","label":"杠杆倍数","type":"number",
+               "value":3,"dvalue":3,"options":null,"editable":true},
+              {"key":"direction","label":"方向","type":"select",
+               "value":"long","dvalue":"long",
+               "options":{"long":"做多","short":"做空"},"editable":true},
+              {"key":"coin","label":"币种","type":"fixed",
+               "value":"SOL","dvalue":null,"editable":false},
+              ...
+            ]
+          },
+          ...
+        ]
+    """
+    groups = []
+
+    for group in trade_fields:
+        group_name = group.get("name", "")
+        field_lists = group.get("field_lists", [])
+        multiples = group.get("multiples", [])
+
+        fields = []
+
+        for f in field_lists:
+            variable = f.get("variable", "")
+            api_type = f.get("type", "input")
+            field_type = _api_type_to_field_type(api_type)
+
+            # options 格式转换: [{name,value}] → {value:name}
+            raw_options = f.get("options")
+            options = None
+            if raw_options and isinstance(raw_options, list):
+                options = {o["value"]: o["name"] for o in raw_options if "value" in o}
+
+            field = {
+                "key": variable,
+                "label": f.get("name", variable),
+                "type": field_type,
+                "dvalue": f.get("dvalue"),
+                "value": strategy_rule.get(variable, f.get("dvalue")),
+                "options": options,
+                "editable": api_type != "input_fixed",
+            }
+            fields.append(field)
+
+        # 多维数组字段
+        for m in multiples:
+            m_fields = m.get("fields", [])
+            # multiples 作为特殊分组内的嵌套字段
+            for mf in m_fields:
+                variable = mf.get("variable", "")
+                field = {
+                    "key": variable,
+                    "label": mf.get("name", variable),
+                    "type": "number",  # multiples 的子字段通常都是 input
+                    "dvalue": mf.get("dvalue"),
+                    # 从 strategy_rule 中取（需要特殊处理，标记为非顶层）
+                    "value": strategy_rule.get(variable),
+                    "options": None,
+                    "editable": True,
+                    "is_multiples_field": True,
+                    "multiples_group": group_name,
+                }
+                fields.append(field)
+
+        groups.append({"group": group_name, "fields": fields})
+
+    return groups
     """
     根据 strategy_type + 当前参数构建字段列表，Agent 据此渲染编辑界面。
 
@@ -307,26 +452,55 @@ def run(
 
     # ── 第2步：可编辑检查 ──
     check = check_editable(info)
-
-    # ── 第3步：提取策略参数 ──
-    raw_rule = info.get("strategy_rule", {})
-    editable_rule = get_strategy_rule_for_edit(info)
     strategy_type = str(info.get("strategy_type", ""))
+
+    # ── 第3步：获取可编辑字段 ──
+    strategy_rule = info.get("strategy_rule", {})
+
+    if strategy_type == "2":
+        # strategy_type=2: 硬编码 schema
+        editable_rule = get_strategy_rule_for_edit(info)
+        fields = build_field_list(info)
+        field_groups = None  # st2 不需要按分组展示
+    else:
+        # strategy_type != 2: 调用 trade_field_info 获取动态字段
+        strategy_id = str(info.get("strategy_id", ""))
+        strategy_version = info.get("version", strategy_rule.get("version", ""))
+        tf_result = fetch_trade_field_info(
+            token, strategy_id, strategy_type, strategy_version, bot_id, agent_id,
+        )
+        if tf_result["ok"]:
+            field_groups = build_field_list_from_api(tf_result["info"], strategy_rule)
+            fields = None  # 非 st2 用 field_groups 替代 fields
+        else:
+            # 降级：用 strategy_rule 的原始 key 做扁平列表
+            field_groups = None
+            fields = [
+                {"key": k, "label": PARAM_LABELS.get(k, k),
+                 "type": "unknown", "value": v}
+                for k, v in strategy_rule.items()
+            ]
+        editable_rule = strategy_rule
 
     return {
         "status": "preview",
         "bot_id": bot_id,
         "name": info.get("name", ""),
         "amt_type": str(info.get("amt_type", "")),
+        "strategy_id": info.get("strategy_id", ""),
+        "version": strategy_rule.get("version", ""),
         "editable_check": check,
         "strategy_type": strategy_type,
         "strategy_type_label": _strategy_type_label(strategy_type),
         # 结构化字段列表（Agent 据此渲染编辑界面）
-        "fields": build_field_list(info),
+        # - strategy_type=2: fields (扁平列表)
+        # - 其他: field_groups (按分组，含 label/type/options)
+        "fields": fields,
+        "field_groups": field_groups,
         # 当前可编辑参数
         "strategy_rule": editable_rule,
         # 原始完整参数（供参考对比）
-        "raw_rule": raw_rule,
+        "raw_rule": strategy_rule,
     }
 
 
@@ -432,26 +606,73 @@ def do_edit(
     agent_id: Optional[str] = None,
 ) -> dict:
     """
-    执行策略编辑 — 调用 /Trade/strategy_update_do
+    执行策略编辑 — strategy_type=2 走 /Trade/strategy_update_do
 
-    Args:
-        token: 用户 token
-        bot_id: 机器人 ID
-        strategy_type: 策略类型
-        new_rule: 完整的 strategy_rule（合并修改后）
-        update_type: 1=永久, 2=仅当前周期
-        agent_id: Agent ID
+    非 st2 走 /Strategy/trade_update_do（save_type=2 修改）
     """
-    url_params = {
-        "usertoken": token,
-        "app_v": "2.0.0",
-        "bot_id": bot_id,
-        "update_type": update_type,
-        "strategy_type": strategy_type,
-        "rule": json.dumps(new_rule, ensure_ascii=False),
-    }
+    if strategy_type == "2":
+        return _do_strategy_update(token, bot_id, strategy_type, new_rule, update_type, agent_id)
+    else:
+        return _do_trade_update(token, bot_id, strategy_type, new_rule, agent_id)
 
-    data = api_post("/Trade/strategy_update_do", url_params, agent_id)
+
+def _do_strategy_update(
+    token: str,
+    bot_id: str,
+    strategy_type: str,
+    new_rule: dict,
+    update_type: int = 1,
+    agent_id: Optional[str] = None,
+) -> dict:
+    """调用 /Trade/strategy_update_do（strategy_type=2）"""
+    data = api_post(
+        "/Trade/strategy_update_do",
+        {
+            "usertoken": token,
+            "app_v": "2.0.0",
+            "bot_id": bot_id,
+            "update_type": update_type,
+            "strategy_type": strategy_type,
+            "rule": json.dumps(new_rule, ensure_ascii=False),
+        },
+        agent_id,
+    )
+    ok, msg = check_auth(data)
+    if not ok:
+        return {"status": "error", "message": msg}
+
+    if not check_status(data):
+        return {"status": "error", "message": data.get("msg", data.get("info", "未知错误")), "raw": data}
+
+    return {"status": "ok", "data": data}
+
+
+def _do_trade_update(
+    token: str,
+    bot_id: str,
+    strategy_type: str,
+    new_rule: dict,
+    agent_id: Optional[str] = None,
+) -> dict:
+    """调用 /Strategy/trade_update_do（strategy_type != 2，save_type=2 修改）"""
+    info = load_cached_detail(bot_id)
+    strategy_id = ""
+    if info:
+        strategy_id = str(info.get("strategy_id", ""))
+
+    data = api_post(
+        "/Strategy/trade_update_do",
+        {
+            "usertoken": token,
+            "app_v": "2.0.0",
+            "save_type": "2",  # 修改
+            "strategy_id": strategy_id,
+            "strategy_type": strategy_type,
+            "robot_id": bot_id,
+            "rule": json.dumps(new_rule, ensure_ascii=False),
+        },
+        agent_id,
+    )
     ok, msg = check_auth(data)
     if not ok:
         return {"status": "error", "message": msg}
