@@ -1,27 +1,23 @@
 #!/usr/bin/env python3
-"""单个机器人操作 — /Trade/status_do（含预检 /Trade/batch_check_status）"""
+"""单个机器人操作 — /Trade/status_do（含预检）"""
 from typing import Optional
 
 from api_client import api_post, check_auth
 from bot_check import check_bots, filter_executable, STATUS_LABEL
+from agent_display import blocked_result, preview_result, ok_result, error_result
 
 SAVE_TYPE_LABEL = {
-    "4": "停止",
-    "5": "停止当周期",
-    "6": "预约停止",
-    "7": "取消预约终止",
-    "8": "暂停加仓",
-    "9": "取消暂停加仓",
+    "4": "停止", "5": "停止当周期", "6": "预约停止",
+    "7": "取消预约终止", "8": "暂停加仓", "9": "取消暂停加仓",
 }
 
-# 各操作的状态检查规则 (statuses, reserves, add_pause_statuses)
 _STOP_RULES = {
-    "4": ({"1", "2"}, None, None),          # 停止: 仅运行中
-    "5": ({"1", "2"}, None, None),          # 停止当周期: 仅运行中
-    "6": ({"1", "2"}, {"0"}, None),         # 预约停止: 仅运行中 + 不在预约中
-    "7": ({"1", "2"}, {"1", "2"}, None),    # 取消预约: 仅运行中 + 仅在预约中
-    "8": ({"1", "2"}, None, {"0"}),         # 暂停加仓: 仅运行中 + 未暂停
-    "9": ({"1", "2"}, None, {"1"}),         # 取消暂停加仓: 仅运行中 + 已暂停
+    "4": ({"1", "2"}, None, None),
+    "5": ({"1", "2"}, None, None),
+    "6": ({"1", "2"}, {"0"}, None),
+    "7": ({"1", "2"}, {"1", "2"}, None),
+    "8": ({"1", "2"}, None, {"0"}),
+    "9": ({"1", "2"}, None, {"1"}),
 }
 
 
@@ -32,77 +28,63 @@ def run(
     confirm: bool = False,
     agent_id: Optional[str] = None,
 ) -> dict:
-    """
-    单个机器人操作（停止 / 重启 / 预约停止 / 取消预约 / 暂停加仓 / 取消暂停）
-
-    - 预览时自动查询 bot 当前状态，判断操作是否可执行
-    - 确认执行前再次检查状态，过滤无效操作
-
-    Returns:
-        {"status": "preview"|"ok"|"error", ...}
-    """
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
 
-    # ── 预检 ──
     statuses, reserves, pause_statuses = _STOP_RULES.get(save_type, (set(), None, None))
     pre = check_bots(token, [bot_id], statuses, reserves, pause_statuses, agent_id)
     bot_state = pre["bots"][0]
 
     if not confirm:
-        return {
-            "status": "preview",
-            "action": action_label,
-            "danger_level": "red",
-            "bot": bot_state,
-            "can_execute": bot_state["can_execute"],
-            "summary": {
-                "机器人 ID": bot_id,
-                "操作": action_label,
-                "save_type": save_type,
-            },
-            "warning": f"⚠️ 即将对机器人 {bot_id} 执行「{action_label}」"
-                if bot_state["can_execute"]
-                else f"❌ 无法执行: {bot_state['reason']}",
-        }
+        if not bot_state["can_execute"]:
+            return blocked_result(
+                title=f"❌ 无法{action_label}",
+                reason=bot_state["reason"],
+                rule="该机器人不可执行此操作，不得尝试绕过",
+            )
+        return preview_result(
+            title=f"⚠️ {action_label} - 待确认",
+            detail_lines=[
+                f"机器人: {bot_id}",
+                f"当前状态: {bot_state['status_label']}",
+                f"操作: {action_label}",
+            ],
+            rule="必须等待用户确认后才执行，不得自行跳过确认步骤",
+            bot_id=bot_id,
+            action=action_label,
+            save_type=save_type,
+            bot_state=bot_state,
+        )
 
-    # ── 执行前再次确认状态 ──
     executable = filter_executable(pre["bots"])
     if not executable:
-        return {
-            "status": "error",
-            "message": f"操作被阻止: {bot_state['reason']}",
-            "bot": bot_state,
-        }
+        return blocked_result(
+            title=f"❌ 无法{action_label}",
+            reason=bot_state["reason"],
+            rule="该机器人不可执行此操作",
+        )
 
     data = api_post(
         "/Trade/status_do",
-        {
-            "usertoken": token,
-            "app_v": "2.0.0",
-            "bot_id": bot_id,
-            "save_type": save_type,
-        },
+        {"usertoken": token, "app_v": "2.0.0", "bot_id": bot_id, "save_type": save_type},
         agent_id,
     )
-    ok, msg = check_auth(data)
-    if not ok:
-        return {"status": "error", "message": msg}
-
+    ok_msg, msg = check_auth(data)
+    if not ok_msg:
+        return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试")
     if data.get("status") != 1:
-        return {"status": "error", "message": data.get("msg", "未知错误"), "raw": data}
+        return error_result(title=f"❌ {action_label}失败",
+                            message=data.get("msg", "未知错误"), rule="不得自行重试")
 
     info = data.get("info", {})
     new_status = str(info.get("status", ""))
-    return {
-        "status": "ok",
-        "action": action_label,
-        "bot": {
-            "id": bot_id,
-            "status": info.get("status"),
-            "status_label": STATUS_LABEL.get(new_status, new_status),
-            "before": {
-                "status": bot_state["status"],
-                "status_label": bot_state["status_label"],
-            },
-        },
-    }
+    return ok_result(
+        title=f"✅ {action_label}成功",
+        detail_lines=[
+            f"机器人: {bot_id}",
+            f"{bot_state['status_label']} → {STATUS_LABEL.get(new_status, new_status)}",
+        ],
+        bot_id=bot_id,
+        action=action_label,
+        before_status=bot_state["status_label"],
+        after_status=STATUS_LABEL.get(new_status, new_status),
+    )

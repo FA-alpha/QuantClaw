@@ -15,6 +15,10 @@ import os
 from typing import Optional
 
 from api_client import api_post, check_auth, check_status
+from agent_display import (
+    blocked_result, prompt_result, preview_result,
+    ok_result, error_result,
+)
 
 
 # ── 详情缓存目录（临时数据，与 detail_bot.py 保持一致） ──
@@ -454,7 +458,11 @@ def run(
         # 缓存不存在，请求 API
         result = fetch_info(token, bot_id, agent_id)
         if not result["ok"]:
-            return {"status": "error", "message": result["error"]}
+            return error_result(
+                title="❌ 获取机器人信息失败",
+                message=result["error"],
+                rule="不得自行重试或编造数据",
+            )
         info = result["info"]
 
     # ── 第2步：可编辑检查 ──
@@ -705,16 +713,21 @@ def run_diff(
     if info is None:
         result = fetch_info(token, bot_id, agent_id)
         if not result["ok"]:
-            return {"status": "error", "message": result["error"]}
+            return error_result(
+            title="❌ 获取机器人信息失败",
+            message=result["error"],
+            rule="不得自行重试",
+        )
         info = result["info"]
 
     check = check_editable(info)
     if not check["editable"]:
-        return {
-            "status": "error",
-            "message": check["reason"],
-            "editable_check": check,
-        }
+        return blocked_result(
+            title="❌ 该机器人不可编辑",
+            reason=check["reason"],
+            rule="该机器人当前不可编辑，不得尝试绕过",
+            editable_check=check,
+        )
 
     current_rule = get_strategy_rule_for_edit(info)
     diff = diff_changes(current_rule, proposed)
@@ -748,7 +761,11 @@ def run_execute(
     if info is None:
         result = fetch_info(token, bot_id, agent_id)
         if not result["ok"]:
-            return {"status": "error", "message": result["error"]}
+            return error_result(
+                title="❌ 获取机器人信息失败",
+                message=result["error"],
+                rule="不得自行重试",
+            )
         info = result["info"]
 
     strategy_type = str(info.get("strategy_type", ""))

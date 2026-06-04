@@ -4,22 +4,18 @@ import time
 from typing import Optional
 
 from api_client import api_post, check_auth
-from bot_check import check_bots, filter_executable, STATUS_LABEL
+from bot_check import check_bots, filter_executable
 from realtime_info import run as get_realtime
+from agent_display import blocked_result, prompt_result, preview_result, ok_result, error_result
 
 SAVE_TYPE_LABEL = {"8": "手动加仓", "9": "取消加仓"}
-
-# 仅实盘运行中 (status=1)
 _SCALE_RULES = {"8": ({"1"}, None), "9": ({"1"}, None)}
-
-# 实时数据有效期（秒），超时后执行时需重新确认
 REALTIME_TTL = 90
 
 
-def _fetch_realtime(token: str, bot_id: str, agent_id: str) -> dict:
-    """获取实时数据（币价+余额），失败返回空"""
+def _fetch_realtime(token: str, bot_id: str, show_type: str, agent_id: str) -> dict:
     try:
-        rt = get_realtime(token, bot_id, show_type="1,2", agent_id=agent_id)
+        rt = get_realtime(token, bot_id, show_type=show_type, agent_id=agent_id)
         if rt.get("status") == "ok":
             return rt
     except Exception:
@@ -37,91 +33,127 @@ def run(
     confirm: bool = False,
     agent_id: Optional[str] = None,
 ) -> dict:
-    """
-    手动加仓 / 取消加仓
-
-    save_type=8 必传: price, amt
-    save_type=9 必传: order_id
-
-    预览时附带实时币价+可用余额辅助决策。
-    执行时重新拉取实时数据，标记是否过期。
-    """
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
 
-    # ── 预检 ──
     statuses, reserves = _SCALE_RULES.get(save_type, (set(), None))
     pre = check_bots(token, [bot_id], statuses, reserves, agent_id)
     bot_state = pre["bots"][0]
+    if not bot_state["can_execute"]:
+        return blocked_result(
+            title=f"❌ 无法{action_label}",
+            reason=bot_state["reason"],
+            rule="该机器人不可操作，不得尝试绕过",
+        )
+
+    # ── 取消加仓: 直接走 preview ──
+    if save_type == "9":
+        if not confirm:
+            if not order_id:
+                return prompt_result(
+                    title=f"📝 {action_label}",
+                    prompt_text="请输入要取消的网格订单ID (order_id)",
+                    rule="必须等待用户提供 order_id，不得编造",
+                )
+            return preview_result(
+                title=f"⚠️ {action_label} - 待确认",
+                detail_lines=[f"机器人: {bot_id}", f"操作: {action_label}", f"订单ID: {order_id}"],
+                rule="必须等待用户确认后才执行",
+                bot_id=bot_id,
+                action=action_label,
+                order_id=order_id,
+            )
+
+        executable = filter_executable(pre["bots"])
+        if not executable:
+            return blocked_result(title=f"❌ 无法{action_label}", reason=bot_state["reason"],
+                                  rule="该机器人不可操作")
+        params = {"usertoken": token, "app_v": "2.0.0", "bot_id": bot_id, "save_type": save_type, "order_id": order_id}
+        data = api_post("/Trade/scale_do", params, agent_id)
+        ok_msg, msg = check_auth(data)
+        if not ok_msg:
+            return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试")
+        if data.get("status") != 1:
+            return error_result(title=f"❌ {action_label}失败",
+                                message=data.get("msg", "未知错误"), rule="不得自行重试")
+        return ok_result(title=f"✅ {action_label}成功",
+                         detail_lines=[f"机器人: {bot_id}", f"订单: {order_id}"],
+                         bot_id=bot_id)
+
+    # ── 手动加仓(save_type=8): 需要实时数据 ──
+    realtime = _fetch_realtime(token, bot_id, "1,2", agent_id)
 
     if not confirm:
-        # ── 预览：拉实时数据 ──
-        realtime = _fetch_realtime(token, bot_id, agent_id) if save_type == "8" else None
+        # 没传价格和金额 → 引导输入
+        if price is None or amt is None:
+            lines = [f"机器人: {bot_id}", f"操作: {action_label}"]
+            if realtime.get("status") == "ok":
+                ts = realtime.get("timestamp_label", "")
+                for it in realtime.get("items", []):
+                    lines.append(f"{it['type_label']}: {it['amt']} ({ts})")
+            lines.append("")
+            lines.append("请输入加仓价格和金额，例如: --price 78 --amt 100")
+            return prompt_result(
+                title=f"📝 {action_label}",
+                prompt_text="\n".join(lines),
+                rule="必须等待用户输入价格和金额，不得编造",
+                bot_id=bot_id,
+                realtime=realtime if realtime.get("status") == "ok" else None,
+            )
 
-        summary = {
-            "机器人 ID": bot_id,
-            "操作": action_label,
-            "save_type": save_type,
-        }
-        if save_type == "8":
-            summary["price"] = price
-            summary["amt"] = amt
+        # 传了价格和金额 → 预览
+        detail_lines = [f"机器人: {bot_id}", f"操作: {action_label}",
+                        f"加仓价格: {price}", f"加仓金额: {amt}"]
+        if realtime.get("status") == "ok":
+            ts = realtime.get("timestamp_label", "")
+            for it in realtime.get("items", []):
+                detail_lines.append(f"{it['type_label']}: {it['amt']} ({ts})")
+        return preview_result(
+            title=f"⚠️ {action_label} - 待确认",
+            detail_lines=detail_lines,
+            rule="必须等待用户确认后才执行",
+            bot_id=bot_id,
+            action=action_label,
+            price=price,
+            amt=amt,
+            realtime=realtime if realtime.get("status") == "ok" else None,
+        )
 
-        return {
-            "status": "preview",
-            "action": action_label,
-            "danger_level": "yellow",
-            "bot": bot_state,
-            "can_execute": bot_state["can_execute"],
-            "realtime": realtime,  # 实时数据（币价+余额）
-            "summary": summary,
-            "warning": f"⚠️ 即将对机器人 {bot_id} 执行「{action_label}」"
-                if bot_state["can_execute"]
-                else f"❌ 无法执行: {bot_state['reason']}",
-        }
-
-    # ── 执行前再次确认 ──
+    # ── 执行 ──
     executable = filter_executable(pre["bots"])
     if not executable:
-        return {"status": "error", "message": f"操作被阻止: {bot_state['reason']}", "bot": bot_state}
+        return blocked_result(title=f"❌ 无法{action_label}", reason=bot_state["reason"],
+                              rule="该机器人不可操作")
 
-    # ── 执行时重新拉实时数据，检查时效 ──
-    fresh_realtime = None
+    if price is None or amt is None:
+        return error_result(title=f"❌ {action_label}失败",
+                            message="缺少 price 或 amt 参数", rule="不得自行编造参数")
+
+    # 执行时重新拉实时数据
+    fresh_realtime = _fetch_realtime(token, bot_id, "1,2", agent_id)
     stale_warning = None
-    if save_type == "8":
-        fresh_realtime = _fetch_realtime(token, bot_id, agent_id)
-        if fresh_realtime.get("status") == "ok":
-            ts = fresh_realtime.get("timestamp", 0)
-            age = int(time.time()) - ts
-            if age > REALTIME_TTL:
-                stale_warning = f"⚠️ 实时数据已过去 {age} 秒，价格可能已变化，请重新确认"
+    if fresh_realtime.get("status") == "ok":
+        age = int(time.time()) - fresh_realtime.get("timestamp", 0)
+        if age > REALTIME_TTL:
+            stale_warning = f"实时数据已过去 {age} 秒，价格可能已变化"
 
-    params = {
-        "usertoken": token,
-        "app_v": "2.0.0",
-        "bot_id": bot_id,
-        "save_type": save_type,
-    }
-    if save_type == "8":
-        if price is None or amt is None:
-            return {"status": "error", "message": "手动加仓需要 price 和 amt 参数"}
-        params["price"] = price
-        params["amt"] = amt
-    elif save_type == "9":
-        if not order_id:
-            return {"status": "error", "message": "取消加仓需要 order_id 参数"}
-        params["order_id"] = order_id
-
-    data = api_post("/Trade/scale_do", params, agent_id)
-    ok, msg = check_auth(data)
-    if not ok:
-        return {"status": "error", "message": msg}
-
+    data = api_post("/Trade/scale_do", {
+        "usertoken": token, "app_v": "2.0.0", "bot_id": bot_id,
+        "save_type": save_type, "price": price, "amt": amt,
+    }, agent_id)
+    ok_msg, msg = check_auth(data)
+    if not ok_msg:
+        return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试")
     if data.get("status") != 1:
-        return {"status": "error", "message": data.get("msg", "未知错误"), "raw": data}
+        return error_result(title=f"❌ {action_label}失败",
+                            message=data.get("msg", "未知错误"), rule="不得自行重试")
 
-    result = {"status": "ok", "action": action_label, "bot_id": bot_id}
-    if fresh_realtime:
-        result["realtime"] = fresh_realtime
+    result_lines = [f"机器人: {bot_id}", f"价格: {price}", f"金额: {amt}"]
     if stale_warning:
-        result["stale_warning"] = stale_warning
-    return result
+        result_lines.append(stale_warning)
+    return ok_result(
+        title=f"✅ {action_label}成功",
+        detail_lines=result_lines,
+        bot_id=bot_id,
+        action=action_label,
+        stale_warning=stale_warning,
+    )

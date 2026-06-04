@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
-"""批量操作交易机器人 — /Trade/batch_do（含预检 /Trade/batch_check_status）"""
+"""批量操作交易机器人 — /Trade/batch_do（含预检）"""
 from typing import Optional
 
 from api_client import api_post, check_auth
-from bot_check import check_bots, filter_executable, STATUS_LABEL
+from bot_check import check_bots, filter_executable
+from agent_display import blocked_result, preview_result, ok_result, error_result
 
 SAVE_TYPE_LABEL = {
-    "4": "停止",
-    "6": "预约停止",
-    "7": "取消预约终止",
-    "8": "暂停加仓",
-    "9": "取消暂停加仓",
+    "4": "停止", "6": "预约停止", "7": "取消预约终止",
+    "8": "暂停加仓", "9": "取消暂停加仓",
 }
 
-# (statuses, reserves, add_pause_statuses)
 _BATCH_RULES = {
-    "4": ({"1", "2"}, None, None),          # 停止: 仅运行中
-    "6": ({"1", "2"}, {"0"}, None),         # 预约停止: 仅运行中 + 不在预约中
-    "7": ({"1", "2"}, {"1", "2"}, None),    # 取消预约: 仅运行中 + 仅在预约中
-    "8": ({"1", "2"}, None, {"0"}),         # 暂停加仓: 仅运行中 + 未暂停
-    "9": ({"1", "2"}, None, {"1"}),         # 取消暂停加仓: 仅运行中 + 已暂停
+    "4": ({"1", "2"}, None, None),
+    "6": ({"1", "2"}, {"0"}, None),
+    "7": ({"1", "2"}, {"1", "2"}, None),
+    "8": ({"1", "2"}, None, {"0"}),
+    "9": ({"1", "2"}, None, {"1"}),
 }
 
 
@@ -30,74 +27,73 @@ def run(
     confirm: bool = False,
     agent_id: Optional[str] = None,
 ) -> dict:
-    """
-    批量操作机器人（停止 / 预约停止 / 取消预约终止 / 暂停加仓 / 取消暂停）
-
-    - 预览时查询所有 bot 当前状态，标记可执行/不可执行
-    - 确认执行时只对可执行的 bot 调 API
-
-    Returns:
-        {"status": "preview"|"ok"|"error", ...}
-    """
     ids = [x.strip() for x in bot_ids.split(",") if x.strip()]
     if not ids:
-        return {"status": "error", "message": "bot_ids 不能为空"}
+        return error_result(title="❌ 参数错误", message="bot_ids 不能为空", rule="不得编造 bot_id")
 
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
-
-    # ── 预检 ──
     statuses, reserves, pause_statuses = _BATCH_RULES.get(save_type, (set(), None, None))
     pre = check_bots(token, ids, statuses, reserves, pause_statuses, agent_id)
 
     if not confirm:
-        return {
-            "status": "preview",
-            "action": f"批量{action_label}",
-            "danger_level": "red",
-            "bots": pre["bots"],
-            "executable_count": pre["executable_count"],
-            "blocked_count": pre["blocked_count"],
-            "summary": {
-                "操作类型": f"{action_label} (save_type={save_type})",
-                "总数": len(ids),
-                "可执行": pre["executable_count"],
-                "被阻止": pre["blocked_count"],
-            },
-            "warning": f"⚠️ 即将对 {pre['executable_count']} 个机器人执行「{action_label}」"
-                if pre["executable_count"] > 0
-                else "❌ 所有机器人均不可执行此操作",
-        }
+        if pre["executable_count"] == 0:
+            # 列出所有被阻止的原因
+            reasons = [f"{b['id']}: {b['reason']}" for b in pre["bots"] if not b["can_execute"]]
+            return blocked_result(
+                title=f"❌ 所有机器人均不可{action_label}",
+                reason="\n".join(reasons),
+                rule="所有目标机器人都不可操作，不得尝试绕过",
+            )
 
-    # ── 执行前过滤 ──
+        # 有可执行的 → 预览
+        blocked_list = [f"{b['id']} ({b['status_label']}): {b['reason']}"
+                        for b in pre["bots"] if not b["can_execute"]]
+        exec_list = [f"{b['id']} ({b['status_label']})"
+                     for b in pre["bots"] if b["can_execute"]]
+
+        detail_lines = [f"操作: 批量{action_label}",
+                        f"总数: {len(ids)}, 可执行: {pre['executable_count']}, 阻止: {pre['blocked_count']}"]
+        if exec_list:
+            detail_lines.append(f"可执行: {', '.join(exec_list)}")
+        if blocked_list:
+            detail_lines.append(f"已跳过: {'; '.join(blocked_list)}")
+
+        return preview_result(
+            title=f"⚠️ 批量{action_label} - 待确认",
+            detail_lines=detail_lines,
+            rule="必须等待用户确认后才执行，不得自行跳过",
+            action=f"批量{action_label}",
+            save_type=save_type,
+            executable_count=pre["executable_count"],
+            blocked_count=pre["blocked_count"],
+            bots=pre["bots"],
+        )
+
     exec_ids = filter_executable(pre["bots"])
     if not exec_ids:
-        return {
-            "status": "error",
-            "message": "所有机器人均不可执行此操作",
-            "bots": pre["bots"],
-        }
+        return blocked_result(
+            title=f"❌ 所有机器人都无法{action_label}",
+            reason="执行前校验: 所有机器人均不可操作",
+            rule="不得尝试绕过",
+        )
 
     data = api_post(
         "/Trade/batch_do",
-        {
-            "usertoken": token,
-            "app_v": "2.0.0",
-            "bot_id": ",".join(exec_ids),
-            "save_type": save_type,
-        },
+        {"usertoken": token, "app_v": "2.0.0", "bot_id": ",".join(exec_ids), "save_type": save_type},
         agent_id,
     )
-    ok, msg = check_auth(data)
-    if not ok:
-        return {"status": "error", "message": msg}
-
+    ok_msg, msg = check_auth(data)
+    if not ok_msg:
+        return error_result(title=f"❌ 批量{action_label}失败", message=msg, rule="不得自行重试")
     if data.get("status") != 1:
-        return {"status": "error", "message": data.get("msg", "未知错误"), "raw": data}
+        return error_result(title=f"❌ 批量{action_label}失败",
+                            message=data.get("msg", "未知错误"), rule="不得自行重试")
 
-    return {
-        "status": "ok",
-        "action": f"批量{action_label}",
-        "executed": len(exec_ids),
-        "skipped": len(ids) - len(exec_ids),
-        "bot_ids": exec_ids,
-    }
+    return ok_result(
+        title=f"✅ 批量{action_label}成功",
+        detail_lines=[f"执行: {len(exec_ids)} 个", f"跳过: {len(ids) - len(exec_ids)} 个"],
+        action=f"批量{action_label}",
+        executed=len(exec_ids),
+        skipped=len(ids) - len(exec_ids),
+        bot_ids=exec_ids,
+    )
