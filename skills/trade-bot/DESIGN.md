@@ -71,6 +71,7 @@ skills/trade-bot/
     ├── edit_bot.py              ← 策略参数编辑（/Trade/strategy_update_do 或 /Strategy/trade_update_do）
     │
     ├── bot_check.py             ← 🔧 状态预检（/Trade/batch_check_status，供 stop/batch/scale/margin 复用）
+    ├── agent_display.py         ← 🔧 Agent 展示约束（统一返回格式，防止 Agent 自由发挥）
     ├── api_client.py            ← 🔧 通用 HTTP 请求封装
     ├── platform_data.py         ← 🔧 平台参考数据（币种/策略/时间，24h 缓存）
     └── qc_log/                  ← 🔧 统一日志模块
@@ -405,3 +406,109 @@ def filter_executable(bot_states) -> List[str]:
 - [x] 状态预检模块 `bot_check.py`，检查 status + reserve + add_pause_status
 - [x] 详情缓存到 `/tmp/quantclaw/bot_details/`
 - [x] `is_edit` / `is_add_pause_btn` / `add_pause_status` 字段
+---
+
+## 🔒 Agent 展示约束（防自由发挥）
+
+### 问题
+
+Agent 在遇到报错（超额/状态不符/网络错误）时可能自由发挥：自行调整金额、跳过校验、编造数据。
+
+### 解决方案：`agent_display` 通用模块
+
+所有写操作脚本返回时**必须**附带 `agent_display` 字段，明确告诉 Agent 该展示什么、不该做什么。
+
+### 模块：`agent_display.py`
+
+```python
+from agent_display import blocked_result, prompt_result, preview_result, ok_result, error_result
+```
+
+**5 种标准返回类型**：
+
+| 函数 | status | blocked | 用途 |
+|------|--------|---------|------|
+| `blocked_result(title, reason)` | `"blocked"` | `true` | 操作被阻止，Agent 不得绕过 |
+| `prompt_result(title, prompt_text)` | `"prompt"` | `true` | 需要用户输入，Agent 不得代为决定 |
+| `preview_result(title, detail_lines)` | `"preview"` | `true` | 展示操作详情，等用户确认 |
+| `ok_result(title, detail_lines)` | `"ok"` | `false` | 操作成功 |
+| `error_result(title, message)` | `"error"` | `true` | 错误，Agent 不得自行处理 |
+
+### 返回格式
+
+所有类型都返回统一结构：
+```json
+{
+  "status": "preview",
+  "agent_display": {
+    "title": "⚠️ 手动加仓 - 待确认",
+    "lines": ["SOL 当前价: 75.56", "加仓价格: 78.00", "加仓金额: 100U"],
+    "blocked": true,
+    "rule": "必须等待用户确认后才执行，不得自行跳过确认步骤",
+    "user_prompt": "确认执行？回复「确认」或「取消」"
+  },
+  "action": "手动加仓",
+  "summary": {...}
+}
+```
+
+### `agent_display` 字段说明
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `title` | string | 展示标题（Agent 可直接用） |
+| `lines` | list | 展示内容行（Agent 逐行渲染即可） |
+| `blocked` | bool | `true`=Agent 被阻止继续，必须等待用户 |
+| `rule` | string | 行为约束规则（"不得..."的明确指令） |
+| `user_prompt` | string | 给用户的引导语（Agent 可直接复制发送） |
+
+### 使用示例
+
+```python
+# 超额
+return blocked_result(
+    title="⚠️ 金额超额",
+    reason=f"请求 999U 超出可用余额 500U",
+    rule="必须等待用户重新输入，不得自行调小金额",
+    user_prompt="请输入不超过 500 的金额",
+    max_available=500,
+    requested=999,
+)
+
+# 引导输入
+return prompt_result(
+    title="📝 请输入加仓参数",
+    prompt_text="当前 SOL=75.56, 可用余额=500U\n请输入加仓价格和金额，如「78, 100U」",
+    rule="必须等待用户输入价格和金额，不得编造",
+    realtime={...},
+)
+
+# 预览
+return preview_result(
+    title="⚠️ 增加保证金 - 待确认",
+    detail_lines=["机器人: 2039 SOL-星辰", "金额: 100U", "可用余额: 500U"],
+    rule="必须等待用户确认后才执行",
+    user_prompt="确认增加 100U 保证金？回复「确认」",
+    bot_id="2039",
+    amt=100,
+)
+
+# 成功
+return ok_result(
+    title="✅ 保证金已增加",
+    detail_lines=["机器人: 2039", "金额: +100U"],
+    bot_id="2039",
+    amt=100,
+)
+```
+
+### 脚本编写检查清单
+
+新增或修改写操作脚本时，确认以下项：
+
+- [ ] 所有 `return` 都用了 `agent_display` 的 5 个函数之一
+- [ ] `blocked` 状态时 `rule` 明确写了"不得..."的约束
+- [ ] `prompt` 状态时 `user_prompt` 包含引导用户输入的示例格式
+- [ ] `preview` 状态时 `detail_lines` 列出了所有关键参数（金额/币种/操作类型）
+- [ ] 超额/状态不符等异常场景不是泛泛的 error，而是具体的 `blocked_result` + 明确原因
+- [ ] 没有裸 `return {"status":"error", "message":"..."}` 没带 `agent_display`
