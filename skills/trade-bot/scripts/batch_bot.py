@@ -9,12 +9,17 @@ SAVE_TYPE_LABEL = {
     "4": "停止",
     "6": "预约停止",
     "7": "取消预约终止",
+    "8": "暂停加仓",
+    "9": "取消暂停加仓",
 }
 
+# (statuses, reserves, add_pause_statuses)
 _BATCH_RULES = {
-    "4": ({"1", "2"}, None),      # 停止: 仅运行中
-    "6": ({"1", "2"}, {"0"}),     # 预约停止: 仅运行中 + 不在预约中
-    "7": ({"1", "2"}, {"1", "2"}),  # 取消预约: 仅运行中 + 仅在预约中
+    "4": ({"1", "2"}, None, None),          # 停止: 仅运行中
+    "6": ({"1", "2"}, {"0"}, None),         # 预约停止: 仅运行中 + 不在预约中
+    "7": ({"1", "2"}, {"1", "2"}, None),    # 取消预约: 仅运行中 + 仅在预约中
+    "8": ({"1", "2"}, None, {"0"}),         # 暂停加仓: 仅运行中 + 未暂停
+    "9": ({"1", "2"}, None, {"1"}),         # 取消暂停加仓: 仅运行中 + 已暂停
 }
 
 
@@ -26,7 +31,7 @@ def run(
     agent_id: Optional[str] = None,
 ) -> dict:
     """
-    批量操作机器人（停止 / 预约停止 / 取消预约终止）
+    批量操作机器人（停止 / 预约停止 / 取消预约终止 / 暂停加仓 / 取消暂停）
 
     - 预览时查询所有 bot 当前状态，标记可执行/不可执行
     - 确认执行时只对可执行的 bot 调 API
@@ -41,8 +46,8 @@ def run(
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
 
     # ── 预检 ──
-    statuses, reserves = _BATCH_RULES.get(save_type, (set(), None))
-    pre = check_bots(token, ids, statuses, reserves, agent_id)
+    statuses, reserves, pause_statuses = _BATCH_RULES.get(save_type, (set(), None, None))
+    pre = check_bots(token, ids, statuses, reserves, pause_statuses, agent_id)
 
     if not confirm:
         return {

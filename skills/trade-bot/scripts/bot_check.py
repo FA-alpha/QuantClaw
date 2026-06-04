@@ -20,6 +20,7 @@ def check_bots(
     bot_ids: List[str],
     allowed_statuses: Set[str],
     allowed_reserve: Optional[Set[str]] = None,
+    allowed_add_pause_status: Optional[Set[str]] = None,
     agent_id: Optional[str] = None,
 ) -> dict:
     """
@@ -28,6 +29,7 @@ def check_bots(
     Args:
         allowed_statuses: 允许的 bot status 集合，如 {"1", "2"}
         allowed_reserve: 允许的 reserve_status 集合，None / 空 = 不检查
+        allowed_add_pause_status: 允许的 add_pause_status，None = 不检查
 
     Returns:
         {"bots": [...], "executable_count": int, "blocked_count": int}
@@ -50,6 +52,7 @@ def check_bots(
         }
 
     check_reserve = bool(allowed_reserve)
+    check_pause = bool(allowed_add_pause_status)
 
     bots = []
     executable = 0
@@ -60,6 +63,7 @@ def check_bots(
         item = info_list[i] if i < len(info_list) else {}
         s = str(item.get("status", ""))
         r = str(item.get("reserve_status", ""))
+        p = str(item.get("add_pause_status", "0"))
 
         can_exec = True
         reason = None
@@ -71,6 +75,10 @@ def check_bots(
             elif check_reserve and r not in allowed_reserve:
                 can_exec = False
                 reason = f"预约状态为「{RESERVE_STATUS_LABEL.get(r, r)}」，不支持此操作"
+            elif check_pause and p not in allowed_add_pause_status:
+                pause_label = "已暂停" if p == "1" else "未暂停"
+                can_exec = False
+                reason = f"加仓暂停状态为「{pause_label}」，不支持此操作"
 
         if can_exec:
             executable += 1
@@ -83,6 +91,7 @@ def check_bots(
             "status_label": STATUS_LABEL.get(s, s),
             "reserve_status": r,
             "reserve_status_label": RESERVE_STATUS_LABEL.get(r, r),
+            "add_pause_status": str(item.get("add_pause_status", "0")),
             "can_execute": can_exec,
             "reason": reason,
         })

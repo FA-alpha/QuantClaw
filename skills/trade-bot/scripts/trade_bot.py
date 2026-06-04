@@ -217,8 +217,8 @@ def main():
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
     sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-ids", required=True, help="机器人 ID，多个逗号分隔")
-    sp.add_argument("--save-type", required=True, choices=["4", "6", "7"],
-                    help="4=停止, 6=预约停止, 7=取消预约终止")
+    sp.add_argument("--save-type", required=True, choices=["4", "6", "7", "8", "9"],
+                    help="4=停止, 6=预约停止, 7=取消预约终止, 8=暂停加仓, 9=取消暂停加仓")
     sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_batch)
 
@@ -234,8 +234,8 @@ def main():
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
     sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
-    sp.add_argument("--save-type", required=True, choices=["4", "5", "6", "7"],
-                    help="4=停止, 5=停止当周期, 6=预约停止, 7=取消预约终止")
+    sp.add_argument("--save-type", required=True, choices=["4", "5", "6", "7", "8", "9"],
+                    help="4=停止, 5=停止当周期, 6=预约停止, 7=取消预约终止, 8=暂停加仓, 9=取消暂停加仓")
     sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_stop)
 

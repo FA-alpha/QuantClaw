@@ -10,14 +10,18 @@ SAVE_TYPE_LABEL = {
     "5": "停止当周期",
     "6": "预约停止",
     "7": "取消预约终止",
+    "8": "暂停加仓",
+    "9": "取消暂停加仓",
 }
 
-# 各操作的状态检查规则
+# 各操作的状态检查规则 (statuses, reserves, add_pause_statuses)
 _STOP_RULES = {
-    "4": ({"1", "2"}, None),      # 停止: 仅运行中, 不查 reserve
-    "5": ({"1", "2"}, None),      # 停止当周期: 仅运行中
-    "6": ({"1", "2"}, {"0"}),     # 预约停止: 仅运行中 + 不在预约中
-    "7": ({"1", "2"}, {"1", "2"}),  # 取消预约: 仅运行中 + 仅在预约中
+    "4": ({"1", "2"}, None, None),          # 停止: 仅运行中
+    "5": ({"1", "2"}, None, None),          # 停止当周期: 仅运行中
+    "6": ({"1", "2"}, {"0"}, None),         # 预约停止: 仅运行中 + 不在预约中
+    "7": ({"1", "2"}, {"1", "2"}, None),    # 取消预约: 仅运行中 + 仅在预约中
+    "8": ({"1", "2"}, None, {"0"}),         # 暂停加仓: 仅运行中 + 未暂停
+    "9": ({"1", "2"}, None, {"1"}),         # 取消暂停加仓: 仅运行中 + 已暂停
 }
 
 
@@ -29,7 +33,7 @@ def run(
     agent_id: Optional[str] = None,
 ) -> dict:
     """
-    单个机器人操作（停止 / 重启 / 预约停止 / 取消预约）
+    单个机器人操作（停止 / 重启 / 预约停止 / 取消预约 / 暂停加仓 / 取消暂停）
 
     - 预览时自动查询 bot 当前状态，判断操作是否可执行
     - 确认执行前再次检查状态，过滤无效操作
@@ -40,8 +44,8 @@ def run(
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
 
     # ── 预检 ──
-    statuses, reserves = _STOP_RULES.get(save_type, (set(), None))
-    pre = check_bots(token, [bot_id], statuses, reserves, agent_id)
+    statuses, reserves, pause_statuses = _STOP_RULES.get(save_type, (set(), None, None))
+    pre = check_bots(token, [bot_id], statuses, reserves, pause_statuses, agent_id)
     bot_state = pre["bots"][0]
 
     if not confirm:

@@ -133,7 +133,9 @@ def run(
             "margin": info.get("is_margin_btn") == 1,
             "manual": info.get("is_manual_btn") == 1,
             "reserve_stop": info.get("is_reserve_stop_btn") == 1,
+            "add_pause": info.get("is_add_pause_btn") == 1,
         },
+        "add_pause_status": str(info.get("add_pause_status", "0")),
         "strategy_rule": sr,
         "trade_info": ti,
         "grids": {
