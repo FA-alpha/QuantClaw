@@ -330,38 +330,45 @@ def build_field_list_from_api(trade_fields: list, strategy_rule: dict) -> list:
             }
             fields.append(field)
 
-        # 多维数组字段
+        # 多维数组字段：只读现有数据，不支持增删
         for m in multiples:
-            m_fields = m.get("fields", [])
-            # multiples 作为特殊分组内的嵌套字段
-            for mf in m_fields:
-                variable = mf.get("variable", "")
-                field = {
-                    "key": variable,
-                    "label": mf.get("name", variable),
-                    "type": "number",  # multiples 的子字段通常都是 input
-                    "dvalue": mf.get("dvalue"),
-                    # 从 strategy_rule 中取（需要特殊处理，标记为非顶层）
-                    "value": strategy_rule.get(variable),
-                    "options": None,
-                    "editable": True,
-                    "is_multiples_field": True,
-                    "multiples_group": group_name,
-                }
-                fields.append(field)
+            m_field_name = m.get("name", "")  # 数组在 rule 中的 key，如 tiered_take_profit
+            m_field_variable = m.get("variable", m_field_name)
+            m_sub_fields = m.get("fields", [])
+
+            # 从 strategy_rule 获取数组数据
+            rows = strategy_rule.get(m_field_variable, [])
+            if not isinstance(rows, list):
+                rows = []
+
+            # 每个数组元素作为一个嵌套字段组
+            for idx, row in enumerate(rows):
+                row_fields = []
+                for mf in m_sub_fields:
+                    variable = mf.get("variable", "")
+                    row_fields.append({
+                        "key": variable,
+                        "label": mf.get("name", variable),
+                        "type": "number",
+                        "dvalue": mf.get("dvalue"),
+                        "value": row.get(variable, mf.get("dvalue")),
+                        "options": None,
+                        "editable": True,
+                    })
+                fields.append({
+                    "_kind": "multiples_row",
+                    "array_key": m_field_variable,
+                    "row_index": idx,
+                    "label": f"{m_field_name}[{idx + 1}]",
+                    "fields": row_fields,
+                })
 
         groups.append({"group": group_name, "fields": fields})
 
     return groups
-    """
-    根据 strategy_type + 当前参数构建字段列表，Agent 据此渲染编辑界面。
 
-    每个字段包含: key, label, type, value, options(如有), hint(如有), condition_result
 
-    strategy_type=2 特有逻辑:
-    - rsi_signal=0 时隐藏 RSI 子字段
-    - amt_type=1(现货) 时隐藏 multiple_num
-    """
+def build_field_list(info: dict) -> list:
     strategy_type = str(info.get("strategy_type", ""))
     strategy_rule = info.get("strategy_rule", {})
     amt_type = str(info.get("amt_type", ""))
