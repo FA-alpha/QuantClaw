@@ -131,6 +131,19 @@ def cmd_margin(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_edit(args):
+    """编辑策略参数（默认预览模式，加 --confirm 执行）"""
+    from edit_bot import run
+    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, bot_id=args.bot_id,
+        agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _not_impl(name):
     print(json.dumps({"status": "error", "message": f"{name} 功能尚未实现"}, ensure_ascii=False))
 
@@ -229,6 +242,14 @@ def main():
                     help="6=增加保证金, 7=减少保证金")
     sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_margin)
+
+    # ── edit ──
+    sp = subs.add_parser("edit", help="编辑策略参数（默认预览，需确认）")
+    sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
+    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
+    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
+    sp.set_defaults(func=cmd_edit)
 
     # ── 占位子命令 ──
     for cmd in ["balance", "apply", "check-status",

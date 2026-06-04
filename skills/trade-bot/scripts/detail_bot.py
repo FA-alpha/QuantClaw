@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """查询交易机器人详情 — /Trade/info"""
+import json
+import os
 from typing import Optional
 
 from api_client import api_post, check_auth
+
+# 详情缓存目录
+DETAIL_CACHE_DIR = os.path.expanduser("~/.quantclaw/cache/bot_details")
 
 STATUS_LABEL = {
     "0": "未运行", "1": "实盘运行中", "2": "模拟运行",
@@ -98,6 +103,15 @@ def run(
     # 资金费率累计
     fund_fee = info.get("fund_fee")
 
+    # 保存原始 info 缓存
+    os.makedirs(DETAIL_CACHE_DIR, exist_ok=True)
+    cache_path = os.path.join(DETAIL_CACHE_DIR, f"{bot_id}.json")
+    try:
+        with open(cache_path, "w") as f:
+            json.dump(info, f, ensure_ascii=False, default=str)
+    except Exception:
+        pass  # 缓存写入失败不影响主流程
+
     detail = {
         "bot_id": bot_id,
         "name": info.get("name"),
@@ -113,6 +127,8 @@ def run(
         "run_time_label": _fmt_runtime(info.get("run_time")),
         "reserve_status": info.get("reserve_status"),
         # 权限 / 按钮
+        # 编辑权限（is_edit 字段，0/1）
+        "is_edit": info.get("is_edit"),
         "buttons": {
             "margin": info.get("is_margin_btn") == 1,
             "manual": info.get("is_manual_btn") == 1,
