@@ -116,6 +116,15 @@ def run(
     basic["status_label"] = STATUS_LABEL.get(str(info.get("status")), "")
     basic["amt_type_label"] = AMT_TYPE_LABEL.get(str(info.get("amt_type")), "")
     basic["run_time_label"] = _fmt_runtime(info.get("run_time"))
+    # 从 strategy_rule 提取杠杆和保证金模式
+    sr = info.get("strategy_rule", {})
+    if sr:
+        mn = sr.get("multiple_num")
+        if mn is not None and str(mn) != "-1":  # -1 表示无杠杆
+            basic["leverage"] = mn
+        mm = sr.get("margin_mode")
+        if mm:
+            basic["margin_mode"] = str(mm)
     result["basic"] = basic
 
     # 策略参数 — 按 schema 分组解析（已知类型代码直出，未知调 API）
