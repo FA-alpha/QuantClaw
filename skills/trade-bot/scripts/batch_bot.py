@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""批量操作交易机器人 — /Trade/batch_do（含预检）"""
+"""批量操作交易机器人 — /Trade/batch_do（含预检 + 二次确认）"""
 from typing import Optional
 
 from api_client import api_post, check_auth
 from bot_check import check_bots, filter_executable
 from agent_display import blocked_result, preview_result, ok_result, error_result
+from confirm_nonce import check, create, clear
 
 SAVE_TYPE_LABEL = {
     "4": "停止", "6": "预约停止", "7": "取消预约终止",
@@ -24,7 +25,6 @@ def run(
     token: str,
     bot_ids: str,
     save_type: str,
-    confirm: bool = False,
     agent_id: Optional[str] = None,
 ) -> dict:
     ids = [x.strip() for x in bot_ids.split(",") if x.strip()]
@@ -35,9 +35,10 @@ def run(
     statuses, reserves, pause_statuses = _BATCH_RULES.get(save_type, (set(), None, None))
     pre = check_bots(token, ids, statuses, reserves, pause_statuses, agent_id)
 
-    if not confirm:
+    state = check(agent_id or "", "batch", ids, save_type)
+
+    if state != "confirmed":
         if pre["executable_count"] == 0:
-            # 列出所有被阻止的原因
             reasons = [f"{b['id']}: {b['reason']}" for b in pre["bots"] if not b["can_execute"]]
             return blocked_result(
                 title=f"❌ 所有机器人均不可{action_label}",
@@ -45,7 +46,6 @@ def run(
                 rule="所有目标机器人都不可操作，不得尝试绕过",
             )
 
-        # 有可执行的 → 预览
         blocked_list = [f"{b['id']} ({b['status_label']}): {b['reason']}"
                         for b in pre["bots"] if not b["can_execute"]]
         exec_list = [f"{b['id']} ({b['status_label']})"
@@ -57,11 +57,16 @@ def run(
             detail_lines.append(f"可执行: {', '.join(exec_list)}")
         if blocked_list:
             detail_lines.append(f"已跳过: {'; '.join(blocked_list)}")
+        rule = "等待用户确认，不得自行操作"
+        if state == "expired":
+            detail_lines.append("上一次确认超时，请重新确认")
+            rule = "上一次确认超时，等待用户重新确认，不得自行操作"
 
+        create(agent_id or "", "batch", ids, save_type)
         return preview_result(
             title=f"⚠️ 批量{action_label} - 待确认",
             detail_lines=detail_lines,
-            rule="必须等待用户确认后才执行，不得自行跳过",
+            rule=rule,
             action=f"批量{action_label}",
             save_type=save_type,
             executable_count=pre["executable_count"],
@@ -71,6 +76,7 @@ def run(
 
     exec_ids = filter_executable(pre["bots"])
     if not exec_ids:
+        clear(agent_id or "", "batch", ids, save_type)
         return blocked_result(
             title=f"❌ 所有机器人都无法{action_label}",
             reason="执行前校验: 所有机器人均不可操作",
@@ -82,6 +88,8 @@ def run(
         {"usertoken": token, "app_v": "2.0.0", "bot_id": ",".join(exec_ids), "save_type": save_type},
         agent_id,
     )
+    clear(agent_id or "", "batch", ids, save_type)
+
     ok_msg, msg = check_auth(data)
     if not ok_msg:
         return error_result(title=f"❌ 批量{action_label}失败", message=msg, rule="不得自行重试")

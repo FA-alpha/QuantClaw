@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""手动加仓/取消加仓 — /Trade/scale_do（含预检 + 实时数据）"""
+"""手动加仓/取消加仓 — /Trade/scale_do（含预检 + 实时数据 + 二次确认）"""
 import time
 from typing import Optional
 
@@ -7,6 +7,7 @@ from api_client import api_post, check_auth
 from bot_check import check_bots, filter_executable
 from realtime_info import run as get_realtime
 from agent_display import blocked_result, prompt_result, preview_result, ok_result, error_result
+from confirm_nonce import check, create, clear
 
 SAVE_TYPE_LABEL = {"8": "手动加仓", "9": "取消加仓"}
 _SCALE_RULES = {"8": ({"1", "2"}, None), "9": ({"1", "2"}, None)}
@@ -30,7 +31,6 @@ def run(
     price: Optional[float] = None,
     amt: Optional[float] = None,
     order_id: Optional[str] = None,
-    confirm: bool = False,
     agent_id: Optional[str] = None,
 ) -> dict:
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
@@ -45,30 +45,37 @@ def run(
             rule="该机器人不可操作，不得尝试绕过",
         )
 
-    # ── 取消加仓: 直接走 preview ──
+    # ── 取消加仓 ──
     if save_type == "9":
-        if not confirm:
+        state = check(agent_id or "", "scale", bot_id, save_type, order_id)
+        if state != "confirmed":
             if not order_id:
                 return prompt_result(
                     title=f"📝 {action_label}",
                     prompt_text="请输入要取消的网格订单ID (order_id)",
                     rule="必须等待用户提供 order_id，不得编造",
                 )
+            detail_lines = [f"机器人: {bot_id}", f"操作: {action_label}", f"订单ID: {order_id}"]
+            rule = "等待用户确认，不得自行操作"
+            if state == "expired":
+                detail_lines.append("上一次确认超时，请重新确认")
+                rule = "上一次确认超时，等待用户重新确认，不得自行操作"
+            create(agent_id or "", "scale", bot_id, save_type, order_id)
             return preview_result(
                 title=f"⚠️ {action_label} - 待确认",
-                detail_lines=[f"机器人: {bot_id}", f"操作: {action_label}", f"订单ID: {order_id}"],
-                rule="必须等待用户确认后才执行",
-                bot_id=bot_id,
-                action=action_label,
-                order_id=order_id,
+                detail_lines=detail_lines,
+                rule=rule,
+                bot_id=bot_id, action=action_label, order_id=order_id,
             )
 
         executable = filter_executable(pre["bots"])
         if not executable:
+            clear(agent_id or "", "scale", bot_id, save_type, order_id)
             return blocked_result(title=f"❌ 无法{action_label}", reason=bot_state["reason"],
                                   rule="该机器人不可操作")
         params = {"usertoken": token, "app_v": "2.0.0", "bot_id": bot_id, "save_type": save_type, "order_id": order_id}
         data = api_post("/Trade/scale_do", params, agent_id)
+        clear(agent_id or "", "scale", bot_id, save_type, order_id)
         ok_msg, msg = check_auth(data)
         if not ok_msg:
             return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试")
@@ -79,11 +86,11 @@ def run(
                          detail_lines=[f"机器人: {bot_id}", f"订单: {order_id}"],
                          bot_id=bot_id)
 
-    # ── 手动加仓(save_type=8): 需要实时数据 ──
+    # ── 手动加仓(save_type=8) ──
     realtime = _fetch_realtime(token, bot_id, "1,2", agent_id)
+    state = check(agent_id or "", "scale", bot_id, save_type, str(price), str(amt))
 
-    if not confirm:
-        # 没传价格和金额 → 引导输入
+    if state != "confirmed":
         if price is None or amt is None:
             lines = [f"机器人: {bot_id}", f"操作: {action_label}"]
             if realtime.get("status") == "ok":
@@ -100,35 +107,37 @@ def run(
                 realtime=realtime if realtime.get("status") == "ok" else None,
             )
 
-        # 传了价格和金额 → 预览
         detail_lines = [f"机器人: {bot_id}", f"操作: {action_label}",
                         f"加仓价格: {price}", f"加仓金额: {amt}"]
         if realtime.get("status") == "ok":
             ts = realtime.get("timestamp_label", "")
             for it in realtime.get("items", []):
                 detail_lines.append(f"{it['type_label']}: {it['amt']} ({ts})")
+        rule = "等待用户确认，不得自行操作"
+        if state == "expired":
+            detail_lines.append("上一次确认超时，请重新确认")
+            rule = "上一次确认超时，等待用户重新确认，不得自行操作"
+        create(agent_id or "", "scale", bot_id, save_type, str(price), str(amt))
         return preview_result(
             title=f"⚠️ {action_label} - 待确认",
             detail_lines=detail_lines,
-            rule="必须等待用户确认后才执行",
-            bot_id=bot_id,
-            action=action_label,
-            price=price,
-            amt=amt,
+            rule=rule,
+            bot_id=bot_id, action=action_label,
+            price=price, amt=amt,
             realtime=realtime if realtime.get("status") == "ok" else None,
         )
 
-    # ── 执行 ──
     executable = filter_executable(pre["bots"])
     if not executable:
+        clear(agent_id or "", "scale", bot_id, save_type, str(price), str(amt))
         return blocked_result(title=f"❌ 无法{action_label}", reason=bot_state["reason"],
                               rule="该机器人不可操作")
 
     if price is None or amt is None:
+        clear(agent_id or "", "scale", bot_id, save_type, str(price), str(amt))
         return error_result(title=f"❌ {action_label}失败",
                             message="缺少 price 或 amt 参数", rule="不得自行编造参数")
 
-    # 执行时重新拉实时数据
     fresh_realtime = _fetch_realtime(token, bot_id, "1,2", agent_id)
     stale_warning = None
     if fresh_realtime.get("status") == "ok":
@@ -140,6 +149,7 @@ def run(
         "usertoken": token, "app_v": "2.0.0", "bot_id": bot_id,
         "save_type": save_type, "price": price, "amt": amt,
     }, agent_id)
+    clear(agent_id or "", "scale", bot_id, save_type, str(price), str(amt))
     ok_msg, msg = check_auth(data)
     if not ok_msg:
         return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试")
@@ -153,7 +163,6 @@ def run(
     return ok_result(
         title=f"✅ {action_label}成功",
         detail_lines=result_lines,
-        bot_id=bot_id,
-        action=action_label,
+        bot_id=bot_id, action=action_label,
         stale_warning=stale_warning,
     )

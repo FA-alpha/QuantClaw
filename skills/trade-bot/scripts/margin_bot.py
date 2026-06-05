@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""调整保证金 — /Trade/margin_do（含预检 + 实时数据校验）"""
+"""调整保证金 — /Trade/margin_do（含预检 + 实时数据 + 二次确认）"""
 import time
 from typing import Optional, Union
 
@@ -7,6 +7,7 @@ from api_client import api_post, check_auth
 from bot_check import check_bots, filter_executable
 from realtime_info import run as get_realtime
 from agent_display import blocked_result, prompt_result, preview_result, ok_result, error_result
+from confirm_nonce import check, create, clear
 
 SAVE_TYPE_LABEL = {"6": "增加保证金", "7": "减少保证金"}
 REALTIME_TTL = 90
@@ -34,7 +35,6 @@ def run(
     bot_id: str,
     amt: Optional[float] = None,
     save_type: str = "6",
-    confirm: bool = False,
     agent_id: Optional[str] = None,
 ) -> dict:
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
@@ -52,8 +52,10 @@ def run(
     max_info = _fetch_max(token, bot_id, save_type, agent_id)
     type_label = TYPE_LABEL_MAP.get("2" if save_type == "6" else "3", "")
 
-    # ── 模式1: 没传金额 → 引导输入 ──
-    if amt is None and not confirm:
+    state = check(agent_id or "", "margin", bot_id, save_type, str(amt))
+
+    # 没传金额 → 引导输入
+    if amt is None and state != "confirmed":
         if max_info is None:
             return error_result(
                 title=f"❌ 无法获取{type_label}",
@@ -64,47 +66,46 @@ def run(
             title=f"📝 {action_label}",
             prompt_text=f"当前{type_label}: {max_info['value']} ({max_info['timestamp_label']})\n请输入要{action_label}的具体金额",
             rule="必须等待用户输入金额，不得代为决定",
-            bot_id=bot_id,
-            action=action_label,
-            max_available=max_info["value"],
-            max_label=type_label,
+            bot_id=bot_id, action=action_label,
+            max_available=max_info["value"], max_label=type_label,
             realtime_ts=max_info["timestamp_label"],
         )
 
-    # ── 模式2: 有金额, 未确认 → 校验额度 ──
-    if not confirm:
+    # 有金额, 未确认 → 校验 + 预览
+    if state != "confirmed":
         if max_info is not None and amt > max_info["value"]:
             return blocked_result(
                 title=f"⚠️ {action_label}超额",
                 reason=f"请求 {amt} 超出{type_label} {max_info['value']}（{max_info['timestamp_label']}）",
                 rule="必须等待用户重新输入合法金额，不得自行调小金额",
                 user_prompt=f"请输入不超过 {max_info['value']} 的金额",
-                requested=amt,
-                max_available=max_info["value"],
-                max_label=type_label,
+                requested=amt, max_available=max_info["value"], max_label=type_label,
             )
 
+        detail_lines = [
+            f"机器人: {bot_id}",
+            f"操作: {action_label}",
+            f"金额: {amt}",
+            f"{type_label}: {max_info['value']}" if max_info else f"{type_label}: 未知",
+        ]
+        rule = "等待用户确认，不得自行操作"
+        if state == "expired":
+            detail_lines.append("上一次确认超时，请重新确认")
+            rule = "上一次确认超时，等待用户重新确认，不得自行操作"
+        create(agent_id or "", "margin", bot_id, save_type, str(amt))
         return preview_result(
             title=f"⚠️ {action_label} - 待确认",
-            detail_lines=[
-                f"机器人: {bot_id}",
-                f"操作: {action_label}",
-                f"金额: {amt}",
-                f"{type_label}: {max_info['value']}" if max_info else f"{type_label}: 未知",
-            ],
-            rule="必须等待用户确认后才执行",
+            detail_lines=detail_lines,
+            rule=rule,
             user_prompt=f"确认{action_label} {amt}？回复「确认」或「取消」",
-            bot_id=bot_id,
-            action=action_label,
-            amt=amt,
-            save_type=save_type,
-            max_available=max_info["value"] if max_info else None,
-            max_label=type_label,
+            bot_id=bot_id, action=action_label, amt=amt, save_type=save_type,
+            max_available=max_info["value"] if max_info else None, max_label=type_label,
         )
 
-    # ── 模式3: confirm 执行 ──
+    # 已确认，执行
     executable = filter_executable(pre["bots"])
     if not executable:
+        clear(agent_id or "", "margin", bot_id, save_type, str(amt))
         return blocked_result(
             title=f"❌ 无法{action_label}",
             reason=bot_state["reason"],
@@ -119,13 +120,13 @@ def run(
         if age > REALTIME_TTL:
             stale_warning = f"实时数据已过去 {age} 秒，余额可能已变化"
         if amt > fresh_max["value"]:
+            clear(agent_id or "", "margin", bot_id, save_type, str(amt))
             return blocked_result(
                 title=f"⚠️ {action_label}超额（执行时校验）",
                 reason=f"请求 {amt} 超出当前{type_label} {fresh_max['value']}（{fresh_max['timestamp_label']}）",
                 rule="必须等待用户重新输入合法金额",
                 user_prompt=f"当前{type_label}: {fresh_max['value']}，请重新输入金额",
-                requested=amt,
-                max_available=fresh_max["value"],
+                requested=amt, max_available=fresh_max["value"],
             )
 
     data = api_post(
@@ -133,19 +134,13 @@ def run(
         {"usertoken": token, "app_v": "2.0.0", "bot_id": bot_id, "amt": amt, "save_type": save_type},
         agent_id,
     )
+    clear(agent_id or "", "margin", bot_id, save_type, str(amt))
     ok_msg, msg = check_auth(data)
     if not ok_msg:
-        return error_result(
-            title=f"❌ {action_label}失败",
-            message=msg,
-            rule="不得自行重试，请告知用户错误信息",
-        )
+        return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试，请告知用户错误信息")
     if data.get("status") != 1:
-        return error_result(
-            title=f"❌ {action_label}失败",
-            message=data.get("msg", data.get("info", "未知错误")),
-            rule="不得自行重试",
-        )
+        return error_result(title=f"❌ {action_label}失败",
+                            message=data.get("msg", data.get("info", "未知错误")), rule="不得自行重试")
 
     result_lines = [f"机器人: {bot_id}", f"操作: {action_label}", f"金额: {amt}"]
     if stale_warning:
@@ -153,8 +148,6 @@ def run(
     return ok_result(
         title=f"✅ {action_label}成功",
         detail_lines=result_lines,
-        action=action_label,
-        bot_id=bot_id,
-        amt=amt,
+        action=action_label, bot_id=bot_id, amt=amt,
         stale_warning=stale_warning,
     )

@@ -79,27 +79,27 @@ def cmd_detail(args):
 
 
 def cmd_stop(args):
-    """停止/重启/预约停止/取消预约"""
+    """停止/停止当周期/预约停止/取消预约终止/暂停加仓/取消暂停加仓"""
     from stop_bot import run
     token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
         token=token, bot_id=args.bot_id, save_type=args.save_type,
-        confirm=args.confirm, agent_id=args.agent_id,
+        agent_id=args.agent_id,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_batch(args):
-    """批量停止/预约停止/取消预约终止"""
+    """批量停止/预约停止/取消预约终止/暂停加仓/取消暂停加仓"""
     from batch_bot import run
     token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
         token=token, bot_ids=args.bot_ids, save_type=args.save_type,
-        confirm=args.confirm, agent_id=args.agent_id,
+        agent_id=args.agent_id,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -113,7 +113,7 @@ def cmd_scale(args):
     result = run(
         token=token, bot_id=args.bot_id, save_type=args.save_type,
         price=args.price, amt=args.amt, order_id=args.order_id,
-        confirm=args.confirm, agent_id=args.agent_id,
+        agent_id=args.agent_id,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -126,7 +126,7 @@ def cmd_margin(args):
         return
     result = run(
         token=token, bot_id=args.bot_id, amt=args.amt, save_type=args.save_type,
-        confirm=args.confirm, agent_id=args.agent_id,
+        agent_id=args.agent_id,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 def cmd_edit(args):
@@ -222,12 +222,11 @@ def main():
     sp.set_defaults(func=cmd_exchange_list)
 
     # ── batch ──
-    sp = subs.add_parser("batch", help="批量操作机器人（停止/预约停止/取消预约）")
+    sp = subs.add_parser("batch", help="批量操作机器人（停止/预约停止/取消预约终止/暂停加仓/取消暂停加仓）")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
     sp.add_argument("--bot-ids", required=True, help="机器人 ID，多个逗号分隔")
     sp.add_argument("--save-type", required=True, choices=["4", "6", "7", "8", "9"],
                     help="4=停止, 6=预约停止, 7=取消预约终止, 8=暂停加仓, 9=取消暂停加仓")
-    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_batch)
 
     # ── detail ──
@@ -237,12 +236,11 @@ def main():
     sp.set_defaults(func=cmd_detail)
 
     # ── stop ──
-    sp = subs.add_parser("stop", help="停止/重启/预约停止/取消预约")
+    sp = subs.add_parser("stop", help="停止/停止当周期/预约停止/取消预约终止/暂停加仓/取消暂停加仓")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.add_argument("--save-type", required=True, choices=["4", "5", "6", "7", "8", "9"],
                     help="4=停止, 5=停止当周期, 6=预约停止, 7=取消预约终止, 8=暂停加仓, 9=取消暂停加仓")
-    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_stop)
 
     # ── scale ──
@@ -254,7 +252,6 @@ def main():
     sp.add_argument("--price", type=float, help="加仓价格（save_type=8 必传）")
     sp.add_argument("--amt", type=float, help="加仓金额（save_type=8 必传）")
     sp.add_argument("--order-id", help="网格订单ID（save_type=9 必传）")
-    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_scale)
 
     # ── margin ──
@@ -264,7 +261,6 @@ def main():
     sp.add_argument("--amt", type=float, help="保证金金额（不传则查询最大可用额度）")
     sp.add_argument("--save-type", required=True, choices=["6", "7"],
                     help="6=增加保证金, 7=减少保证金")
-    sp.add_argument("--confirm", action="store_true", help="确认执行操作")
     sp.set_defaults(func=cmd_margin)
 
     # ── edit ──

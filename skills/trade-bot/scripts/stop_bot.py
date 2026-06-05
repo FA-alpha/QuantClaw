@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""单个机器人操作 — /Trade/status_do（含预检）"""
+"""单个机器人操作 — /Trade/status_do（含预检 + 二次确认）"""
 from typing import Optional
 
 from api_client import api_post, check_auth
 from bot_check import check_bots, filter_executable, STATUS_LABEL
 from agent_display import blocked_result, preview_result, ok_result, error_result
+from confirm_nonce import check, create, clear
 
 SAVE_TYPE_LABEL = {
     "4": "停止", "5": "停止当周期", "6": "预约停止",
@@ -25,7 +26,6 @@ def run(
     token: str,
     bot_id: str,
     save_type: str,
-    confirm: bool = False,
     agent_id: Optional[str] = None,
 ) -> dict:
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
@@ -34,21 +34,31 @@ def run(
     pre = check_bots(token, [bot_id], statuses, reserves, pause_statuses, agent_id)
     bot_state = pre["bots"][0]
 
-    if not confirm:
+    state = check(agent_id or "", "stop", bot_id, save_type)
+
+    if state != "confirmed":
         if not bot_state["can_execute"]:
             return blocked_result(
                 title=f"❌ 无法{action_label}",
                 reason=bot_state["reason"],
                 rule="该机器人不可执行此操作，不得尝试绕过",
             )
+
+        detail_lines = [
+            f"机器人: {bot_id}",
+            f"当前状态: {bot_state['status_label']}",
+            f"操作: {action_label}",
+        ]
+        rule = "等待用户确认，不得自行操作"
+        if state == "expired":
+            detail_lines.append("上一次确认超时，请重新确认")
+            rule = "上一次确认超时，等待用户重新确认，不得自行操作"
+
+        create(agent_id or "", "stop", bot_id, save_type)
         return preview_result(
             title=f"⚠️ {action_label} - 待确认",
-            detail_lines=[
-                f"机器人: {bot_id}",
-                f"当前状态: {bot_state['status_label']}",
-                f"操作: {action_label}",
-            ],
-            rule="必须等待用户确认后才执行，不得自行跳过确认步骤",
+            detail_lines=detail_lines,
+            rule=rule,
             bot_id=bot_id,
             action=action_label,
             save_type=save_type,
@@ -57,6 +67,7 @@ def run(
 
     executable = filter_executable(pre["bots"])
     if not executable:
+        clear(agent_id or "", "stop", bot_id, save_type)
         return blocked_result(
             title=f"❌ 无法{action_label}",
             reason=bot_state["reason"],
@@ -68,6 +79,8 @@ def run(
         {"usertoken": token, "app_v": "2.0.0", "bot_id": bot_id, "save_type": save_type},
         agent_id,
     )
+    clear(agent_id or "", "stop", bot_id, save_type)
+
     ok_msg, msg = check_auth(data)
     if not ok_msg:
         return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试")
