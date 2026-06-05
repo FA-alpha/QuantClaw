@@ -188,6 +188,6 @@ def run(
     if str(info.get("status")) in ("1", "2"):
         buttons["reserve_stop"] = True
     if buttons:
-        result["buttons"] = buttons
+        result["actions"] = buttons
 
     return result

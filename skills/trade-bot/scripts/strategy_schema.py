@@ -25,11 +25,11 @@ VALUE_MAP: dict[str, dict] = {
     "is_add_amt":        {"0": "不复投", "1": "复投"},
     "is_split_add_amt":  {"0": "不复投", "1": "复投"},
     "enable_grid_shift": {"0": "普通", "1": "移动", "false": "普通", "true": "移动"},
-    "enable_start_opened":       {"0": "关闭", "1": "开启"},
+    "enable_start_opened":       {"0": "关闭", "1": "开启", "false": "关闭", "true": "开启"},
     "enable_base_position_control": {"0": "关闭", "1": "开启"},
-    "enable_check_period":       {"0": "关闭", "1": "开启"},
-    "enable_stop_loss":          {"0": "关闭", "1": "开启"},
-    "enable_take_profit":        {"0": "关闭", "1": "开启"},
+    "enable_check_period":       {"0": "关闭", "1": "开启", "false": "关闭", "true": "开启"},
+    "enable_stop_loss":          {"0": "关闭", "1": "开启", "false": "关闭", "true": "开启"},
+    "enable_take_profit":        {"0": "关闭", "1": "开启", "false": "关闭", "true": "开启"},
     "neutral_strategy":          {"0": "否", "1": "是"},
     "max_loss_type":    {"1": "市价", "2": "限价"},
     "stop_loss_type":   {"1": "收益率", "2": "价格"},
@@ -128,17 +128,20 @@ FIELD_LABEL: dict[str, str] = {
 def _label(value: Any, key: str) -> str:
     vm = VALUE_MAP.get(key, {})
     if isinstance(value, (list, dict)):
-        return vm.get(str(value), str(len(value)) if isinstance(value, list) else "object") if vm else value
-    return vm.get(str(value), str(value))
+        return value
+    # bool -> lowercase str for VALUE_MAP key matching
+    s = str(value).lower() if isinstance(value, bool) else str(value)
+    return vm.get(s, str(value))
 
 
 def _build_field(key: str, raw_value: Any, label_override: str = "", enum_map: dict = None) -> dict:
     label = label_override or FIELD_LABEL.get(key, key)
-    # 数组/字典直接透传，不做字符串化
     if isinstance(raw_value, (list, dict)):
         return {"key": key, "label": label, "value": raw_value, "_raw": raw_value}
+    # bool -> lowercase str 匹配 JSON 格式的枚举 key
+    s = str(raw_value).lower() if isinstance(raw_value, bool) else str(raw_value)
     if enum_map:
-        value = enum_map.get(str(raw_value), str(raw_value))
+        value = enum_map.get(s, s)
     else:
         value = _label(raw_value, key)
     return {"key": key, "label": label, "value": value, "_raw": raw_value}
