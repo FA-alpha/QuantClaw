@@ -381,6 +381,7 @@ def _analyze_from_api(data: dict, field_defs: list) -> list[dict]:
     used = set()
     parsed = _parse_field_defs(field_defs)
 
+    # API 字段匹配
     for pg in parsed:
         fields = []
         for var, label in pg["label_map"].items():
@@ -391,9 +392,22 @@ def _analyze_from_api(data: dict, field_defs: list) -> list[dict]:
         if fields:
             groups.append({"name": pg["name"], "fields": fields})
 
+    # 收尾：先提取通用基础字段，再兜底其他
     remaining = {k: v for k, v in data.items() if k not in used and k != "strategy_type"}
-    if remaining:
-        groups.append({"name": "其他参数", "fields": [_build_field(k, v) for k, v in remaining.items()]})
+
+    basic_keys = ["coin", "direction", "initial_capital", "multiple_num", "leverage",
+                  "asset_type", "margin_mode", "is_add_amt", "max_loss_type", "max_loss_pct"]
+    basic_fields = []
+    other = {}
+    for k, v in remaining.items():
+        if k in basic_keys:
+            basic_fields.append(_build_field(k, v))
+        else:
+            other[k] = v
+    if basic_fields:
+        groups.insert(0, {"name": "基础设置", "fields": basic_fields})
+    if other:
+        groups.append({"name": "其他参数", "fields": [_build_field(k, v) for k, v in other.items()]})
     return groups
 
 
