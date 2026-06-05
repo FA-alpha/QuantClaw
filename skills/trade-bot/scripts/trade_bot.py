@@ -268,7 +268,7 @@ def main():
     sp = subs.add_parser("margin", help="调整保证金")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
     sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
-    sp.add_argument("--amt", type=float, help="保证金金额（不传则查询最大可用额度）")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.add_argument("--amt", type=float, help="保证金金额（不传则查询最大可用额度）")
     sp.add_argument("--save-type", required=True, choices=["6", "7"],
                     help="6=增加保证金, 7=减少保证金")
