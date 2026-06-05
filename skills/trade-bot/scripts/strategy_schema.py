@@ -30,7 +30,7 @@ VALUE_MAP: dict[str, dict] = {
     "enable_check_period":       {"0": "关闭", "1": "开启", "false": "关闭", "true": "开启"},
     "enable_stop_loss":          {"0": "关闭", "1": "开启", "false": "关闭", "true": "开启"},
     "enable_take_profit":        {"0": "关闭", "1": "开启", "false": "关闭", "true": "开启"},
-    "neutral_strategy":          {"0": "否", "1": "是"},
+    "neutral_strategy":          {"0": "否", "1": "是", "false": "否", "true": "是"},
     "max_loss_type":    {"1": "市价", "2": "限价"},
     "stop_loss_type":   {"1": "收益率", "2": "价格"},
     "take_profit_type": {"1": "关闭", "3": "开启"},
@@ -242,8 +242,11 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
 
     # ── 星辰 (type=7) ──
     if st == "7":
-        _add("基础设置", ["coin", "direction", "neutral_strategy", "initial_capital",
-                          "multiple_num", "fee_rate", "grid_num"],
+        # 中性策略没有方向
+        basic_keys = ["coin", "initial_capital", "multiple_num", "fee_rate", "grid_num", "neutral_strategy"]
+        if not _bool_val(data, "neutral_strategy"):
+            basic_keys.insert(1, "direction")
+        _add("基础设置", basic_keys,
                          labels={"grid_num": "网格数量"})
         _add("资金管理", ["margin_reserve_ratio", "profit_allocation_margin_ratio",
                           "full_reinvestment_threshold"])
