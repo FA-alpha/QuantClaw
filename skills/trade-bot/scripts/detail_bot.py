@@ -57,43 +57,12 @@ def run(
 
     info = data.get("info", {})
 
-    # 策略规则
-    strategy_rule = info.get("strategy_rule", {})
-    sr = {
-        "coin": strategy_rule.get("coin"),
-        "initial_capital": strategy_rule.get("initial_capital"),
-        "leverage": strategy_rule.get("multiple_num"),
-        "max_grid_size": strategy_rule.get("max_grid_size"),
-        "grid_type": strategy_rule.get("grid_type"),
-        "direction": strategy_rule.get("direction"),
-        "fee_rate": strategy_rule.get("fee_rate"),
-        "is_add_amt": strategy_rule.get("is_add_amt"),
-        "price_high": strategy_rule.get("price_high"),
-        "price_low": strategy_rule.get("price_low"),
-        "enable_grid_shift": strategy_rule.get("enable_grid_shift"),
-        "enable_start_opened": strategy_rule.get("enable_start_opened"),
-        "enable_check_period": strategy_rule.get("enable_check_period"),
-        "enable_stop_loss": strategy_rule.get("enable_stop_loss"),
-        "enable_take_profit": strategy_rule.get("enable_take_profit"),
-    }
+    # 策略规则 — 直接透传 API 原始字段，不做硬编码筛选
+    # 不同 strategy_type 字段差异很大（网格/风霆/鲲鹏/星辰等）
+    strategy_rule = dict(info.get("strategy_rule", {}))
 
-    # 交易数据
-    trade_info = info.get("trade_info", {})
-    ti = {
-        "coin": trade_info.get("coin"),
-        "create_time": trade_info.get("create_time"),
-        "initial_capital": trade_info.get("initial_capital"),
-        "grid_num": trade_info.get("grid_num"),
-        "grid_avg_time": trade_info.get("grid_avg_time"),
-        "add_margin": trade_info.get("add_margin"),
-        "take_profit": trade_info.get("take_profit"),
-        "fund_radio": trade_info.get("fund_radio"),
-        "float_amt": trade_info.get("float_amt"),
-        "total_amt": trade_info.get("total_amt"),
-        "float_profit": trade_info.get("float_profit"),
-        "win_rate": trade_info.get("win_rate"),
-        "trade_token": trade_info.get("trade_token", ""),
-    }
+    # 交易数据 — 直接透传，不做硬编码筛选
+    trade_info = dict(info.get("trade_info", {}))
 
     # 网格
     grids_info = info.get("grids_info", {})
@@ -137,8 +106,8 @@ def run(
             "add_pause": info.get("is_add_pause_btn") == 1,
         },
         "add_pause_status": str(info.get("add_pause_status", "0")),
-        "strategy_rule": sr,
-        "trade_info": ti,
+        "strategy_rule": strategy_rule,
+        "trade_info": trade_info,
         "grids": {
             "long": grids_info.get("long"),
             "short": grids_info.get("short"),
