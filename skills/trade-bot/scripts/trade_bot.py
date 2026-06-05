@@ -27,7 +27,7 @@ def get_user_token_by_agent_id(agent_id: str) -> Optional[str]:
 def cmd_list(args):
     """查询交易机器人列表"""
     from list_bots import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -43,7 +43,7 @@ def cmd_list(args):
 def cmd_leverage(args):
     """查询杠杆率统计"""
     from leverage_bot import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -58,7 +58,7 @@ def cmd_leverage(args):
 def cmd_exchange_list(args):
     """查询交易所账户列表"""
     from exchange_list import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -71,7 +71,7 @@ def cmd_exchange_list(args):
 def cmd_detail(args):
     """查询机器人详情"""
     from detail_bot import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(token=token, bot_id=args.bot_id, agent_id=args.agent_id)
@@ -81,7 +81,7 @@ def cmd_detail(args):
 def cmd_stop(args):
     """停止/重启/预约停止/取消预约"""
     from stop_bot import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -94,7 +94,7 @@ def cmd_stop(args):
 def cmd_batch(args):
     """批量停止/预约停止/取消预约终止"""
     from batch_bot import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -107,7 +107,7 @@ def cmd_batch(args):
 def cmd_scale(args):
     """手动加仓/取消加仓"""
     from scale_bot import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -121,7 +121,7 @@ def cmd_scale(args):
 def cmd_margin(args):
     """调整保证金"""
     from margin_bot import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -132,7 +132,7 @@ def cmd_margin(args):
 def cmd_edit(args):
     """编辑策略参数（三步流程：预览 → 差异对比 → 确认执行）"""
     from edit_bot import run, run_diff, run_execute
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
 
@@ -165,7 +165,7 @@ def cmd_edit(args):
 def cmd_realtime(args):
     """查询实时数据（币价/余额）"""
     from realtime_info import run
-    token = args.token if args.token else get_user_token_by_agent_id(args.agent_id)
+    token = get_user_token_by_agent_id(args.agent_id)
     if not token:
         return
     result = run(
@@ -187,7 +187,6 @@ def main():
     # ── list ──
     sp = subs.add_parser("list", help="查询交易机器人列表")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--status", default="running", help="运行状态: running/sim/stopped/deleted/all")
     sp.add_argument("--exchange-ids", help="交易所账户ID，逗号分隔")
     sp.add_argument("--amt-type", help="交易品种: spot/futures/all")
@@ -205,7 +204,6 @@ def main():
     # ── leverage ──
     sp = subs.add_parser("leverage", help="查询杠杆率统计")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--status", default="running", help="运行状态: running/sim/stopped/deleted/all")
     sp.add_argument("--exchange-ids", help="交易所账户ID，逗号分隔")
     sp.add_argument("--amt-type", help="交易品种: spot/futures/all")
@@ -219,7 +217,6 @@ def main():
     # ── exchange-list ──
     sp = subs.add_parser("exchange-list", help="查询交易所账户列表")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--page", type=int, default=1, help="第几页")
     sp.add_argument("--limit", type=int, default=-1, help="每页条数，-1=全部")
     sp.set_defaults(func=cmd_exchange_list)
@@ -227,7 +224,6 @@ def main():
     # ── batch ──
     sp = subs.add_parser("batch", help="批量操作机器人（停止/预约停止/取消预约）")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-ids", required=True, help="机器人 ID，多个逗号分隔")
     sp.add_argument("--save-type", required=True, choices=["4", "6", "7", "8", "9"],
                     help="4=停止, 6=预约停止, 7=取消预约终止, 8=暂停加仓, 9=取消暂停加仓")
@@ -237,14 +233,12 @@ def main():
     # ── detail ──
     sp = subs.add_parser("detail", help="查询机器人详情")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.set_defaults(func=cmd_detail)
 
     # ── stop ──
     sp = subs.add_parser("stop", help="停止/重启/预约停止/取消预约")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.add_argument("--save-type", required=True, choices=["4", "5", "6", "7", "8", "9"],
                     help="4=停止, 5=停止当周期, 6=预约停止, 7=取消预约终止, 8=暂停加仓, 9=取消暂停加仓")
@@ -254,7 +248,6 @@ def main():
     # ── scale ──
     sp = subs.add_parser("scale", help="手动加仓/取消加仓")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.add_argument("--save-type", required=True, choices=["8", "9"],
                     help="8=手动加仓, 9=取消加仓")
@@ -267,7 +260,6 @@ def main():
     # ── margin ──
     sp = subs.add_parser("margin", help="调整保证金")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.add_argument("--amt", type=float, help="保证金金额（不传则查询最大可用额度）")
     sp.add_argument("--save-type", required=True, choices=["6", "7"],
@@ -278,7 +270,6 @@ def main():
     # ── edit ──
     sp = subs.add_parser("edit", help="编辑策略参数（预览→差异→确认）")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.add_argument("--rule", help="提议修改的参数 (JSON)，不传则预览")
     sp.add_argument("--merged-rule", dest="merged_rule", help="合并后的完整参数 (JSON)，确认执行")
@@ -289,7 +280,6 @@ def main():
     # ── realtime ──
     sp = subs.add_parser("realtime", help="查询实时数据（币价/可用余额）")
     sp.add_argument("--agent-id", default="qc-test", help="Agent ID")
-    sp.add_argument("--token", help="直接传 token（跳过 agent-id 查找）")
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.add_argument("--show-type", dest="show_type", default="1,2",
                     help="类型: 1=币价 2=余额 3=可减少保证金 (默认1,2)")
