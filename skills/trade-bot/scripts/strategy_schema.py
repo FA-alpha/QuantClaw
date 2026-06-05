@@ -127,11 +127,16 @@ FIELD_LABEL: dict[str, str] = {
 
 def _label(value: Any, key: str) -> str:
     vm = VALUE_MAP.get(key, {})
+    if isinstance(value, (list, dict)):
+        return vm.get(str(value), str(len(value)) if isinstance(value, list) else "object") if vm else value
     return vm.get(str(value), str(value))
 
 
 def _build_field(key: str, raw_value: Any, label_override: str = "", enum_map: dict = None) -> dict:
     label = label_override or FIELD_LABEL.get(key, key)
+    # 数组/字典直接透传，不做字符串化
+    if isinstance(raw_value, (list, dict)):
+        return {"key": key, "label": label, "value": raw_value, "_raw": raw_value}
     if enum_map:
         value = enum_map.get(str(raw_value), str(raw_value))
     else:
@@ -376,38 +381,19 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
 
 
 def _analyze_from_api(data: dict, field_defs: list) -> list[dict]:
-    """未知类型：纯 API 匹配"""
+    """未知类型：严格按 API 字段定义匹配，不自行扩展"""
     groups = []
-    used = set()
     parsed = _parse_field_defs(field_defs)
 
-    # API 字段匹配
     for pg in parsed:
         fields = []
         for var, label in pg["label_map"].items():
             if var in data:
                 em = pg["enum_map"] if var in pg["enum_map"] else None
                 fields.append(_build_field(var, data[var], label_override=label, enum_map=em))
-                used.add(var)
         if fields:
             groups.append({"name": pg["name"], "fields": fields})
 
-    # 收尾：先提取通用基础字段，再兜底其他
-    remaining = {k: v for k, v in data.items() if k not in used and k != "strategy_type"}
-
-    basic_keys = ["coin", "direction", "initial_capital", "multiple_num", "leverage",
-                  "asset_type", "margin_mode", "is_add_amt", "max_loss_type", "max_loss_pct"]
-    basic_fields = []
-    other = {}
-    for k, v in remaining.items():
-        if k in basic_keys:
-            basic_fields.append(_build_field(k, v))
-        else:
-            other[k] = v
-    if basic_fields:
-        groups.insert(0, {"name": "基础设置", "fields": basic_fields})
-    if other:
-        groups.append({"name": "其他参数", "fields": [_build_field(k, v) for k, v in other.items()]})
     return groups
 
 
