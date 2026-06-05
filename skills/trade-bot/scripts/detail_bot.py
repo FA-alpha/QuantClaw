@@ -118,13 +118,13 @@ def run(
     basic["run_time_label"] = _fmt_runtime(info.get("run_time"))
     result["basic"] = basic
 
-    # 策略参数 — 按 schema 分组解析（标签 + 条件显隐）
+    # 策略参数 — 按 schema 分组解析（已知类型代码直出，未知调 API）
     strategy_rule = info.get("strategy_rule")
     if strategy_rule and isinstance(strategy_rule, dict) and strategy_rule:
         from strategy_schema import analyze
         sr_data = dict(strategy_rule)
-        sr_data["strategy_type"] = strategy_type  # analyze 需要
-        result["strategy"] = analyze(sr_data)
+        sr_data["strategy_type"] = strategy_type
+        result["strategy"] = analyze(sr_data, token=token, agent_id=agent_id or "")
 
     # 交易统计 — 全量透传
     trade_info = info.get("trade_info")
