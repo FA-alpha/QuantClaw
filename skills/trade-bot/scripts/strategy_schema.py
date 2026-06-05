@@ -2,10 +2,11 @@
 """
 策略参数 Schema — 将三份配置说明转为结构化字段定义
 
-策略类型：
-  7      — 星辰（网格）
-  1/2/9/11 — 风霆（DCA 加仓）
-  3/4/5/8  — 鲲鹏（趋势）
+策略分类：
+  7      - 星辰（网格）
+  1/2/9/11 - 风霆（DCA 加仓）
+  3/4/5    - 风霆 EMA 模式
+  8        - 鲲鹏V4
 """
 from typing import Any, Optional
 
@@ -222,7 +223,7 @@ def analyze(data: dict, token: str = "", agent_id: str = "") -> dict:
     分析 strategy_rule 返回分组化结果。
 
     所有策略类型先调 /Strategy/field_info 获取字段定义：
-      - 已知类型（星辰/风霆/鲲鹏）→ 用代码分组，但字段标签/枚举优先用 API 返回
+      - 已知类型（星辰/风霆/风霆EMA/鲲鹏V4）→ 用代码分组，但字段标签/枚举优先用 API 返回
       - 未知类型 → 直接用 API 字段定义匹配值
 
     没有版本号时默认传 "1.0"。
@@ -236,8 +237,8 @@ def analyze(data: dict, token: str = "", agent_id: str = "") -> dict:
 
     # ── 策略类型标签 ──
     type_labels: dict[str, str] = {
-        "1": "风霆", "2": "风霆(合约马丁)", "3": "鲲鹏V1", "4": "鲲鹏V2",
-        "5": "鲲鹏V3", "7": "星辰", "8": "鲲鹏V4", "9": "风霆(形态)",
+        "1": "风霆", "2": "风霆(合约马丁)", "3": "风霆(EMA模式V1)", "4": "风霆(EMA模式V2)",
+        "5": "风霆(EMA模式V3)", "7": "星辰", "8": "鲲鹏V4", "9": "风霆(形态)",
         "11": "风霆V4",
     }
     type_label = type_labels.get(st, f"策略类型{st}")
@@ -335,7 +336,7 @@ def _match_fields(data: dict, schema_groups: list) -> list[dict]:
     return groups
 
 def _analyze_known(data: dict, st: str, version: str) -> list[dict]:
-    """已知类型（星辰/风霆/鲲鹏）的代码分组"""
+    """已知类型（星辰/风霆/风霆EMA/鲲鹏V4）的代码分组"""
     groups: list[dict] = []
     used: set[str] = set()
 
@@ -518,7 +519,7 @@ def _analyze_known(data: dict, st: str, version: str) -> list[dict]:
                     ])
 
     # ═══════════════════════════════════════════
-    # 鲲鹏 (type=3/4/5/8)
+    # 鲲鹏V4 (type=8) / 风霆EMA模式 (type=3/4/5)
     # ═══════════════════════════════════════════
     elif st in ("3", "4", "5", "8"):
         if st == "8":
@@ -550,7 +551,7 @@ def _analyze_known(data: dict, st: str, version: str) -> list[dict]:
                 _add_group("版本", ["version"])
             _add_group("止损", ["max_loss_type", "max_loss_pct"])
         else:
-            # type=3/4/5
+            # 风霆 EMA 模式 (type=3/4/5)
             _add_group("基础设置", [
                 "coin", "initial_capital", "multiple_num",
             ])
