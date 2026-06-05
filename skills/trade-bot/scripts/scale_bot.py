@@ -9,7 +9,7 @@ from realtime_info import run as get_realtime
 from agent_display import blocked_result, prompt_result, preview_result, ok_result, error_result
 
 SAVE_TYPE_LABEL = {"8": "手动加仓", "9": "取消加仓"}
-_SCALE_RULES = {"8": ({"1"}, None), "9": ({"1"}, None)}
+_SCALE_RULES = {"8": ({"1", "2"}, None), "9": ({"1", "2"}, None)}
 REALTIME_TTL = 90
 
 

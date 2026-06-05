@@ -184,9 +184,16 @@ def run(
                        ("is_reserve_stop_btn", "reserve_stop"), ("is_add_pause_btn", "add_pause")):
         if info.get(key) is not None:
             buttons[label] = info[key] == 1
-    # status=1/2 运行中 -> 终止按钮始终可用
-    if str(info.get("status")) in ("1", "2"):
+    # status=1/2 运行中 -> reserve_stop/margin/manual 可用
+    # status!=1/2 -> 全部写操作不可用
+    is_running = str(info.get("status")) in ("1", "2")
+    if is_running:
         buttons["reserve_stop"] = True
+    else:
+        buttons["reserve_stop"] = False
+        buttons["margin"] = False
+        buttons["manual"] = False
+        buttons["add_pause"] = False
     if buttons:
         result["actions"] = buttons
 

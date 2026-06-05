@@ -10,7 +10,7 @@ from agent_display import blocked_result, prompt_result, preview_result, ok_resu
 
 SAVE_TYPE_LABEL = {"6": "增加保证金", "7": "减少保证金"}
 REALTIME_TTL = 90
-_MARGIN_RULES = {"6": ({"1"}, None), "7": ({"1"}, None)}
+_MARGIN_RULES = {"6": ({"1", "2"}, None), "7": ({"1", "2"}, None)}
 TYPE_LABEL_MAP = {"2": "可用余额", "3": "可减少保证金"}
 
 
