@@ -221,16 +221,18 @@ def analyze(data: dict, token: str = "", agent_id: str = "") -> dict:
     """
     分析 strategy_rule 返回分组化结果。
 
-    已知类型（星辰/风霆/鲲鹏）→ 代码直出分组
-    未知类型 → 调 /Strategy/field_info 动态获取字段定义后匹配
+    所有策略类型先调 /Strategy/field_info 获取字段定义：
+      - 已知类型（星辰/风霆/鲲鹏）→ 用代码分组，但字段标签/枚举优先用 API 返回
+      - 未知类型 → 直接用 API 字段定义匹配值
+
+    没有版本号时默认传 "1.0"。
 
     Returns:
         {"_type": "风霆V4.3", "_type_id": "11",
          "groups": [{"name": "基础设置", "fields": [...]}, ...]}
     """
     st = str(data.get("strategy_type", ""))
-    version = str(data.get("version", ""))
-    groups: list[dict] = []
+    version = str(data.get("version", "")) or "1.0"
 
     # ── 策略类型标签 ──
     type_labels: dict[str, str] = {
@@ -242,14 +244,15 @@ def analyze(data: dict, token: str = "", agent_id: str = "") -> dict:
     if version:
         type_label += f" v{version}"
 
-    # ── 已知类型走代码分组 ──
+    # ── 第一步：调 API 拿字段定义（所有策略都调） ──
+    field_defs = _fetch_field_defs(data, st, version, token, agent_id) if token and st else None
+
+    # ── 第二步：已知类型用代码分组，未知用 API ──
     if st in ("1", "2", "3", "4", "5", "7", "8", "9", "11"):
         groups = _analyze_known(data, st, version)
-    # ── 未知类型调 API ──
-    elif token and st:
-        groups = _analyze_from_api(data, st, version, token, agent_id)
+    elif field_defs:
+        groups = _match_fields(data, field_defs)
     else:
-        # 无 token，裸透传
         groups = _raw_fallback(data)
 
     return {
@@ -259,10 +262,77 @@ def analyze(data: dict, token: str = "", agent_id: str = "") -> dict:
     }
 
 
-def _raw_fallback(data: dict) -> list[dict]:
-    """无 token 时的裸透传"""
-    fields = [_build_field(k, v) for k, v in data.items() if k != "strategy_type"]
-    return [{"name": "策略参数", "fields": fields}]
+def _fetch_field_defs(data: dict, st: str, version: str,
+                      token: str, agent_id: str) -> Optional[list]:
+    """调 /Strategy/field_info 获取字段定义"""
+    from api_client import api_post
+    params: dict = {
+        "strategy_type": st,
+        "strategy_version": version,
+        "usertoken": token,
+    }
+    sid = data.get("strategy_id", "")
+    if sid:
+        params["strategy_id"] = sid
+
+    resp = api_post("/Strategy/field_info", params, agent_id)
+    if resp.get("status") != 1:
+        return None
+    info = resp.get("info", [])
+    if not isinstance(info, list) or not info:
+        return None
+    return info
+
+
+def _match_fields(data: dict, schema_groups: list) -> list[dict]:
+    """将 API 返回的字段定义与 strategy_rule 值匹配"""
+    groups: list[dict] = []
+    used: set[str] = set()
+
+    def _walk_fields(field_list: list, label_map: dict, enum_map: dict):
+        for fdef in field_list:
+            var = fdef.get("variable", "")
+            if not var:
+                continue
+            label_map[var] = fdef.get("name", var)
+            opts = fdef.get("options")
+            if opts and isinstance(opts, list):
+                enum_map[var] = {str(o["value"]): o.get("name", str(o["value"])) for o in opts}
+            muls = fdef.get("multiples", [])
+            for m in (muls if isinstance(muls, list) else []):
+                _walk_fields(m.get("fields", []), label_map, enum_map)
+
+    for sg in schema_groups:
+        group_name = sg.get("name", "策略参数")
+        label_map: dict[str, str] = {}
+        enum_map: dict[str, dict] = {}
+        _walk_fields(sg.get("field_lists", []), label_map, enum_map)
+
+        fields = []
+        for var, label in label_map.items():
+            if var in data:
+                raw = data[var]
+                ev = enum_map.get(var, {})
+                display = ev.get(str(raw), str(raw)) if ev else _label(raw, var)
+                fields.append({
+                    "key": var,
+                    "label": label,
+                    "value": display,
+                    "_raw": raw,
+                })
+                used.add(var)
+        if fields:
+            groups.append({"name": group_name, "fields": fields})
+
+    remaining = {}
+    for k, v in data.items():
+        if k not in used and k not in ("strategy_type",):
+            remaining[k] = v
+    if remaining:
+        fields = [_build_field(k, v) for k, v in remaining.items()]
+        groups.append({"name": "其他参数", "fields": fields})
+
+    return groups
 
 def _analyze_known(data: dict, st: str, version: str) -> list[dict]:
     """已知类型（星辰/风霆/鲲鹏）的代码分组"""
@@ -524,73 +594,8 @@ def _analyze_known(data: dict, st: str, version: str) -> list[dict]:
 
     return groups
 
+def _raw_fallback(data: dict) -> list[dict]:
+    """无 token / API 失败时的裸透传"""
+    fields = [_build_field(k, v) for k, v in data.items() if k != "strategy_type"]
+    return [{"name": "策略参数", "fields": fields}]
 
-def _analyze_from_api(data: dict, st: str, version: str,
-                      token: str, agent_id: str) -> list[dict]:
-    """
-    未知策略类型 → 调 /Strategy/field_info 获取字段定义，匹配值后分组返回。
-    """
-    from api_client import api_post
-    params: dict = {"strategy_type": st, "usertoken": token}
-    sid = data.get("strategy_id", "")
-    if sid:
-        params["strategy_id"] = sid
-    if version:
-        params["strategy_version"] = version
-
-    resp = api_post("/Strategy/field_info", params, agent_id)
-    if resp.get("status") != 1:
-        return _raw_fallback(data)
-
-    schema_groups = resp.get("info", [])
-    if not isinstance(schema_groups, list) or not schema_groups:
-        return _raw_fallback(data)
-
-    groups: list[dict] = []
-    used: set[str] = set()
-
-    # 递归展开字段定义，收集 variable→label 映射 + 枚举映射
-    def _walk_fields(field_list: list, label_map: dict, enum_map: dict):
-        for fdef in field_list:
-            var = fdef.get("variable", "")
-            if not var:
-                continue
-            label_map[var] = fdef.get("name", var)
-            opts = fdef.get("options")
-            if opts and isinstance(opts, list):
-                enum_map[var] = {str(o["value"]): o.get("name", str(o["value"])) for o in opts}
-            muls = fdef.get("multiples", [])
-            for m in (muls if isinstance(muls, list) else []):
-                _walk_fields(m.get("fields", []), label_map, enum_map)
-
-    for sg in schema_groups:
-        group_name = sg.get("name", "策略参数")
-        label_map: dict[str, str] = {}
-        enum_map: dict[str, dict] = {}
-        _walk_fields(sg.get("field_lists", []), label_map, enum_map)
-
-        fields = []
-        for var, label in label_map.items():
-            if var in data:
-                raw = data[var]
-                ev = enum_map.get(var, {})
-                display = ev.get(str(raw), str(raw)) if ev else _label(raw, var)
-                fields.append({
-                    "key": var,
-                    "label": label,
-                    "value": display,
-                    "_raw": raw,
-                })
-                used.add(var)
-        if fields:
-            groups.append({"name": group_name, "fields": fields})
-
-    remaining = {}
-    for k, v in data.items():
-        if k not in used and k not in ("strategy_type",):
-            remaining[k] = v
-    if remaining:
-        fields = [_build_field(k, v) for k, v in remaining.items()]
-        groups.append({"name": "其他参数", "fields": fields})
-
-    return groups
