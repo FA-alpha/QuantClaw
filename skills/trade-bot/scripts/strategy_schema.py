@@ -243,7 +243,7 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
     # ── 星辰 (type=7) ──
     if st == "7":
         # 中性策略没有方向
-        basic_keys = ["coin", "initial_capital", "multiple_num", "fee_rate", "grid_num", "neutral_strategy"]
+        basic_keys = ["coin", "initial_capital", "multiple_num", "grid_num", "neutral_strategy"]
         if not _bool_val(data, "neutral_strategy"):
             basic_keys.insert(1, "direction")
         _add("基础设置", basic_keys,
@@ -253,20 +253,22 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
 
         enable_shift = _bool_val(data, "enable_grid_shift")
         if enable_shift is True:
-            _add("移动网格", ["enable_grid_shift", "grid_type", "grid_percentage"])
+            _add("移动网格", ["enable_grid_shift", "grid_type", "grid_percentage"])                
         else:
-            _add("网格设置", ["enable_grid_shift", "grid_type", "grid_percentage",
-                              "enable_start_opened"])
-            if _bool_val(data, "enable_start_opened"):
-                if _bool_val(data, "enable_base_position_control"):
-                    _add("底仓控制", ["enable_base_position_control", "init_max_entries"])
+            _add("网格设置", ["neutral_strategy","enable_grid_shift", "grid_type", "grid_percentage"])
+            if _bool_val(data, "neutral_strategy"):
+                _add("网格设置", ["base_price"],labels={"base_price": "中间价"})
+            else:
+                  _add("网格设置", ["enable_start_opened"])
+                  if _bool_val(data, "enable_start_opened"):
+                        if _bool_val(data, "enable_base_position_control"):
+                              _add("底仓控制", ["enable_base_position_control", "init_max_entries"])
             _add("价格区间", ["enable_check_period"])
             if _bool_val(data, "enable_check_period"):
                 pct = str(data.get("period_check_type", ""))
                 if pct == "2":
                     _add("ATR参数", ["period_check_type", "grid_period",
-                                     "atr_period", "atr_time_grain",
-                                     "grid_low_ratio", "grid_high_ratio"])
+                                     "atr_period", "atr_time_grain"])
                 else:
                     _add("区间参数", ["period_check_type", "grid_period",
                                       "grid_low_ratio", "grid_high_ratio"])
@@ -426,7 +428,7 @@ def analyze(data: dict, token: str = "", agent_id: str = "") -> dict:
 
     type_labels = {
         "1": "风霆", "2": "风霆(合约马丁)", "3": "鲲鹏V1", "4": "鲲鹏V2",
-        "5": "鲲鹏V3", "7": "星辰", "8": "鲲鹏V4", "9": "风霆(形态)", "11": "风霆V4",
+        "5": "鲲鹏V3", "7": "星辰", "8": "鲲鹏V4", "9": "风霆V2", "11": "风霆V4",
     }
     type_label = type_labels.get(st, f"策略类型{st}")
     if version:
