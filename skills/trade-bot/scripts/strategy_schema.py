@@ -243,8 +243,8 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
     # ── 星辰 (type=7) ──
     if st == "7":
         _add("基础设置", ["coin", "direction", "neutral_strategy", "initial_capital",
-                          "multiple_num", "max_grid_size", "fee_rate"],
-                         labels={"max_grid_size": "最大网格数"})
+                          "multiple_num", "fee_rate", "grid_num"],
+                         labels={"grid_num": "网格数量"})
         _add("资金管理", ["margin_reserve_ratio", "profit_allocation_margin_ratio",
                           "full_reinvestment_threshold"])
 
@@ -373,10 +373,13 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
             _add("反转", ["reversal_pct"])
             _add("止损", ["max_loss_type", "max_loss_pct"])
 
-    # 收尾
+    # 收尾 — 星辰 type=7 排除 max_grid_size（不参与展示）
+    exclude_keys = {"strategy_type"}
+    if st == "7":
+        exclude_keys.add("max_grid_size")
     remaining = {}
     for k, v in data.items():
-        if k not in used and k not in ("strategy_type",):
+        if k not in used and k not in exclude_keys:
             remaining[k] = v
     if remaining:
         fields = [_build_field(k, v) for k, v in remaining.items()]
