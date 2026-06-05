@@ -178,12 +178,15 @@ def run(
     if fund_fee is not None and fund_fee != "":
         result["fund_fee"] = fund_fee
 
-    # 操作按钮
+    # 操作按钮 — status=1(实盘)/2(模拟) 运行时都可终止
     buttons = {}
     for key, label in (("is_margin_btn", "margin"), ("is_manual_btn", "manual"),
                        ("is_reserve_stop_btn", "reserve_stop"), ("is_add_pause_btn", "add_pause")):
         if info.get(key) is not None:
             buttons[label] = info[key] == 1
+    # status=1/2 运行中 -> 终止按钮始终可用
+    if str(info.get("status")) in ("1", "2"):
+        buttons["reserve_stop"] = True
     if buttons:
         result["buttons"] = buttons
 
