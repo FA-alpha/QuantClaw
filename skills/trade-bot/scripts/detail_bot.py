@@ -178,23 +178,25 @@ def run(
     if fund_fee is not None and fund_fee != "":
         result["fund_fee"] = fund_fee
 
-    # 操作按钮 — status=1(实盘)/2(模拟) 运行时都可终止
-    buttons = {}
-    for key, label in (("is_margin_btn", "margin"), ("is_manual_btn", "manual"),
-                       ("is_reserve_stop_btn", "reserve_stop"), ("is_add_pause_btn", "add_pause")):
-        if info.get(key) is not None:
-            buttons[label] = info[key] == 1
-    # status=1/2 运行中 -> reserve_stop/margin/manual 可用
-    # status!=1/2 -> 全部写操作不可用
+    # 操作 — 只有 status=1/2 运行中才展示，条件不满足的不出现
     is_running = str(info.get("status")) in ("1", "2")
+    actions = {}
     if is_running:
-        buttons["reserve_stop"] = True
-    else:
-        buttons["reserve_stop"] = False
-        buttons["margin"] = False
-        buttons["manual"] = False
-        buttons["add_pause"] = False
-    if buttons:
-        result["actions"] = buttons
+        # 终止始终可用
+        actions["reserve_stop"] = True
+        # 保证金/手动加仓 — API 允许再展示
+        if info.get("is_margin_btn") == 1:
+            actions["margin"] = True
+        if info.get("is_manual_btn") == 1:
+            actions["manual"] = True
+        # 暂停/取消暂停 — 根据 add_pause_status 决定展示哪个
+        if info.get("is_add_pause_btn") == 1:
+            aps = str(info.get("add_pause_status", "0"))
+            if aps == "0":
+                actions["pause_add"] = True
+            elif aps == "1":
+                actions["resume_add"] = True
+    if actions:
+        result["actions"] = actions
 
     return result

@@ -208,7 +208,7 @@ def _parse_field_defs(schema_groups: list) -> list[dict]:
 # ============ 分组逻辑 ============
 
 def _add_group(name: str, keys: list[str], data: dict, used: set,
-               groups: list, api_groups: list = None):
+               groups: list, api_groups: list = None, labels: dict = None):
     """添加一个分组，API 标签/枚举优先"""
     api_label_map = {}
     api_enum_map = {}
@@ -218,11 +218,12 @@ def _add_group(name: str, keys: list[str], data: dict, used: set,
                 api_label_map = ag["label_map"]
                 api_enum_map = ag["enum_map"]
                 break
+    override_labels = labels or {}
 
     fields = []
     for k in keys:
         if k in data:
-            lbl = api_label_map.get(k) or FIELD_LABEL.get(k, k)
+            lbl = api_label_map.get(k) or override_labels.get(k) or FIELD_LABEL.get(k, k)
             em = api_enum_map if k in api_enum_map else None
             fields.append(_build_field(k, data[k], label_override=lbl, enum_map=em))
     if fields:
@@ -237,12 +238,13 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
 
     api_groups = _parse_field_defs(api_defs) if api_defs else []
 
-    _add = lambda name, keys: _add_group(name, keys, data, used, groups, api_groups)
+    _add = lambda name, keys, labels=None: _add_group(name, keys, data, used, groups, api_groups, labels=labels)
 
     # ── 星辰 (type=7) ──
     if st == "7":
         _add("基础设置", ["coin", "direction", "neutral_strategy", "initial_capital",
-                          "multiple_num", "max_grid_size", "fee_rate"])
+                          "multiple_num", "max_grid_size", "fee_rate"],
+                         labels={"max_grid_size": "最大网格数"})
         _add("资金管理", ["margin_reserve_ratio", "profit_allocation_margin_ratio",
                           "full_reinvestment_threshold"])
 
