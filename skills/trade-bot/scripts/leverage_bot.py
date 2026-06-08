@@ -3,6 +3,9 @@
 from typing import Optional
 
 from api_client import api_post, check_auth
+from datetime import datetime, timezone, timedelta
+
+CST = timezone(timedelta(hours=8))
 
 STATUS_MAP = {"running": "1", "sim": "2", "stopped": "3", "deleted": "-1"}
 AMT_TYPE_MAP = {"spot": "1", "futures": "2"}
@@ -92,6 +95,7 @@ def run(
 
     return {
         "status": "ok",
+        "server_time": datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S"),
         "total_assets": {
             "total_amt": amt_info.get("total_amt"),
         },
