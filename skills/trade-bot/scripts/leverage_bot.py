@@ -95,7 +95,7 @@ def run(
 
     return {
         "status": "ok",
-        "server_time": datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S"),
+        "updated_at": datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S"),
         "total_assets": {
             "total_amt": amt_info.get("total_amt"),
         },
