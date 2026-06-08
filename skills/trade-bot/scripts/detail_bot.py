@@ -179,7 +179,9 @@ def run(
         result["fund_fee"] = fund_fee
 
     # 操作 — 只有 status=1/2 运行中才展示，条件不满足的不出现
-    is_running = str(info.get("status")) in ("1", "2")
+    bot_status = str(info.get("status"))
+    is_running = bot_status in ("1", "2")
+    is_live = bot_status == "1"
     actions = {}
     if is_running:
         # 停止始终可用
@@ -190,11 +192,6 @@ def run(
                 actions["cancel_reserve"] = True
             else:
                 actions["reserve_stop"] = True
-        # 保证金/手动加仓 — API 允许再展示
-        if info.get("is_margin_btn") == 1:
-            actions["margin"] = True
-        if info.get("is_manual_btn") == 1:
-            actions["manual"] = True
         # 暂停/取消暂停 — 根据 add_pause_status 决定展示哪个
         if info.get("is_add_pause_btn") == 1:
             aps = str(info.get("add_pause_status", "0"))
@@ -202,6 +199,12 @@ def run(
                 actions["pause_add"] = True
             elif aps == "1":
                 actions["resume_add"] = True
+    if is_live:
+        # 保证金/手动加仓 — 仅实盘运行中
+        if info.get("is_margin_btn") == 1:
+            actions["margin"] = True
+        if info.get("is_manual_btn") == 1:
+            actions["manual"] = True
     if actions:
         result["actions"] = actions
 
