@@ -80,6 +80,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py detail \
 - `detail.strategy_rule` — 策略参数
 - `detail.trade_info` — 盈亏/胜率等
 - `detail.grids` — 网格数据
+- `detail.actions` — 推荐操作（stop/edit/reserve_stop/pause_add/margin/manual 等）
 
 **缓存**：查询详情会自动缓存到 `/tmp/quantclaw/bot_details/{bot_id}.json`，供 edit/realtime 复用。
 
