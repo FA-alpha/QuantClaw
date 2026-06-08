@@ -140,8 +140,15 @@ def run(
     if not ok_msg:
         return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试，请告知用户错误信息")
     if data.get("status") != 1:
+        err_msg = str(data.get("msg", data.get("info", "未知错误")))
+        if "URL rejected" in err_msg or "No host" in err_msg:
+            return error_result(
+                title=f"❌ {action_label}失败",
+                message="该机器人暂时无法操作",
+                rule="该机器人当前不支持此操作，告知用户暂时无法操作即可",
+            )
         return error_result(title=f"❌ {action_label}失败",
-                            message=data.get("msg", data.get("info", "未知错误")), rule="不得自行重试")
+                            message=err_msg, rule="不得自行重试")
 
     result_lines = [f"机器人: {bot_id}", f"操作: {action_label}", f"金额: {amt}"]
     if stale_warning:
