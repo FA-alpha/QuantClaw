@@ -13,11 +13,11 @@ SAVE_TYPE_LABEL = {
 }
 
 _BATCH_RULES = {
-    "4": ({"1", "2"}, None, None),
-    "6": ({"1", "2"}, {"0"}, None),
-    "7": ({"1", "2"}, {"1", "2"}, None),
-    "8": ({"1", "2"}, None, {"0"}),
-    "9": ({"1", "2"}, None, {"1"}),
+    "4": ({"1", "2"}, None, None, False, False),
+    "6": ({"1", "2"}, {"0"}, None, True, False),
+    "7": ({"1", "2"}, {"1", "2"}, None, True, False),
+    "8": ({"1", "2"}, None, {"0"}, False, True),
+    "9": ({"1", "2"}, None, {"1"}, False, True),
 }
 
 
@@ -32,8 +32,10 @@ def run(
         return error_result(title="❌ 参数错误", message="bot_ids 不能为空", rule="不得编造 bot_id")
 
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
-    statuses, reserves, pause_statuses = _BATCH_RULES.get(save_type, (set(), None, None))
-    pre = check_bots(token, ids, statuses, reserves, pause_statuses, agent_id)
+    statuses, reserves, pause_statuses, need_reserve_btn, need_pause_btn = _BATCH_RULES.get(save_type, (set(), None, None, False, False))
+    pre = check_bots(token, ids, statuses, reserves, pause_statuses,
+                     require_reserve_btn=need_reserve_btn, require_pause_btn=need_pause_btn,
+                     agent_id=agent_id)
 
     state = check(agent_id or "", "batch", ids, save_type)
 

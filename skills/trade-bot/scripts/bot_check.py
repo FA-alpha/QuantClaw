@@ -2,8 +2,10 @@
 """机器人状态批量查询 — /Trade/batch_check_status
 
 供 stop / batch / scale / margin 等写操作前的预检复用。
-各调用方通过 allowed_statuses / allowed_reserve 传入自己的规则。
+各调用方通过 allowed_statuses / allowed_reserve / require_*_btn 传入自己的规则。
 """
+import json
+import os
 from typing import Optional, List, Set
 
 from api_client import api_post
@@ -14,6 +16,21 @@ STATUS_LABEL = {
 }
 RESERVE_STATUS_LABEL = {"0": "未预约", "1": "预约停止中", "2": "预约已终止"}
 
+DETAIL_CACHE_DIR = "/tmp/quantclaw/bot_details"
+
+
+def _read_cached_btn(bot_id: str) -> tuple:
+    """读取 detail 缓存中的 is_reserve_stop_btn 和 is_add_pause_btn，缺失返回 (None, None)"""
+    try:
+        path = os.path.join(DETAIL_CACHE_DIR, f"{bot_id}.json")
+        if not os.path.exists(path):
+            return None, None
+        with open(path) as f:
+            info = json.load(f)
+        return info.get("is_reserve_stop_btn"), info.get("is_add_pause_btn")
+    except Exception:
+        return None, None
+
 
 def check_bots(
     token: str,
@@ -21,6 +38,8 @@ def check_bots(
     allowed_statuses: Set[str],
     allowed_reserve: Optional[Set[str]] = None,
     allowed_add_pause_status: Optional[Set[str]] = None,
+    require_reserve_btn: bool = False,
+    require_pause_btn: bool = False,
     agent_id: Optional[str] = None,
 ) -> dict:
     """
@@ -33,6 +52,9 @@ def check_bots(
 
     Returns:
         {"bots": [...], "executable_count": int, "blocked_count": int}
+        
+        require_reserve_btn: 如果 True，检查 detail 缓存中 is_reserve_stop_btn=1
+        require_pause_btn: 如果 True，检查 detail 缓存中 is_add_pause_btn=1
     """
     data = api_post(
         "/Trade/batch_check_status",
@@ -79,6 +101,19 @@ def check_bots(
                 pause_label = "已暂停" if p == "1" else "未暂停"
                 can_exec = False
                 reason = f"加仓暂停状态为「{pause_label}」，不支持此操作"
+
+        # 检查按钮是否可用（读 detail 缓存）
+        if can_exec and (require_reserve_btn or require_pause_btn):
+            is_reserve_btn, is_pause_btn = _read_cached_btn(bid)
+            if is_reserve_btn is None and is_pause_btn is None:
+                can_exec = False
+                reason = "未查询过机器人详情，请先查看详情后再操作"
+            elif require_reserve_btn and is_reserve_btn != 1:
+                can_exec = False
+                reason = "该机器人不支持预约终止操作"
+            elif require_pause_btn and is_pause_btn != 1:
+                can_exec = False
+                reason = "该机器人不支持暂停加仓操作"
 
         if can_exec:
             executable += 1
