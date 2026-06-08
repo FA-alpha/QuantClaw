@@ -56,10 +56,11 @@ def run(
                     rule="必须等待用户提供 order_id，不得编造",
                 )
             detail_lines = [f"机器人: {bot_id}", f"操作: {action_label}", f"订单ID: {order_id}"]
-            rule = "等待用户确认，不得自行操作"
             if state == "expired":
-                detail_lines.append("上一次确认超时，请重新确认")
-                rule = "上一次确认超时，等待用户重新确认，不得自行操作"
+                detail_lines.append(f"{action_label}操作未能执行，确认操作已超时（5分钟），需要用户重新确认")
+                rule = f"{action_label}确认超时（5分钟），请重新确认后原样重跑相同命令"
+            else:
+                rule = "等待用户确认后，原样重跑相同命令即可执行"
             create(agent_id or "", "scale", bot_id, save_type, order_id)
             return preview_result(
                 title=f"⚠️ {action_label} - 待确认",
@@ -113,10 +114,11 @@ def run(
             ts = realtime.get("timestamp_label", "")
             for it in realtime.get("items", []):
                 detail_lines.append(f"{it['type_label']}: {it['amt']} ({ts})")
-        rule = "等待用户确认，不得自行操作"
         if state == "expired":
-            detail_lines.append("上一次确认超时，请重新确认")
-            rule = "上一次确认超时，等待用户重新确认，不得自行操作"
+            detail_lines.append(f"{action_label}操作未能执行，确认操作已超时（5分钟），需要用户重新确认")
+            rule = f"{action_label}确认超时（5分钟），请重新确认后原样重跑相同命令"
+        else:
+            rule = "等待用户确认后，原样重跑相同命令即可执行"
         create(agent_id or "", "scale", bot_id, save_type, str(price), str(amt))
         return preview_result(
             title=f"⚠️ {action_label} - 待确认",

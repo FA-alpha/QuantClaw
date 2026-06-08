@@ -88,10 +88,11 @@ def run(
             f"金额: {amt}",
             f"{type_label}: {max_info['value']}" if max_info else f"{type_label}: 未知",
         ]
-        rule = "等待用户确认，不得自行操作"
         if state == "expired":
-            detail_lines.append("上一次确认超时，请重新确认")
-            rule = "上一次确认超时，等待用户重新确认，不得自行操作"
+            detail_lines.append(f"{action_label}操作未能执行，确认操作已超时（5分钟），需要用户重新确认")
+            rule = f"{action_label}确认超时（5分钟），请重新确认后原样重跑相同命令"
+        else:
+            rule = "等待用户确认后，原样重跑相同命令即可执行"
         create(agent_id or "", "margin", bot_id, save_type, str(amt))
         return preview_result(
             title=f"⚠️ {action_label} - 待确认",
