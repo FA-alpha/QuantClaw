@@ -69,15 +69,19 @@ def run(
     info = data.get("info", {})
     amt_info = info.get("amt_info", {})
     leverage_info = info.get("leverage_info", {})
-    usdt_assets = info.get("usdt_assets", [])
+    usdt_assets_raw = info.get("usdt_assets", [])
+    usd_assets_raw = info.get("usd_assets", [])
     symbol_stat_raw = leverage_info.get("symbol_stat", [])
 
     return {
         "status": "ok",
-        "total_amt": amt_info.get("total_amt"),
+        "total_assets": {
+            "total_amt": amt_info.get("total_amt"),
+        },
         "leverage": {
-            "actual_invest_total": leverage_info.get("actual_invest_total"),
             "nominal_invest_total": leverage_info.get("nominal_invest_total"),
+            "nominal_invest_total_exposure": leverage_info.get("nominal_invest_total_exposure"),
+            "actual_invest_total": leverage_info.get("actual_invest_total"),
             "used_margin": leverage_info.get("used_margin"),
             "used_margin_pct": leverage_info.get("used_margin_pct"),
             "available_margin": leverage_info.get("available_margin"),
@@ -88,14 +92,26 @@ def run(
             "dir_exposure": leverage_info.get("dir_exposure"),
             "scale_exposure": leverage_info.get("scale_exposure"),
         },
-        "assets": [
+        "usdt_assets": [
             {
                 "symbol": a.get("symbol"),
                 "nominal_invest_total": a.get("nominal_invest_total"),
                 "current_position": a.get("current_position"),
+                "real_leverage": a.get("real_leverage"),
+                "direction": a.get("direction"),
             }
-            for a in usdt_assets
-        ] if usdt_assets else [],
+            for a in usdt_assets_raw
+        ] if usdt_assets_raw else [],
+        "usd_assets": [
+            {
+                "symbol": a.get("symbol"),
+                "nominal_invest_total": a.get("nominal_invest_total"),
+                "current_position": a.get("current_position"),
+                "real_leverage": a.get("real_leverage"),
+                "direction": a.get("direction"),
+            }
+            for a in usd_assets_raw
+        ] if usd_assets_raw else [],
         "symbol_stat": [
             {
                 "coin": s.get("coin"),
