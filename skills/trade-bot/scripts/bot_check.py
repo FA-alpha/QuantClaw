@@ -19,17 +19,31 @@ RESERVE_STATUS_LABEL = {"0": "未预约", "1": "预约停止中", "2": "预约�
 DETAIL_CACHE_DIR = "/tmp/quantclaw/bot_details"
 
 
-def _read_cached_btn(bot_id: str) -> tuple:
-    """读取 detail 缓存中的 is_reserve_stop_btn 和 is_add_pause_btn，缺失返回 (None, None)"""
+def _ensure_detail_cached(token: str, bot_id: str, agent_id: str) -> dict:
+    """缓存缺失时自动调 detail 填充，返回 {"is_reserve_stop_btn", "is_add_pause_btn"}"""
+    # 先读缓存
     try:
         path = os.path.join(DETAIL_CACHE_DIR, f"{bot_id}.json")
-        if not os.path.exists(path):
-            return None, None
+        if os.path.exists(path):
+            with open(path) as f:
+                info = json.load(f)
+            rb = info.get("is_reserve_stop_btn")
+            pb = info.get("is_add_pause_btn")
+            if rb is not None or pb is not None:
+                return {"is_reserve_stop_btn": rb, "is_add_pause_btn": pb}
+    except Exception:
+        pass
+    # 缓存缺失，自动调 detail 填充
+    from detail_bot import run as detail_run
+    detail_run(token=token, bot_id=bot_id, agent_id=agent_id)
+    try:
+        path = os.path.join(DETAIL_CACHE_DIR, f"{bot_id}.json")
         with open(path) as f:
             info = json.load(f)
-        return info.get("is_reserve_stop_btn"), info.get("is_add_pause_btn")
+        return {"is_reserve_stop_btn": info.get("is_reserve_stop_btn"),
+                "is_add_pause_btn": info.get("is_add_pause_btn")}
     except Exception:
-        return None, None
+        return {"is_reserve_stop_btn": None, "is_add_pause_btn": None}
 
 
 def check_bots(
@@ -102,19 +116,19 @@ def check_bots(
                 reason = f"加仓暂停状态为「{pause_label}」，不支持此操作"
 
         if can_exec and (require_reserve_btn or require_pause_btn):
-            is_reserve_btn, is_pause_btn = _read_cached_btn(bid)
+            detail = _ensure_detail_cached(token, bid, agent_id or "")
             if require_reserve_btn:
-                if is_reserve_btn is None:
+                if detail["is_reserve_stop_btn"] is None:
                     can_exec = False
-                    reason = "未查询过机器人详情，请先查看详情后再操作"
-                elif is_reserve_btn != 1:
+                    reason = "该机器人不支持预约终止操作"
+                elif detail["is_reserve_stop_btn"] != 1:
                     can_exec = False
                     reason = "该机器人不支持预约终止操作"
             if require_pause_btn:
-                if is_pause_btn is None:
+                if detail["is_add_pause_btn"] is None:
                     can_exec = False
-                    reason = "未查询过机器人详情，请先查看详情后再操作"
-                elif is_pause_btn != 1:
+                    reason = "该机器人不支持暂停加仓操作"
+                elif detail["is_add_pause_btn"] != 1:
                     can_exec = False
                     reason = "该机器人不支持暂停加仓操作"
 
