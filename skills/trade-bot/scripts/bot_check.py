@@ -49,12 +49,11 @@ def check_bots(
         allowed_statuses: 允许的 bot status 集合，如 {"1", "2"}
         allowed_reserve: 允许的 reserve_status 集合，None / 空 = 不检查
         allowed_add_pause_status: 允许的 add_pause_status，None = 不检查
+        require_reserve_btn: 如果 True，检查 detail 缓存中 is_reserve_stop_btn=1
+        require_pause_btn: 如果 True，检查 detail 缓存中 is_add_pause_btn=1
 
     Returns:
         {"bots": [...], "executable_count": int, "blocked_count": int}
-        
-        require_reserve_btn: 如果 True，检查 detail 缓存中 is_reserve_stop_btn=1
-        require_pause_btn: 如果 True，检查 detail 缓存中 is_add_pause_btn=1
     """
     data = api_post(
         "/Trade/batch_check_status",
@@ -102,20 +101,16 @@ def check_bots(
                 can_exec = False
                 reason = f"加仓暂停状态为「{pause_label}」，不支持此操作"
 
-        # 检查按钮是否可用（读 detail 缓存）
         if can_exec and (require_reserve_btn or require_pause_btn):
             is_reserve_btn, is_pause_btn = _read_cached_btn(bid)
-            if is_reserve_btn is None and is_pause_btn is None:
-                can_exec = False
-                reason = "未查询过机器人详情，请先查看详情后再操作"
-            elif require_reserve_btn:
+            if require_reserve_btn:
                 if is_reserve_btn is None:
                     can_exec = False
                     reason = "未查询过机器人详情，请先查看详情后再操作"
                 elif is_reserve_btn != 1:
                     can_exec = False
                     reason = "该机器人不支持预约终止操作"
-            elif require_pause_btn:
+            if require_pause_btn:
                 if is_pause_btn is None:
                     can_exec = False
                     reason = "未查询过机器人详情，请先查看详情后再操作"
