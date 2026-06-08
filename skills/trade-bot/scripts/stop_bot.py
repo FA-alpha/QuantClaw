@@ -49,7 +49,11 @@ def run(
             f"当前状态: {bot_state['status_label']}",
             f"操作: {action_label}",
         ]
-        rule = "等待用户确认后，原样重跑相同命令即可执行"
+        if state == "expired":
+            detail_lines.append(f"{action_label}操作未能执行，确认操作已超时（5分钟），需要用户重新确认")
+            rule = f"确认超时（5分钟），请重新确认后原样重跑相同命令"
+        else:
+            rule = "等待用户确认后，原样重跑相同命令即可执行"
 
         create(agent_id or "", "stop", bot_id, save_type)
         return preview_result(
