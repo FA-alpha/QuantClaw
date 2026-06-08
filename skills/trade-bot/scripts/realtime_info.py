@@ -52,7 +52,14 @@ def run(
     """
     info = _get_cached_info(bot_id)
     if not info:
-        return {"status": "error", "message": "详情缓存不存在，请先执行 detail 查询"}
+        # 缓存缺失，自动调 detail 填充
+        from detail_bot import run as detail_run
+        dr = detail_run(token=token, bot_id=bot_id, agent_id=agent_id)
+        if dr.get("status") != "ok":
+            return {"status": "error", "message": "详情查询失败，无法获取实时数据"}
+        info = _get_cached_info(bot_id)
+        if not info:
+            return {"status": "error", "message": "详情缓存写入失败"}
 
     trade_info = info.get("trade_info", {})
     trade_token = trade_info.get("trade_token", "")

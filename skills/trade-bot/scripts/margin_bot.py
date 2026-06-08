@@ -40,7 +40,7 @@ def run(
     action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
 
     statuses, reserves = _MARGIN_RULES.get(save_type, (set(), None))
-    pre = check_bots(token, [bot_id], statuses, reserves, agent_id)
+    pre = check_bots(token, [bot_id], statuses, reserves, agent_id=agent_id)
     bot_state = pre["bots"][0]
     if not bot_state["can_execute"]:
         return blocked_result(
