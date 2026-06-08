@@ -24,6 +24,7 @@ def _build(
     user_prompt: str = "",
     blocked: bool = False,
     rule: str = "",
+    confirm_required: bool = False,
     **kwargs,
 ) -> dict:
     result = {
@@ -34,6 +35,7 @@ def _build(
             "blocked": blocked,
             "rule": rule,
             "user_prompt": user_prompt,
+            "confirm_required": confirm_required,
         },
     }
     result.update(kwargs)
@@ -84,14 +86,15 @@ def preview_result(
     user_prompt: str = "",
     **kwargs,
 ) -> dict:
-    """预览：展示操作详情，等待用户确认"""
+    """预览：展示操作详情，等待用户确认后原样重跑相同命令"""
     return _build(
         status="preview",
         title=title,
         lines=detail_lines,
-        blocked=True,
-        rule=rule or "必须等待用户确认后才执行，不得自行跳过确认步骤",
-        user_prompt=user_prompt or "确认执行？回复「确认」或「取消」",
+        blocked=False,
+        confirm_required=True,
+        rule=rule or "等待用户确认后，以相同参数重新运行此命令即可执行",
+        user_prompt=user_prompt or "确认执行？回复「确认」后将原样重跑相同命令",
         **kwargs,
     )
 

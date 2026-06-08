@@ -49,7 +49,7 @@ def run(
             f"当前状态: {bot_state['status_label']}",
             f"操作: {action_label}",
         ]
-        rule = "等待用户确认，不得自行操作"
+        rule = "等待用户确认后，原样重跑相同命令即可执行"
 
         create(agent_id or "", "stop", bot_id, save_type)
         return preview_result(
