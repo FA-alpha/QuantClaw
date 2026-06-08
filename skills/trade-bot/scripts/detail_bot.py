@@ -186,6 +186,9 @@ def run(
     if is_running:
         # 停止始终可用
         actions["stop"] = True
+        # 可编辑策略参数
+        if str(info.get("is_edit")) == "1":
+            actions["edit"] = True
         # 预约停止/取消预约 — 按 API 按钮状态判断
         if info.get("is_reserve_stop_btn") == 1:
             if str(info.get("reserve_status")) in ("1", "2"):
