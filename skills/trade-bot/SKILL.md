@@ -95,7 +95,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py leverage \
 
 筛选参数与 `list` 一致，但只统计运行中的机器人。
 
-**返回**包含 `field_help` 字段映射，Agent 展示时必须参照 `field_help` 将英文字段名替换为中文标签，逐字段解释，不得跳过任何有值的字段。
+**返回**包含 `section_help`（分组标签）和 `field_help`（字段标签），Agent 展示时必须参照帮助信息将英文字段名替换为中文标签，按分组逐字段解释，不得跳过任何有值的字段。
 
 ### 4. exchange-list — 交易所账户列表
 

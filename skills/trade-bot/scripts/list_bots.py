@@ -191,9 +191,9 @@ def run(
             account_id, direction, search, coin, agent_id,
         ) if s_status == "1" else None,
         "symbol_stat_help": {
-            "coin": "计价币种",
-            "nominal_total_cash": "名义总资金",
-            "actual_invest_total": "实际投入总额",
+            "coin": "币种",
+            "nominal_total_cash": "名义总投资",
+            "actual_invest_total": "实际总投资",
             "initial_capital": "初始本金",
             "overtake_amt": "超额金额",
             "net_value": "当前净值",
