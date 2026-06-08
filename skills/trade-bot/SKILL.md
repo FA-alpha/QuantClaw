@@ -60,6 +60,8 @@ cd skills/trade-bot/scripts && python3 trade_bot.py list \
 | `--sort` | latest | 排序字段 |
 | `--order` | desc | 排序方向 |
 
+**返回**的 `symbol_stat` 附带 `symbol_stat_help` 字段映射，Agent 展示实盘汇总时必须参照帮助将英文字段名替换为中文标签。
+
 ### 2. detail — 机器人详情
 
 ```bash
