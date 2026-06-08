@@ -426,13 +426,13 @@ from agent_display import blocked_result, prompt_result, preview_result, ok_resu
 
 **5 种标准返回类型**：
 
-| 函数 | status | blocked | 用途 |
-|------|--------|---------|------|
-| `blocked_result(title, reason)` | `"blocked"` | `true` | 操作被阻止，Agent 不得绕过 |
-| `prompt_result(title, prompt_text)` | `"prompt"` | `true` | 需要用户输入，Agent 不得代为决定 |
-| `preview_result(title, detail_lines)` | `"preview"` | `true` | 展示操作详情，等用户确认 |
-| `ok_result(title, detail_lines)` | `"ok"` | `false` | 操作成功 |
-| `error_result(title, message)` | `"error"` | `true` | 错误，Agent 不得自行处理 |
+| 函数 | status | blocked | confirm_required | 用途 |
+|------|--------|---------|------------------|------|
+| `blocked_result(title, reason)` | `"blocked"` | `true` | `false` | 操作被阻止，Agent 不得绕过 |
+| `prompt_result(title, prompt_text)` | `"prompt"` | `true` | `false` | 需要用户输入，Agent 不得代为决定 |
+| `preview_result(title, detail_lines)` | `"preview"` | `false` | `true` | 展示操作详情，确认后原样重跑 |
+| `ok_result(title, detail_lines)` | `"ok"` | `false` | `false` | 操作成功 |
+| `error_result(title, message)` | `"error"` | `true` | `false` | 错误，Agent 不得自行处理 |
 
 ### 返回格式
 
@@ -443,9 +443,10 @@ from agent_display import blocked_result, prompt_result, preview_result, ok_resu
   "agent_display": {
     "title": "⚠️ 手动加仓 - 待确认",
     "lines": ["SOL 当前价: 75.56", "加仓价格: 78.00", "加仓金额: 100U"],
-    "blocked": true,
-    "rule": "必须等待用户确认后才执行，不得自行跳过确认步骤",
-    "user_prompt": "确认执行？回复「确认」或「取消」"
+    "blocked": false,
+    "confirm_required": true,
+    "rule": "等待用户确认后，以相同参数重新运行此命令即可执行",
+    "user_prompt": "确认执行？回复「确认」后将原样重跑相同命令"
   },
   "action": "手动加仓",
   "summary": {...}
@@ -459,7 +460,8 @@ from agent_display import blocked_result, prompt_result, preview_result, ok_resu
 | `title` | string | 展示标题（Agent 可直接用） |
 | `lines` | list | 展示内容行（Agent 逐行渲染即可） |
 | `blocked` | bool | `true`=Agent 被阻止继续，必须等待用户 |
-| `rule` | string | 行为约束规则（"不得..."的明确指令） |
+| `confirm_required` | bool | `true`=待用户确认，确认后以相同参数重新运行即可执行 |
+| `rule` | string | 行为约束规则 |
 | `user_prompt` | string | 给用户的引导语（Agent 可直接复制发送） |
 
 ### 使用示例
@@ -487,7 +489,7 @@ return prompt_result(
 return preview_result(
     title="⚠️ 增加保证金 - 待确认",
     detail_lines=["机器人: 2039 SOL-星辰", "金额: 100U", "可用余额: 500U"],
-    rule="必须等待用户确认后才执行",
+    rule="等待用户确认后，原样重跑相同命令即可执行",
     user_prompt="确认增加 100U 保证金？回复「确认」",
     bot_id="2039",
     amt=100,
@@ -509,6 +511,7 @@ return ok_result(
 - [ ] 所有 `return` 都用了 `agent_display` 的 5 个函数之一
 - [ ] `blocked` 状态时 `rule` 明确写了"不得..."的约束
 - [ ] `prompt` 状态时 `user_prompt` 包含引导用户输入的示例格式
+- [ ] `preview` 状态时 `confirm_required=true` 且 `blocked=false`，`rule` 明确「确认后原样重跑」
 - [ ] `preview` 状态时 `detail_lines` 列出了所有关键参数（金额/币种/操作类型）
 - [ ] 超额/状态不符等异常场景不是泛泛的 error，而是具体的 `blocked_result` + 明确原因
 - [ ] 没有裸 `return {"status":"error", "message":"..."}` 没带 `agent_display`
