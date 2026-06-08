@@ -176,6 +176,20 @@ def cmd_realtime(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_grid_detail(args):
+    """查询周期挂单明细"""
+    from grid_detail import run
+    token = get_user_token_by_agent_id(args.agent_id)
+    if not token:
+        return
+    result = run(
+        token=token, bot_id=args.bot_id,
+        grid_id=args.grid_id,
+        agent_id=args.agent_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def main():
     p = argparse.ArgumentParser(description="交易机器人管理")
     subs = p.add_subparsers(dest="command")
@@ -276,6 +290,13 @@ def main():
     sp.add_argument("--show-type", dest="show_type", default="1,2",
                     help="类型: 1=币价 2=余额 3=可减少保证金 (默认1,2)")
     sp.set_defaults(func=cmd_realtime)
+
+    # ── grid-detail ──
+    sp = subs.add_parser("grid-detail", help="查询周期挂单明细（买入/卖出/状态/价格/金额）")
+    sp.add_argument("--agent-id", required=True, help="Agent ID")
+    sp.add_argument("--bot-id", required=True, help="机器人 ID")
+    sp.add_argument("--grid-id", required=True, help="周期ID（grid_id）")
+    sp.set_defaults(func=cmd_grid_detail)
 
     args = p.parse_args()
     if not args.command:

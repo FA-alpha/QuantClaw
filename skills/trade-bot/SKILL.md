@@ -126,6 +126,14 @@ cd skills/trade-bot/scripts && python3 trade_bot.py realtime \
 
 **用途**：加仓/调保证金前查询实时行情和可用余额。
 
+### 6. grid-detail — 周期挂单明细
+
+{"status": "error", "message": "未找到 agentId=qc-xxx 的 token"}
+
+查询某个交易周期的挂单明细，返回每笔买入/卖出订单（类型/状态/价格/数量/成交金额/手续费/时间等）。
+
+**参数来源**： 取自 detail 返回的 。
+
 ---
 
 ## 🔴 写操作（预览→确认→原样重跑）
