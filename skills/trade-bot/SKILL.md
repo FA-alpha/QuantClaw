@@ -11,15 +11,15 @@ description: "Manage fourieralpha trading bots — list, inspect, stop, scale, m
 
 ## 🔒 安全机制（必读）
 
-**所有写操作默认预览，不加 `--confirm` 不会调用 API。**
+**所有写操作默认预览，确认后原样重跑相同命令才会执行 API。**
 
 | 危险等级 | 操作 | 触发方式 |
 |---------|------|---------|
-| 🟢 只读 | list, detail, leverage, exchange-list, realtime | 无需确认 |
-| 🔴 写操作 | stop, batch, scale, margin | 预览后加 `--confirm` |
+| 🟢 只读 | list, detail, leverage, exchange-list, realtime | 直接执行 |
+| 🔴 写操作 | stop, batch, scale, margin | 首次预览 → 用户确认 → 原样重跑 |
 | 🔴 编辑 | edit | 三步流程：预览→差异→确认 |
 
-**Agent 规则**：任何写操作，必须先预览展示结果，用户确认后再加 `--confirm` 重新运行。不得跳过预览直接执行。
+**Agent 规则**：任何写操作，必须先运行预览展示结果，用户确认后**原样重跑相同命令**才执行。不得跳过预览。
 
 ---
 
@@ -126,7 +126,9 @@ cd skills/trade-bot/scripts && python3 trade_bot.py realtime \
 
 ---
 
-## 🔴 写操作（预览→确认→执行）
+## 🔴 写操作（预览→确认→原样重跑）
+
+所有写操作使用 nonce 机制：首次运行返回预览，用户确认后**原样重跑相同命令**即执行。
 
 ### ⚠️ Agent 展示约束
 
@@ -136,31 +138,26 @@ cd skills/trade-bot/scripts && python3 trade_bot.py realtime \
 |--------|---------|-----------------|-----------|
 | `blocked` | true | false | **必须停止**，展示原因，等用户处理。不得绕过 |
 | `prompt` | true | false | **必须等待用户输入**，不得编造数据 |
-| `preview` | false | true | 展示预览，等用户确认后原样重跑 |
+| `preview` | false | true | 展示预览，等用户确认后**原样重跑相同命令** |
 | `ok` | false | false | 展示成功结果 |
 | `error` | true | false | 展示错误，不得自行处理 |
 
 **关键规则**：
 - `blocked`=true 时 → 展示 `agent_display.title` + `agent_display.lines`，显示 `agent_display.user_prompt`，**不做任何操作**
-- `preview` 时 → 展示 `agent_display.title` + `agent_display.lines`，**不加 `--confirm`**。用户确认后，**原样重跑相同命令加 `--confirm`**
+- `preview` 时 → 展示 `agent_display.title` + `agent_display.lines`。用户确认后，**原样重跑相同命令**即可执行
 - `prompt` 时 → 展示引导语，等用户给数据
 - **禁止裸返回**：返回中没有 `agent_display` 时应视为异常
 
 ### 6. stop — 单个机器人操作
 
 ```bash
-# 预览（默认）
+# 首次运行 → 预览
 cd skills/trade-bot/scripts && python3 trade_bot.py stop \
   --agent-id "qc-xxx" \
   --bot-id "2039" \
   --save-type "4"
 
-# 用户确认后执行
-cd skills/trade-bot/scripts && python3 trade_bot.py stop \
-  --agent-id "qc-xxx" \
-  --bot-id "2039" \
-  --save-type "4" \
-  --confirm
+# 用户确认后 → 原样重跑相同命令即执行
 ```
 
 | save_type | 操作 | 前置条件 |
@@ -172,27 +169,16 @@ cd skills/trade-bot/scripts && python3 trade_bot.py stop \
 | 8 | 暂停加仓 | status=1/2 且 add_pause=0 |
 | 9 | 取消暂停加仓 | status=1/2 且 add_pause=1 |
 
-**工作流**：
-1. 先查 `detail` 确认状态
-2. 运行 stop 预览 → 展示 `agent_display`
-3. 确认 `can_execute` 为 true
-4. 用户确认 → 加 `--confirm` 重新运行
-
 ### 7. batch — 批量操作
 
 ```bash
-# 预览
+# 首次运行 → 预览
 cd skills/trade-bot/scripts && python3 trade_bot.py batch \
   --agent-id "qc-xxx" \
   --bot-ids "2039,2523,3012" \
   --save-type "8"
 
-# 用户确认后执行
-cd skills/trade-bot/scripts && python3 trade_bot.py batch \
-  --agent-id "qc-xxx" \
-  --bot-ids "2039,2523,3012" \
-  --save-type "8" \
-  --confirm
+# 用户确认后 → 原样重跑相同命令即执行
 ```
 
 | save_type | 操作 |
@@ -202,8 +188,6 @@ cd skills/trade-bot/scripts && python3 trade_bot.py batch \
 | 7 | 批量取消预约终止 |
 | 8 | 批量暂停加仓 |
 | 9 | 批量取消暂停加仓 |
-
-**返回**：`executable_count` / `blocked_count`，每个 bot 的 `can_execute` + `reason`。Agent 必须展示哪些会被执行、哪些被阻止及原因。
 
 ### 8. scale — 手动加仓/取消加仓
 
@@ -223,7 +207,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py scale \
   --save-type "9" \
   --order-id "abc123"
 
-# 确认执行加 --confirm
+# 用户确认后 → 原样重跑相同命令即执行
 ```
 
 | save_type | 操作 | 必要参数 |
@@ -246,7 +230,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py margin \
   --save-type "6" \
   [--amt 100]
 
-# 确认执行加 --confirm
+# 用户确认后 → 原样重跑相同命令即执行
 ```
 
 | save_type | 操作 | 说明 |
@@ -258,7 +242,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py margin \
 1. 先跑 `margin`（不传 `--amt`）→ 查看最大可用额度
 2. 展示可用额度给用户
 3. 用户指定金额 → 带 `--amt` 预览
-4. 用户确认 → 加 `--confirm` 执行
+4. 用户确认 → 原样重跑
 
 ---
 
@@ -331,7 +315,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py edit \
 1. list → 找到运行中的机器人 ID
 2. batch --bot-ids "..." --save-type "8" → 预览
 3. 展示 agent_display，列出可执行/被阻止的
-4. 用户确认 → batch --confirm --bot-ids "..." --save-type "8"
+4. 用户确认 → 原样重跑相同命令
 ```
 
 ### 手动加仓
@@ -342,7 +326,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py edit \
 3. 展示币价/余额给用户，等用户指定价格和金额
 4. scale --bot-id "2039" --save-type "8" --price 78 --amt 100 → 预览
 5. 展示 agent_display，用户确认
-6. scale --confirm --bot-id "2039" --save-type "8" --price 78 --amt 100
+6. 原样重跑相同命令
 ```
 
 ### 编辑策略参数
@@ -364,7 +348,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py edit \
 3. 展示可用额度给用户
 4. 用户指定金额 → margin --bot-id "2039" --save-type "6" --amt 200 → 预览
 5. 展示 agent_display，用户确认
-6. margin --confirm --bot-id "2039" --save-type "6" --amt 200
+6. 原样重跑相同命令
 ```
 
 ---
@@ -373,10 +357,10 @@ cd skills/trade-bot/scripts && python3 trade_bot.py edit \
 
 | 错误 | 正确做法 |
 |------|---------|
-| 写操作不加预览直接执行 | **必须先预览**，展示 `agent_display`，用户确认后加 `--confirm` |
+| 写操作不加预览直接执行 | **必须先预览**，展示 `agent_display`，用户确认后**原样重跑** |
 | Agent 自行决定加仓价格/金额 | 必须先查 `realtime`，展示数据，**等用户指定** |
 | `blocked` 后 Agent 自行调整参数重试 | **必须停止**，展示 `user_prompt`，等用户处理 |
-| `preview` 返回后直接加 `--confirm` | **必须先展示给用户**，用户说"确认"后再加 `--confirm` |
+| `preview` 返回后 Agent 自行加参数 | **原样重跑相同命令**，不要加 `--confirm` 之类的参数 |
 | edit 第③步自己拼 `merged_rule` | **必须用第②步返回的** `merged_rule` |
 | batch 不展示哪些被阻止 | 必须展示 `executable_count` + `blocked_count` + 每个被阻止的 `reason` |
 
