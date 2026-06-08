@@ -54,7 +54,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py list \
 
 | 参数 | 默认值 | 说明 |
 |------|-------|------|
-| `--agent-id` | qc-test | **必传**，用于自动获取 token |
+| `--agent-id` | (必填) | 用于自动获取 token |
 | `--status` | running | running/sim/stopped/deleted/all |
 | `--limit` | 10 | -1=全部 |
 | `--sort` | latest | 排序字段 |
