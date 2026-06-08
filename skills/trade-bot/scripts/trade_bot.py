@@ -176,10 +176,6 @@ def cmd_realtime(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
-def _not_impl(name):
-    print(json.dumps({"status": "error", "message": f"{name} 功能尚未实现"}, ensure_ascii=False))
-
-
 def main():
     p = argparse.ArgumentParser(description="交易机器人管理")
     subs = p.add_subparsers(dest="command")
@@ -280,13 +276,6 @@ def main():
     sp.add_argument("--show-type", dest="show_type", default="1,2",
                     help="类型: 1=币价 2=余额 3=可减少保证金 (默认1,2)")
     sp.set_defaults(func=cmd_realtime)
-
-    # ── 占位子命令 ──
-    for cmd in ["balance", "apply", "check-status",
-                "orders", "update"]:
-        sp = subs.add_parser(cmd, help=f"{cmd}（待实现）")
-        sp.add_argument("--agent-id", required=True, help="Agent ID")
-        sp.set_defaults(func=lambda a, n=cmd: _not_impl(n))
 
     args = p.parse_args()
     if not args.command:
