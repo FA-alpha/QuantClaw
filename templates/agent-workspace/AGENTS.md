@@ -85,6 +85,67 @@ read /home/ubuntu/.npm-global/lib/node_modules/clawdbot/skills/backtest-query/SK
 
 ---
 
+### trade-bot - 交易机器人管理
+
+**⚡ 技能路径**（必须使用本地路径）：
+- 📄 SKILL.md: `./skills/trade-bot/SKILL.md`
+- 🐍 入口: `./skills/trade-bot/scripts/trade_bot.py`
+
+**何时使用**：
+- 查询运行中的机器人列表或详情
+- 停止/批量停止/预约停止机器人
+- 暂停/取消暂停加仓
+- 手动加仓/取消加仓
+- 调整保证金（增加/减少）
+- 编辑策略参数（杠杆/止损/网格等）
+- 查询杠杆率统计、实时币价/余额
+
+**核心流程**：
+```
+🟢 只读操作（直接执行）:
+  list → 查看机器人列表
+  detail → 查看单台详情
+  leverage → 杠杆率统计
+  exchange-list → 交易所账户
+  realtime → 实时币价/余额
+
+🔴 写操作（预览 → 用户确认 → --confirm 执行）:
+  ① 不加 --confirm → 返回预览
+  ② 展示 agent_display 给用户
+  ③ 用户确认 → 加 --confirm 重新运行
+
+🟡 编辑（三步流程）:
+  ① edit --bot-id → 预览可编辑字段
+  ② edit --bot-id --rule → 差异对比
+  ③ edit --bot-id --merged-rule → 确认执行
+```
+
+**关键规则**：
+- 🚨 **写操作必须先预览、后确认** — 绝对不要跳过预览直接加 `--confirm`
+- 🚨 **Agent 不得自行决定金额/价格** — 加仓/调保证金必须等用户指定
+- 🚨 **blocked=true 必须停止** — 展示 `agent_display.user_prompt`，不做任何操作
+- ⚠️ **preview 返回后先展示给用户** — 用户说"确认"后再加 `--confirm` 原样重跑
+- ⚠️ **edit 第③步用第②步的 merged_rule** — 不要自己拼参数
+
+**使用示例**：
+```bash
+# ✅ 只读：查看运行中机器人
+cd skills/trade-bot/scripts && python3 trade_bot.py list --agent-id "qc-xxx"
+
+# ✅ 只读：查看详情
+cd skills/trade-bot/scripts && python3 trade_bot.py detail --agent-id "qc-xxx" --bot-id "2039"
+
+# ✅ 写操作：先预览
+cd skills/trade-bot/scripts && python3 trade_bot.py stop --agent-id "qc-xxx" --bot-id "2039" --save-type "4"
+# → 展示预览 → 用户确认 →
+cd skills/trade-bot/scripts && python3 trade_bot.py stop --agent-id "qc-xxx" --bot-id "2039" --save-type "4" --confirm
+
+# ❌ 错误：跳过预览直接执行
+cd skills/trade-bot/scripts && python3 trade_bot.py stop --agent-id "qc-xxx" --bot-id "2039" --save-type "4" --confirm
+```
+
+---
+
 ### start-backtest - 启动回测任务
 
 **⚡ 技能路径**（必须使用本地路径）：
