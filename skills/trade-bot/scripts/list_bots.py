@@ -56,6 +56,26 @@ def _fmt_runtime(seconds) -> str:
     return "".join(parts)
 
 
+def _build_actions(b: dict) -> dict:
+    """根据 list API 字段推算可操作按钮"""
+    st = str(b.get("status"))
+    if st not in ("1", "2"):
+        return {}
+    actions: dict = {}
+    actions["stop"] = True
+    if b.get("is_reserve_stop_btn") == 1:
+        if str(b.get("reserve_status")) in ("1", "2"):
+            actions["cancel_reserve"] = True
+        else:
+            actions["reserve_stop"] = True
+    if b.get("is_add_pause_btn") == 1:
+        if str(b.get("add_pause_status")) == "1":
+            actions["resume_add"] = True
+        else:
+            actions["pause_add"] = True
+    return actions
+
+
 def run(
     token: str,
     status: str = "running",
@@ -145,9 +165,10 @@ def run(
             "basic_unit": b.get("basic_unit"),
             "create_time": b.get("create_time"),
             "is_info": b.get("is_info"),
+            "actions": _build_actions(b) or None,
         })
 
-    return {
+    result = {
         "status": "ok",
         "total": all_count,
         "page": page,
@@ -170,6 +191,13 @@ def run(
             account_id, direction, search, coin, agent_id,
         ) if s_status == "1" else None,
     }
+    if s_status == "1":
+        result["recommended"] = [{
+            "action": "查看杠杆率",
+            "command": f"trade_bot.py leverage --agent-id {agent_id}",
+            "hint": "当前有实盘运行中的机器人，可查看各币种杠杆率分布",
+        }]
+    return result
 
 
 def _get_leverage_symbol_stat(
