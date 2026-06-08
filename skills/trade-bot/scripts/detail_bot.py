@@ -182,8 +182,14 @@ def run(
     is_running = str(info.get("status")) in ("1", "2")
     actions = {}
     if is_running:
-        # 终止始终可用
-        actions["reserve_stop"] = True
+        # 停止始终可用
+        actions["stop"] = True
+        # 预约停止/取消预约 — 按 API 按钮状态判断
+        if info.get("is_reserve_stop_btn") == 1:
+            if str(info.get("reserve_status")) in ("1", "2"):
+                actions["cancel_reserve"] = True
+            else:
+                actions["reserve_stop"] = True
         # 保证金/手动加仓 — API 允许再展示
         if info.get("is_margin_btn") == 1:
             actions["margin"] = True
