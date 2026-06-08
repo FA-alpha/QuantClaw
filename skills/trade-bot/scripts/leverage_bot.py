@@ -67,11 +67,28 @@ def run(
         return {"status": "error", "message": data.get("msg", "未知错误")}
 
     info = data.get("info", {})
-    amt_info = info.get("amt_info", {})
-    leverage_info = info.get("leverage_info", {})
-    usdt_assets_raw = info.get("usdt_assets", [])
-    usd_assets_raw = info.get("usd_assets", [])
-    symbol_stat_raw = leverage_info.get("symbol_stat", [])
+    amt_info = info.get("amt_info", {}) or {}
+    leverage_info = info.get("leverage_info", {}) or {}
+    usdt_assets_raw = info.get("usdt_assets") or []
+    usd_assets_raw = info.get("usd_assets") or []
+    # symbol_stat 可能为 null
+    symbol_stat_raw = leverage_info.get("symbol_stat") or []
+
+    def _filter_assets(raw):
+        """过滤掉 symbol 为空的无效条目"""
+        if not raw:
+            return []
+        return [
+            {
+                "symbol": a.get("symbol"),
+                "nominal_invest_total": a.get("nominal_invest_total"),
+                "current_position": a.get("current_position"),
+                "real_leverage": a.get("real_leverage"),
+                "direction": a.get("direction"),
+            }
+            for a in raw
+            if a.get("symbol")
+        ]
 
     return {
         "status": "ok",
@@ -92,26 +109,8 @@ def run(
             "dir_exposure": leverage_info.get("dir_exposure"),
             "scale_exposure": leverage_info.get("scale_exposure"),
         },
-        "usdt_assets": [
-            {
-                "symbol": a.get("symbol"),
-                "nominal_invest_total": a.get("nominal_invest_total"),
-                "current_position": a.get("current_position"),
-                "real_leverage": a.get("real_leverage"),
-                "direction": a.get("direction"),
-            }
-            for a in usdt_assets_raw
-        ] if usdt_assets_raw else [],
-        "usd_assets": [
-            {
-                "symbol": a.get("symbol"),
-                "nominal_invest_total": a.get("nominal_invest_total"),
-                "current_position": a.get("current_position"),
-                "real_leverage": a.get("real_leverage"),
-                "direction": a.get("direction"),
-            }
-            for a in usd_assets_raw
-        ] if usd_assets_raw else [],
+        "usdt_assets": _filter_assets(usdt_assets_raw),
+        "usd_assets": _filter_assets(usd_assets_raw),
         "symbol_stat": [
             {
                 "coin": s.get("coin"),
