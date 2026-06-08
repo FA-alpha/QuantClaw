@@ -70,6 +70,7 @@ def run(
     amt_info = info.get("amt_info", {})
     leverage_info = info.get("leverage_info", {})
     usdt_assets = info.get("usdt_assets", [])
+    symbol_stat_raw = leverage_info.get("symbol_stat", [])
 
     return {
         "status": "ok",
@@ -95,6 +96,17 @@ def run(
             }
             for a in usdt_assets
         ] if usdt_assets else [],
+        "symbol_stat": [
+            {
+                "coin": s.get("coin"),
+                "nominal_total_cash": s.get("nominal_total_cash"),
+                "actual_invest_total": s.get("actual_invest_total"),
+                "initial_capital": s.get("initial_capital"),
+                "overtake_amt": s.get("overtake_amt"),
+                "net_value": s.get("net_value"),
+            }
+            for s in symbol_stat_raw
+        ] if symbol_stat_raw else [],
         "filters": {
             "status": status,
             "exchange_ids": exchange_ids,

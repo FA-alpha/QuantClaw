@@ -4,6 +4,8 @@ from typing import Optional
 
 from api_client import api_post, check_auth
 
+from leverage_bot import run as get_leverage
+
 # 筛选映射表
 STATUS_MAP = {"running": "1", "sim": "2", "stopped": "3", "deleted": "-1"}
 AMT_TYPE_MAP = {"spot": "1", "futures": "2"}
@@ -163,4 +165,21 @@ def run(
             "order": order,
         },
         "bots": bots,
+        "symbol_stat": _get_leverage_symbol_stat(
+            token, status, exchange_ids, amt_type, strategy_type,
+            account_id, direction, search, coin, agent_id,
+        ) if s_status == "1" else None,
     }
+
+
+def _get_leverage_symbol_stat(
+    token, status, exchange_ids, amt_type, strategy_type,
+    account_id, direction, search, coin, agent_id,
+):
+    lv = get_leverage(
+        token=token, status=status, exchange_ids=exchange_ids,
+        amt_type=amt_type, strategy_type=strategy_type,
+        account_id=account_id, direction=direction, search=search,
+        coin=coin, agent_id=agent_id,
+    )
+    return lv.get("symbol_stat") if lv.get("status") == "ok" else None
