@@ -211,4 +211,48 @@ def run(
     if actions:
         result["actions"] = actions
 
+    # ── 帮助信息 ──
+    result["section_help"] = {
+        "basic": "基本信息",
+        "strategy": "策略参数",
+        "trade": "交易统计",
+        "cycle": "当周期",
+        "amt": "金额信息",
+        "records": "交易记录",
+        "chart": "净值曲线",
+        "fund_fee": "累计资金费率",
+        "actions": "可执行操作",
+    }
+    result["field_help"] = {
+        # basic
+        "name": "名称", "exchange_name": "交易所", "strategy_id": "策略ID",
+        "strategy_type": "策略类型", "amt_type": "交易品种", "unit": "计价单位",
+        "run_time": "运行时长", "status": "状态", "reserve_status": "预约状态",
+        "add_pause_status": "加仓暂停", "is_edit": "是否可编辑",
+        "status_label": "状态", "amt_type_label": "品种", "run_time_label": "运行时长",
+        "leverage": "杠杆倍数", "margin_mode": "保证金模式",
+        # cycle (grids_info)
+        "avg_price": "均价", "total_cost": "总成本", "holdings": "持仓数量",
+        "float_amt": "浮动盈亏", "max_grid_size": "最大网格数", "grids_used": "已用网格",
+        "liquidation_price": "清算价格", "real_leverage": "实际杠杆",
+        "maintenance_margin": "维持保证金", "now_price": "当前价格",
+        "grids_token": "网格标记", "max_cycle_profit": "最大周期利润",
+        # records
+        "parent_id": "父记录ID", "bgn_time": "开始时间", "trade_time": "交易时间",
+        "sell_price": "卖出价", "profit_amt": "盈利金额",
+        "auto_grids_used": "自动加仓", "hand_grids_used": "手动加仓",
+        "address": "补充信息",
+        # trade
+        "coin": "币种", "profit_rate": "收益率", "win_rate": "胜率",
+        "float_profit": "浮盈", "close_profit": "已平盈亏",
+        # chart
+        "max": "最高", "min": "最低", "points": "数据点",
+        # fund_fee
+        "fund_fee": "累计资金费率",
+        # actions
+        "stop": "停止", "edit": "编辑策略", "reserve_stop": "预约停止",
+        "cancel_reserve": "取消预约", "pause_add": "暂停加仓", "resume_add": "恢复加仓",
+        "margin": "调整保证金", "manual": "手动加仓",
+    }
+
     return result
