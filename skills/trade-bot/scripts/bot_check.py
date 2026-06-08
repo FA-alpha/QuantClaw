@@ -4,8 +4,6 @@
 供 stop / batch / scale / margin 等写操作前的预检复用。
 各调用方通过 allowed_statuses / allowed_reserve / require_*_btn 传入自己的规则。
 """
-import json
-import os
 from typing import Optional, List, Set
 
 from api_client import api_post
@@ -16,34 +14,24 @@ STATUS_LABEL = {
 }
 RESERVE_STATUS_LABEL = {"0": "未预约", "1": "预约停止中", "2": "预约已终止"}
 
-DETAIL_CACHE_DIR = "/tmp/quantclaw/bot_details"
 
-
-def _ensure_detail_cached(token: str, bot_id: str, agent_id: str) -> dict:
-    """缓存缺失时自动调 detail 填充，返回 {"is_reserve_stop_btn", "is_add_pause_btn"}"""
-    # 先读缓存
-    try:
-        path = os.path.join(DETAIL_CACHE_DIR, f"{bot_id}.json")
-        if os.path.exists(path):
-            with open(path) as f:
-                info = json.load(f)
-            rb = info.get("is_reserve_stop_btn")
-            pb = info.get("is_add_pause_btn")
-            if rb is not None or pb is not None:
-                return {"is_reserve_stop_btn": rb, "is_add_pause_btn": pb}
-    except Exception:
-        pass
-    # 缓存缺失，自动调 detail 填充
-    from detail_bot import run as detail_run
-    detail_run(token=token, bot_id=bot_id, agent_id=agent_id)
-    try:
-        path = os.path.join(DETAIL_CACHE_DIR, f"{bot_id}.json")
-        with open(path) as f:
-            info = json.load(f)
-        return {"is_reserve_stop_btn": info.get("is_reserve_stop_btn"),
-                "is_add_pause_btn": info.get("is_add_pause_btn")}
-    except Exception:
-        return {"is_reserve_stop_btn": None, "is_add_pause_btn": None}
+def _fetch_btn_map(token: str, agent_id: str) -> dict:
+    """从 /Trade/lists 批量获取 is_reserve_stop_btn / is_add_pause_btn，返回 {bot_id: {...}}"""
+    data = api_post(
+        "/Trade/lists",
+        {"usertoken": token, "app_v": "2.0.0", "page": 1, "limit": 200,
+         "sort_type": 1, "sort_desc_type": 1, "lang": 1},
+        agent_id,
+    )
+    btn_map = {}
+    for b in data.get("info", []) or []:
+        bid = str(b.get("id", ""))
+        if bid:
+            btn_map[bid] = {
+                "is_reserve_stop_btn": b.get("is_reserve_stop_btn"),
+                "is_add_pause_btn": b.get("is_add_pause_btn"),
+            }
+    return btn_map
 
 
 def check_bots(
@@ -89,6 +77,11 @@ def check_bots(
     check_reserve = bool(allowed_reserve)
     check_pause = bool(allowed_add_pause_status)
 
+    # 需要按钮校验时，从 /Trade/lists 一把取全量按钮数据
+    btn_map = {}
+    if require_reserve_btn or require_pause_btn:
+        btn_map = _fetch_btn_map(token, agent_id or "")
+
     bots = []
     executable = 0
     blocked = 0
@@ -116,19 +109,13 @@ def check_bots(
                 reason = f"加仓暂停状态为「{pause_label}」，不支持此操作"
 
         if can_exec and (require_reserve_btn or require_pause_btn):
-            detail = _ensure_detail_cached(token, bid, agent_id or "")
+            btns = btn_map.get(str(bid), {})
             if require_reserve_btn:
-                if detail["is_reserve_stop_btn"] is None:
-                    can_exec = False
-                    reason = "该机器人不支持预约终止操作"
-                elif detail["is_reserve_stop_btn"] != 1:
+                if btns.get("is_reserve_stop_btn") != 1:
                     can_exec = False
                     reason = "该机器人不支持预约终止操作"
             if require_pause_btn:
-                if detail["is_add_pause_btn"] is None:
-                    can_exec = False
-                    reason = "该机器人不支持暂停加仓操作"
-                elif detail["is_add_pause_btn"] != 1:
+                if btns.get("is_add_pause_btn") != 1:
                     can_exec = False
                     reason = "该机器人不支持暂停加仓操作"
 
