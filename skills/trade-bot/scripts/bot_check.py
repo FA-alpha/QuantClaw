@@ -108,12 +108,20 @@ def check_bots(
             if is_reserve_btn is None and is_pause_btn is None:
                 can_exec = False
                 reason = "未查询过机器人详情，请先查看详情后再操作"
-            elif require_reserve_btn and is_reserve_btn != 1:
-                can_exec = False
-                reason = "该机器人不支持预约终止操作"
-            elif require_pause_btn and is_pause_btn != 1:
-                can_exec = False
-                reason = "该机器人不支持暂停加仓操作"
+            elif require_reserve_btn:
+                if is_reserve_btn is None:
+                    can_exec = False
+                    reason = "未查询过机器人详情，请先查看详情后再操作"
+                elif is_reserve_btn != 1:
+                    can_exec = False
+                    reason = "该机器人不支持预约终止操作"
+            elif require_pause_btn:
+                if is_pause_btn is None:
+                    can_exec = False
+                    reason = "未查询过机器人详情，请先查看详情后再操作"
+                elif is_pause_btn != 1:
+                    can_exec = False
+                    reason = "该机器人不支持暂停加仓操作"
 
         if can_exec:
             executable += 1
