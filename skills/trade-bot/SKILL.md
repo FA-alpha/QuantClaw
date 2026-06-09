@@ -248,6 +248,12 @@ cd skills/trade-bot/scripts && python3 trade_bot.py scale \
 2. 展示实时数据给用户
 3. 由用户指定 price 和 amt，**不得由 Agent 自行决定**
 
+**⚠️ 取消加仓必须**：
+1. 先跑 `detail` 获取机器人详情 → 从 `records.list` 找到最新交易周期的 `id`
+2. 用该 `id` 作为 `--grid-id` 跑 `grid-detail` 查看该周期挂单明细
+3. 在 `orders` 中找 `action_type` 为 `"2"`（手动加仓）的记录
+4. 取该记录的 `order_id` 作为取消加仓的 `--order-id`
+
 ### 9. margin — 调整保证金
 
 ```bash
@@ -353,6 +359,17 @@ cd skills/trade-bot/scripts && python3 trade_bot.py edit \
 2. realtime --bot-id "2039" --show-type "1,2" → 获取币价+余额
 3. 展示币价/余额给用户，等用户指定价格和金额
 4. scale --bot-id "2039" --save-type "8" --price 78 --amt 100 → 预览
+5. 展示 agent_display，用户确认
+6. 原样重跑相同命令
+```
+
+### 取消手动加仓
+
+```
+1. detail --bot-id "2039" → 从 records.list 获取最新交易周期的 id
+2. grid-detail --bot-id "2039" --grid-id "<period_id>" → 查看挂单明细
+3. 从 orders 中找出 action_type="2"（手动加仓）的记录
+4. scale --bot-id "2039" --save-type "9" --order-id "<order_id>" → 预览
 5. 展示 agent_display，用户确认
 6. 原样重跑相同命令
 ```
