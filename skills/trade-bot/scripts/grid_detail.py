@@ -6,7 +6,7 @@ from api_client import api_post, check_auth
 
 TYPE_LABEL = {"BUY": "买入", "SELL": "卖出"}
 STATUS_LABEL = {"filled": "已成交", "active": "等待成交"}
-ACTION_TYPE_LABEL = {"1": "自动加仓", "2": "手动加仓"}
+ACTION_TYPE_LABEL = {"1": "正常加仓(不可取消)", "2": "手动加仓(可取消)"}
 
 
 def run(
@@ -61,7 +61,7 @@ def run(
             "type": "类型（BUY-买入 SELL-卖出）",
             "title": "标题",
             "status": "状态（filled-已成交 active-等待成交）",
-            "action_type": "加仓类型（1-自动加仓 2-手动加仓）",
+            "action_type": "加仓类型（1-正常加仓不可取消 2-手动加仓可取消）",
             "price": "成交/委托价格",
             "revenue": "成交金额",
             "quantify": "数量",
