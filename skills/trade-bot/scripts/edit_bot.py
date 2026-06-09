@@ -846,8 +846,20 @@ def run_diff(
                     api_current[key] = raw
             current_rule = api_current
 
-    # 拦截用户修改不可编辑的字段
-    blocked_fields = [k for k in proposed if k in non_editable_fields]
+    # 拦截用户修改不可编辑的字段（含 type=multiple 嵌套子字段）
+    blocked_fields = []
+    for k, new_val in proposed.items():
+        if k in non_editable_fields:
+            blocked_fields.append(k)
+            continue
+        # type=multiple 字段：检查嵌套数组内是否有不可编辑子字段被改动
+        if isinstance(new_val, list):
+            for i, new_row in enumerate(new_val):
+                if not isinstance(new_row, dict):
+                    continue
+                for nf in non_editable_fields:
+                    if nf in new_row:
+                        blocked_fields.append(f"{k}[{i}].{nf}")
     if blocked_fields:
         return blocked_result(
             title="❌ 以下字段不可编辑",
