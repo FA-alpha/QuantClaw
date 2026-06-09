@@ -128,11 +128,24 @@ cd skills/trade-bot/scripts && python3 trade_bot.py realtime \
 
 ### 6. grid-detail — 周期挂单明细
 
-{"status": "error", "message": "未找到 agentId=qc-xxx 的 token"}
+```bash
+cd skills/trade-bot/scripts && python3 trade_bot.py grid-detail \
+  --agent-id "qc-xxx" \
+  --bot-id "2039" \
+  --grid-id "123456"
+```
 
 查询某个交易周期的挂单明细，返回每笔买入/卖出订单（类型/状态/价格/数量/成交金额/手续费/时间等）。
 
-**参数来源**： 取自 detail 返回的 。
+| 参数 | 说明 |
+|------|------|
+| `--bot-id` | 机器人ID，同 detail |
+| `--grid-id` | **周期ID**，取自 `detail` → `records.list[].id`（即交易记录列表中每条记录的 `id` 字段） |
+
+**典型流程**：
+1. 先跑 `detail --bot-id "2039"` 获取交易记录列表
+2. 从 `detail.records.list` 中找到目标周期的 `id`
+3. 用该 `id` 作为 `--grid-id` 跑 `grid-detail` 查看该周期的每笔挂单明细
 
 ---
 
