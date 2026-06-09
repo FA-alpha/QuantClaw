@@ -662,6 +662,31 @@ def _do_strategy_update(
     return {"status": "ok", "data": data}
 
 
+def _normalize_for_submission(rule: dict) -> dict:
+    """
+    提交前规范化：多维数组对象格式 {'1':{...}, '2':{...}} → 数组 [{...}, {...}]
+    strategy_rule 中多维数字字段用数字字符串为 key 存为对象，
+    但 /Strategy/trade_update_do 期望接收数组。
+    """
+    result = {}
+    for key, val in rule.items():
+        if isinstance(val, dict) and val and all(_is_int_key(k) for k in val):
+            # 按 key 数值排序转数组
+            sorted_items = sorted(val.items(), key=lambda kv: int(kv[0]))
+            result[key] = [v for _, v in sorted_items]
+        else:
+            result[key] = val
+    return result
+
+
+def _is_int_key(s: str) -> bool:
+    """判断字符串是否可解析为非负整数"""
+    try:
+        return int(s) >= 0
+    except (ValueError, TypeError):
+        return False
+
+
 def _do_trade_update(
     token: str,
     bot_id: str,
@@ -684,7 +709,7 @@ def _do_trade_update(
             "strategy_id": strategy_id,
             "strategy_type": strategy_type,
             "robot_id": bot_id,
-            "rule": json.dumps(new_rule, ensure_ascii=False),
+            "rule": json.dumps(_normalize_for_submission(new_rule), ensure_ascii=False),
         },
         agent_id,
     )
