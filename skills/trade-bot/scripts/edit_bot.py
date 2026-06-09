@@ -774,6 +774,11 @@ def run_diff(
                     if not key:
                         continue
                     api_current[key] = current_rule.get(key, f.get("dvalue"))
+                for m in group.get("multiples", []):
+                    key = m.get("variable", "")
+                    if not key:
+                        continue
+                    api_current[key] = current_rule.get(key, {})
             current_rule = api_current
 
     diff = diff_changes(current_rule, proposed)
