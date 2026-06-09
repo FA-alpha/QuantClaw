@@ -783,6 +783,7 @@ def run_diff(
     # 非 st2 策略：用 trade_field_info API 的字段名 + dvalue 补齐当前值
     # 因为第①步展示的字段 via API 可能有 strategy_rule 里不存在的 key
     # （如 add_overtake_leverage），直接 diff 会 false-positive unknown
+    non_editable_fields: set = set()  # 不可编辑字段 key 集合
     if check["strategy_type"] != "2":
         strategy_id = str(info.get("strategy_id", ""))
         strategy_version = str(info.get("version", info.get("strategy_rule", {}).get("version", "")))
@@ -797,6 +798,8 @@ def run_diff(
                     key = f.get("variable", "")
                     if not key:
                         continue
+                    if f.get("type") == "input_fixed":
+                        non_editable_fields.add(key)
                     raw = current_rule.get(key)
                     if f.get("type") == "multiple":
                         # type=multiple: strategy_rule 有数据用数据，无数据从嵌套 multiples.dvalue 拼默认行
@@ -826,6 +829,16 @@ def run_diff(
                                 raw.append(default_row)
                     api_current[key] = raw
             current_rule = api_current
+
+    # 拦截用户修改不可编辑的字段
+    blocked_fields = [k for k in proposed if k in non_editable_fields]
+    if blocked_fields:
+        return blocked_result(
+            title="❌ 以下字段不可编辑",
+            reason=f"{', '.join(blocked_fields)} 为固定参数，API 不支持修改",
+            rule="这些字段为策略固定参数，不得尝试修改",
+            blocked_fields=blocked_fields,
+        )
 
     diff = diff_changes(current_rule, proposed)
 
