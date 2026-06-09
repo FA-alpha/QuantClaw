@@ -1130,18 +1130,18 @@ class SmartGroupRecommender:
         self.log(f"🎯 返回数量: {limit}")
         
         # 2. 按收益率排序（或使用API指定的排序）
-        sort_key = 'profit_rate'  # 默认按收益率
+        sort_key = 'year_rate'  # 默认按收益率
         if api_sort_type == 3:
             sort_key = 'sharp_rate'
         elif api_sort_type == 4:
-            sort_key = 'max_draw_down'
+            sort_key = 'max_loss'
             
         self.log(f"📈 排序字段: {sort_key}")
         
         sorted_strategies = sorted(
             strategies,
             key=lambda x: float(x.get(sort_key, 0) or 0),
-            reverse=(sort_key != 'max_draw_down')  # 回撤越小越好
+            reverse=(sort_key != 'max_loss')  # 回撤越小越好
         )
         
         # 3. 取前N个
@@ -1873,7 +1873,7 @@ class SmartGroupRecommender:
             print("📊 单策略推荐结果")
             print("="*70)
             print(f"查询: {result.get('total_fetched', 0)} → 已选: {result.get('total_selected', 0)} 个")
-            print(f"排序字段: {result.get('sort_by', 'profit_rate')}")
+            print(f"排序字段: {result.get('sort_by', 'year_rate')}")
             
             strategies = result.get('strategies', [])
             if strategies:
