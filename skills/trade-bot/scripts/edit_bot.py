@@ -730,6 +730,27 @@ def run_diff(
         )
 
     current_rule = get_strategy_rule_for_edit(info)
+
+    # 非 st2 策略：用 trade_field_info API 的字段名 + dvalue 补齐当前值
+    # 因为第①步展示的字段 via API 可能有 strategy_rule 里不存在的 key
+    # （如 add_overtake_leverage），直接 diff 会 false-positive unknown
+    if check["strategy_type"] != "2":
+        strategy_id = str(info.get("strategy_id", ""))
+        strategy_version = str(info.get("version", info.get("strategy_rule", {}).get("version", "")))
+        tf_result = fetch_trade_field_info(
+            token, strategy_id, check["strategy_type"], strategy_version, bot_id, agent_id,
+        )
+        if tf_result.get("ok"):
+            # 从 API 字段构建完整当前值：优先 strategy_rule，其次 API dvalue
+            api_current = {}
+            for group in tf_result["info"]:
+                for f in group.get("field_lists", []):
+                    key = f.get("variable", "")
+                    if not key:
+                        continue
+                    api_current[key] = current_rule.get(key, f.get("dvalue"))
+            current_rule = api_current
+
     diff = diff_changes(current_rule, proposed)
 
     merged = dict(current_rule)
