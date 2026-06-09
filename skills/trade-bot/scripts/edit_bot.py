@@ -316,6 +316,7 @@ def build_field_list_from_api(trade_fields: list, strategy_rule: dict) -> list:
             variable = f.get("variable", "")
             api_type = f.get("type", "input")
             field_type = _api_type_to_field_type(api_type)
+            dvalue = f.get("dvalue")
 
             # options 格式转换: [{name,value}] → {value:name}
             raw_options = f.get("options")
@@ -323,24 +324,23 @@ def build_field_list_from_api(trade_fields: list, strategy_rule: dict) -> list:
             if raw_options and isinstance(raw_options, list):
                 options = {o["value"]: o["name"] for o in raw_options if "value" in o}
 
-            raw_val = strategy_rule.get(variable, f.get("dvalue"))
-            # 多维数组字段在 strategy_rule 中可能是对象格式需转数组
+            # value 全部来自 API dvalue，不看 strategy_rule
+            value = dvalue
+            # 多维数组字段：从嵌套 multiples.dvalue 拼默认行
             if api_type == "multiple":
-                raw_val = _normalize_array_value(raw_val) if raw_val else []
-                # 当 strategy_rule 中无数据时，从嵌套 multiples.dvalue 拼一个默认行
-                if not raw_val:
-                    nested_multiples = f.get("multiples", [])
-                    for nm in nested_multiples:
-                        nm_fields = nm.get("fields", [])
-                        if nm_fields:
-                            default_row = {mf["variable"]: mf.get("dvalue") for mf in nm_fields if mf.get("variable")}
-                            raw_val.append(default_row)
+                value = []
+                nested_multiples = f.get("multiples", [])
+                for nm in nested_multiples:
+                    nm_fields = nm.get("fields", [])
+                    if nm_fields:
+                        default_row = {mf["variable"]: mf.get("dvalue") for mf in nm_fields if mf.get("variable")}
+                        value.append(default_row)
             field = {
                 "key": variable,
                 "label": f.get("name", variable),
                 "type": field_type,
-                "dvalue": f.get("dvalue"),
-                "value": raw_val,
+                "dvalue": dvalue,
+                "value": value,
                 "options": options,
                 "editable": api_type != "input_fixed",
             }
