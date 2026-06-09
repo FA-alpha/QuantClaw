@@ -1881,9 +1881,9 @@ class SmartGroupRecommender:
                 for i, s in enumerate(strategies, 1):
                     print(
                         f"  #{i} {s.get('name', 'N/A')} | "
-                        f"收益{s.get('profit_rate', 0)}% | "
+                        f"收益{s.get('year_rate', 0)}% | "
                         f"夏普{s.get('sharp_rate', 0)} | "
-                        f"回撤{s.get('max_draw_down', 0)}%"
+                        f"回撤{s.get('max_loss', 0)}%"
                     )
                     print(f"      Token: {s.get('strategy_token', 'N/A')}")
             
