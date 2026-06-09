@@ -85,6 +85,8 @@ cd skills/trade-bot/scripts && python3 trade_bot.py detail \
 
 **缓存**：查询详情会自动缓存到 `/tmp/quantclaw/bot_details/{bot_id}.json`，供 edit/realtime 复用。
 
+**⚠️ 投资金额**：机器人实际投入本金在 `detail.trade.initial_capital`（即 `trade_info.initial_capital`）。策略参数中不再展示 `initial_capital`（那是策略模板的回测参数，对实盘无意义）。
+
 ### 3. leverage — 杠杆率统计
 
 ```bash
@@ -132,7 +134,7 @@ cd skills/trade-bot/scripts && python3 trade_bot.py realtime \
 cd skills/trade-bot/scripts && python3 trade_bot.py grid-detail \
   --agent-id "qc-xxx" \
   --bot-id "2039" \
-  --grid-id "123456"
+  --grid-id "**-**-**-**-**"
 ```
 
 查询某个交易周期的挂单明细，返回每笔买入/卖出订单（类型/状态/价格/数量/成交金额/手续费/时间等）。

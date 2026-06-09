@@ -44,7 +44,7 @@ VALUE_MAP: dict[str, dict] = {
 }
 
 FIELD_LABEL: dict[str, str] = {
-    "coin": "交易对", "direction": "策略方向", "initial_capital": "投资金额",
+    "coin": "交易对", "direction": "策略方向",
     "multiple_num": "杠杆", "max_grid_size": "最大加仓次数",
     "leverage": "杠杆", "asset_type": "资产类型", "margin_mode": "保证金模式",
     # 星辰
@@ -243,7 +243,7 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
     # ── 星辰 (type=7) ──
     if st == "7":
         # 中性策略没有方向
-        basic_keys = ["coin", "initial_capital", "multiple_num", "grid_num", "neutral_strategy"]
+        basic_keys = ["coin", "multiple_num", "grid_num", "neutral_strategy"]
         if not _bool_val(data, "neutral_strategy"):
             basic_keys.insert(1, "direction")
         _add("基础设置", basic_keys,
@@ -286,7 +286,7 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
 
     # ── 风霆 (type=1/2/9/11) ──
     elif st in ("1", "2", "9", "11"):
-        _add("基础设置", ["coin", "direction", "initial_capital", "multiple_num"])
+        _add("基础设置", ["coin", "direction", "multiple_num"])
         _add("加仓参数", ["fst_capital", "each_capital", "max_grid_size", "down_pct", "up_pct"])
 
         tp_type = str(data.get("take_profit_type", ""))
@@ -347,7 +347,7 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
     # ── 鲲鹏 (type=3/4/5/8) ──
     elif st in ("3", "4", "5", "8"):
         if st == "8":
-            _add("基础设置", ["coin", "trade_model", "initial_capital", "multiple_num"])
+            _add("基础设置", ["coin", "trade_model", "multiple_num"])
             _add("布林带", ["bollinger_period", "bollinger_time_grain"])
             _add("Kalman", ["kalman_short_len", "kalman_long_len", "kalman_time_grain"])
             _add("止盈", ["up_pct", "down_pct"])
@@ -362,7 +362,7 @@ def _analyze_known(data: dict, st: str, version: str, api_defs: list = None) -> 
                 _add("版本", ["version"])
             _add("止损", ["max_loss_type", "max_loss_pct"])
         else:
-            _add("基础设置", ["coin", "initial_capital", "multiple_num"])
+            _add("基础设置", ["coin", "multiple_num"])
             _add("EMA", ["ema_slow_period", "ema_fast_period", "ema_long_period", "ema_time_grain"])
             if st in ("3", "4"):
                 _add("做多/做空止盈", ["up_pct", "down_pct", "pause_short_counter"])
