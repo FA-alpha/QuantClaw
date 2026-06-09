@@ -323,12 +323,16 @@ def build_field_list_from_api(trade_fields: list, strategy_rule: dict) -> list:
             if raw_options and isinstance(raw_options, list):
                 options = {o["value"]: o["name"] for o in raw_options if "value" in o}
 
+            raw_val = strategy_rule.get(variable, f.get("dvalue"))
+            # 多维数组字段在 strategy_rule 中可能是对象格式需转数组
+            if api_type == "multiple":
+                raw_val = _normalize_array_value(raw_val) if raw_val else []
             field = {
                 "key": variable,
                 "label": f.get("name", variable),
                 "type": field_type,
                 "dvalue": f.get("dvalue"),
-                "value": strategy_rule.get(variable, f.get("dvalue")),
+                "value": raw_val,
                 "options": options,
                 "editable": api_type != "input_fixed",
             }
