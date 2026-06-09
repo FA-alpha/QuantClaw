@@ -369,7 +369,7 @@ def build_field_list_from_api(trade_fields: list, strategy_rule: dict) -> list:
                         "dvalue": mf.get("dvalue"),
                         "value": row.get(variable, mf.get("dvalue")),
                         "options": None,
-                        "editable": True,
+                        "editable": mf.get("type") != "input_fixed",
                     })
                 fields.append({
                     "_kind": "multiples_row",
@@ -711,6 +711,25 @@ def _normalize_array_value(val):
     return val
 
 
+def _collect_non_editable_keys(trade_fields: list) -> set:
+    """收集所有 input_fixed 的字段 key（含嵌套 multiples 内子字段）"""
+    keys: set = set()
+    for group in trade_fields:
+        for f in group.get("field_lists", []):
+            if f.get("type") == "input_fixed":
+                keys.add(f.get("variable", ""))
+            # 嵌套 multiples 中也可能有 input_fixed
+            for nm in f.get("multiples", []):
+                for mf in nm.get("fields", []):
+                    if mf.get("type") == "input_fixed":
+                        keys.add(mf.get("variable", ""))
+        for m in group.get("multiples", []):
+            for mf in m.get("fields", []):
+                if mf.get("type") == "input_fixed":
+                    keys.add(mf.get("variable", ""))
+    return keys
+
+
 def _do_trade_update(
     token: str,
     bot_id: str,
@@ -780,10 +799,8 @@ def run_diff(
 
     current_rule = get_strategy_rule_for_edit(info)
 
-    # 非 st2 策略：用 trade_field_info API 的字段名 + dvalue 补齐当前值
-    # 因为第①步展示的字段 via API 可能有 strategy_rule 里不存在的 key
-    # （如 add_overtake_leverage），直接 diff 会 false-positive unknown
-    non_editable_fields: set = set()  # 不可编辑字段 key 集合
+    # 不可编辑字段 key 集合（含嵌套 multiples 内子字段）
+    non_editable_fields: set = set()
     if check["strategy_type"] != "2":
         strategy_id = str(info.get("strategy_id", ""))
         strategy_version = str(info.get("version", info.get("strategy_rule", {}).get("version", "")))
@@ -791,6 +808,7 @@ def run_diff(
             token, strategy_id, check["strategy_type"], strategy_version, bot_id, agent_id,
         )
         if tf_result.get("ok"):
+            non_editable_fields = _collect_non_editable_keys(tf_result["info"])
             # 从 API 字段构建完整当前值：优先 strategy_rule，其次 API dvalue
             api_current = {}
             for group in tf_result["info"]:
@@ -798,8 +816,6 @@ def run_diff(
                     key = f.get("variable", "")
                     if not key:
                         continue
-                    if f.get("type") == "input_fixed":
-                        non_editable_fields.add(key)
                     raw = current_rule.get(key)
                     if f.get("type") == "multiple":
                         # type=multiple: strategy_rule 有数据用数据，无数据从嵌套 multiples.dvalue 拼默认行
