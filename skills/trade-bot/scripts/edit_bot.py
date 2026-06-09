@@ -327,6 +327,14 @@ def build_field_list_from_api(trade_fields: list, strategy_rule: dict) -> list:
             # 多维数组字段在 strategy_rule 中可能是对象格式需转数组
             if api_type == "multiple":
                 raw_val = _normalize_array_value(raw_val) if raw_val else []
+                # 当 strategy_rule 中无数据时，从嵌套 multiples.dvalue 拼一个默认行
+                if not raw_val:
+                    nested_multiples = f.get("multiples", [])
+                    for nm in nested_multiples:
+                        nm_fields = nm.get("fields", [])
+                        if nm_fields:
+                            default_row = {mf["variable"]: mf.get("dvalue") for mf in nm_fields if mf.get("variable")}
+                            raw_val.append(default_row)
             field = {
                 "key": variable,
                 "label": f.get("name", variable),
