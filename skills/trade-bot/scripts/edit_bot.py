@@ -918,6 +918,40 @@ def run_execute(
 
     strategy_type = str(info.get("strategy_type", ""))
 
+    # 提交前安全清洗：input_fixed 字段强制回写 strategy_rule 原值，防止误改
+    if strategy_type != "2":
+        strategy_rule = info.get("strategy_rule", {})
+        strategy_id = str(info.get("strategy_id", ""))
+        strategy_version = str(info.get("version", strategy_rule.get("version", "")))
+        tf_result = fetch_trade_field_info(
+            token, strategy_id, strategy_type, strategy_version, bot_id, agent_id,
+        )
+        if tf_result.get("ok"):
+            for group in tf_result["info"]:
+                for f in group.get("field_lists", []):
+                    key = f.get("variable", "")
+                    if not key or key not in merged_rule:
+                        continue
+                    # 普通 input_fixed: 直接回写
+                    if f.get("type") == "input_fixed":
+                        merged_rule[key] = strategy_rule.get(key, f.get("dvalue"))
+                    # type=multiple: 回写嵌套子字段中的 input_fixed
+                    if f.get("type") == "multiple":
+                        for nm in f.get("multiples", []):
+                            for mf in nm.get("fields", []):
+                                if mf.get("type") == "input_fixed" and mf.get("variable"):
+                                    mf_key = mf["variable"]
+                                    old_rows = _normalize_array_value(strategy_rule.get(key))
+                                    if not isinstance(old_rows, list):
+                                        old_rows = []
+                                    new_rows = merged_rule.get(key, [])
+                                    if not isinstance(new_rows, list):
+                                        new_rows = []
+                                    for i, row in enumerate(new_rows):
+                                        if isinstance(row, dict):
+                                            old_row = old_rows[i] if i < len(old_rows) and isinstance(old_rows[i], dict) else {}
+                                            row[mf_key] = old_row.get(mf_key, mf.get("dvalue"))
+
     return do_edit(
         token=token,
         bot_id=bot_id,
