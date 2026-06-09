@@ -340,8 +340,8 @@ def build_field_list_from_api(trade_fields: list, strategy_rule: dict) -> list:
             m_field_variable = m.get("variable", m_field_name)
             m_sub_fields = m.get("fields", [])
 
-            # 从 strategy_rule 获取数组数据
-            rows = strategy_rule.get(m_field_variable, [])
+            # 从 strategy_rule 获取数组数据（可能为对象格式需转数组）
+            rows = _normalize_array_value(strategy_rule.get(m_field_variable, []))
             if not isinstance(rows, list):
                 rows = []
 
@@ -670,13 +670,17 @@ def _normalize_for_submission(rule: dict) -> dict:
     """
     result = {}
     for key, val in rule.items():
-        if isinstance(val, dict) and val and all(_is_int_key(k) for k in val):
-            # 按 key 数值排序转数组
+        if _is_int_key_dict(val):
             sorted_items = sorted(val.items(), key=lambda kv: int(kv[0]))
             result[key] = [v for _, v in sorted_items]
         else:
             result[key] = val
     return result
+
+
+def _is_int_key_dict(val) -> bool:
+    """判断值是否为以数字字符串为 key 的非空 dict"""
+    return isinstance(val, dict) and val and all(_is_int_key(k) for k in val)
 
 
 def _is_int_key(s: str) -> bool:
@@ -685,6 +689,14 @@ def _is_int_key(s: str) -> bool:
         return int(s) >= 0
     except (ValueError, TypeError):
         return False
+
+
+def _normalize_array_value(val):
+    """多维数组对象 → 数组；非多维数组原样返回"""
+    if _is_int_key_dict(val):
+        sorted_items = sorted(val.items(), key=lambda kv: int(kv[0]))
+        return [v for _, v in sorted_items]
+    return val
 
 
 def _do_trade_update(
@@ -778,7 +790,8 @@ def run_diff(
                     key = m.get("variable", "")
                     if not key:
                         continue
-                    api_current[key] = current_rule.get(key, {})
+                    raw = current_rule.get(key)
+                    api_current[key] = _normalize_array_value(raw) if raw else []
             current_rule = api_current
 
     diff = diff_changes(current_rule, proposed)
