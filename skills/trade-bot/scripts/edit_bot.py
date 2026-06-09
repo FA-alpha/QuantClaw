@@ -797,13 +797,34 @@ def run_diff(
                     key = f.get("variable", "")
                     if not key:
                         continue
-                    api_current[key] = current_rule.get(key, f.get("dvalue"))
+                    raw = current_rule.get(key)
+                    if f.get("type") == "multiple":
+                        # type=multiple: strategy_rule 有数据用数据，无数据从嵌套 multiples.dvalue 拼默认行
+                        raw = _normalize_array_value(raw) if raw else []
+                        if not raw:
+                            for nm in f.get("multiples", []):
+                                nm_fields = nm.get("fields", [])
+                                if nm_fields:
+                                    raw.append({mf["variable"]: mf.get("dvalue") for mf in nm_fields if mf.get("variable")})
+                        api_current[key] = raw
+                    else:
+                        api_current[key] = raw if raw is not None else f.get("dvalue")
                 for m in group.get("multiples", []):
                     key = m.get("variable", "")
                     if not key:
                         continue
                     raw = current_rule.get(key)
-                    api_current[key] = _normalize_array_value(raw) if raw else []
+                    raw = _normalize_array_value(raw) if raw else []
+                    # 无数据时从 multiples.fields.dvalue 拼默认行
+                    if not raw:
+                        for mf in m.get("fields", []):
+                            default_row = {}
+                            for sf in mf.get("fields", []):
+                                if sf.get("variable"):
+                                    default_row[sf["variable"]] = sf.get("dvalue")
+                            if default_row:
+                                raw.append(default_row)
+                    api_current[key] = raw
             current_rule = api_current
 
     diff = diff_changes(current_rule, proposed)
