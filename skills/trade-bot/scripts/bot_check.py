@@ -19,7 +19,7 @@ def _fetch_btn_map(token: str, agent_id: str) -> dict:
     """从 /Trade/lists 批量获取 is_reserve_stop_btn / is_add_pause_btn，返回 {bot_id: {...}}"""
     data = api_post(
         "/Trade/lists",
-        {"usertoken": token, "app_v": "2.0.0", "page": 1, "limit": 200,
+        {"usertoken": token, "app_v": "2.0.0", "page": 1, "limit": -1,
          "sort_type": 1, "sort_desc_type": 1, "lang": 1},
         agent_id,
     )
