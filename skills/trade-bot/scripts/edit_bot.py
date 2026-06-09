@@ -874,6 +874,16 @@ def run_diff(
     for item in diff["changed"]:
         merged[item["key"]] = item["new"]
 
+    # type=multiple 字段合并时自动补齐缺失 key（从旧行补，避免 API 报错）
+    for key, val in merged.items():
+        old_val = current_rule.get(key)
+        if isinstance(val, list) and isinstance(old_val, list):
+            for i, row in enumerate(val):
+                if isinstance(row, dict) and i < len(old_val) and isinstance(old_val[i], dict):
+                    for ok in old_val[i]:
+                        if ok not in row:
+                            row[ok] = old_val[i][ok]
+
     return {
         "status": "diff",
         "bot_id": bot_id,
