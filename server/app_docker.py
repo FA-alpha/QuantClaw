@@ -173,7 +173,7 @@ class GlobalMessageListener:
     
     async def _complete_handshake(self, ws) -> bool:
         """完成 Gateway 握手（使用成功的方法）"""
-        connect_id = f'conn_listener_{id(ws)}'
+        connect_id = f'conn_{id(ws)}'
         
         try:
             async for msg in ws:
@@ -189,7 +189,7 @@ class GlobalMessageListener:
                                 'minProtocol': 4,
                                 'maxProtocol': 4,
                                 'client': {
-                                    'id': 'gateway-client',
+                                    'id': f'quantclaw-listener-{id(self)}',
                                     'version': '1.0.0',
                                     'platform': 'linux',
                                     'mode': 'backend'
@@ -261,7 +261,7 @@ class GlobalMessageListener:
                     response_text = self.response_cache.get(session_key, '')
                     if response_text:
                         logger.info(f'📝 [GlobalListener] Saving response for {user_id}: {len(response_text)} chars')
-                        self.chat_store.append(user_id, 'assistant', response_text)
+                        self.chat_store.append(user_id, session_key, 'assistant', response_text)
                         logger.info(f'✅ [GlobalListener] Saved for {user_id}')
                     
                     # 清理缓存
@@ -296,64 +296,151 @@ class GlobalMessageListener:
 # ============ 聊天记录存储 ============
 
 class ChatStore:
-    """按用户存储聊天记录"""
+    """按用户+session存储聊天记录（支持多 session 切换）"""
     
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
+        self.config_dir = data_dir.parent / 'config'
+        self.config_dir.mkdir(exist_ok=True, parents=True)
         self.data_dir.mkdir(exist_ok=True, parents=True)
+        self._migrate_old_format()
     
-    def _get_file(self, user_id: str) -> Path:
-        return self.data_dir / f'{user_id}.json'
+    def _safe_key(self, session_key: str) -> str:
+        """agent:qc-xxx:dashboard:uuid -> agent_qc-xxx_dashboard_uuid"""
+        return session_key.replace(':', '_').replace('-', '_')
+    
+    def _get_file(self, user_id: str, session_key: str) -> Path:
+        safe = self._safe_key(session_key)
+        return self.data_dir / f'{user_id}__{safe}.json'
+    
+    def _find_latest(self, user_id: str):
+        """找用户最新的 session 聊天文件"""
+        files = sorted(
+            self.data_dir.glob(f'{user_id}__*.json'),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+        return files[0] if files else None
+    
+    def _migrate_old_format(self):
+        """迁移 {user_id}.json -> {user_id}__agent_default_main.json"""
+        for old_file in self.data_dir.glob('*.json'):
+            name = old_file.stem
+            if '__' not in name and not name.endswith('.bak') and not name.endswith('.migrated'):
+                try:
+                    data = json.loads(old_file.read_text())
+                    new_file = self.data_dir / f'{name}__agent_default_main.json'
+                    new_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+                    old_file.rename(old_file.with_suffix('.json.migrated'))
+                    logger.info(f'📦 Migrated chat: {old_file.name} -> {new_file.name}')
+                except Exception as e:
+                    logger.error(f'Migration error {old_file.name}: {e}')
     
     def has_messages(self, user_id: str) -> bool:
-        """
-        判断用户是否有消息记录
-        
-        有消息记录 = 用户发送过消息 = 是活跃用户
-        """
-        file = self._get_file(user_id)
-        return file.exists()
+        return self._find_latest(user_id) is not None
     
-    def load(self, user_id: str) -> list:
-        """加载用户的聊天记录"""
-        file = self._get_file(user_id)
-        if file.exists():
+    def load(self, user_id: str, session_key=None) -> list:
+        if session_key:
+            file = self._get_file(user_id, session_key)
+        else:
+            file = self._find_latest(user_id)
+        if file and file.exists():
             try:
                 return json.loads(file.read_text())
             except:
                 return []
         return []
     
-    def save(self, user_id: str, messages: list):
-        """保存用户的聊天记录"""
-        file = self._get_file(user_id)
+    def save(self, user_id: str, session_key: str, messages: list):
+        file = self._get_file(user_id, session_key)
         file.write_text(json.dumps(messages, ensure_ascii=False, indent=2))
     
-    def append(self, user_id: str, role: str, content: str):
-        """添加一条消息（防止重复）"""
-        messages = self.load(user_id)
-        
-        # 检查最后一条消息是否重复（防止同一 role 的连续重复消息）
+    def append(self, user_id: str, session_key: str, role: str, content: str):
+        """添加消息（防止同一 role 连续重复）"""
+        messages = self.load(user_id, session_key)
         if messages and messages[-1]['role'] == role and messages[-1]['content'] == content:
-            logger.warning(f'⚠️ Duplicate message detected for {user_id}, skipping')
+            logger.warning(f'⚠️ Duplicate message for {user_id}, skipping')
             return messages
-        
         messages.append({
             'role': role,
             'content': content,
             'timestamp': datetime.now().isoformat(),
         })
-        # 只保留最近 100 条
         if len(messages) > 100:
             messages = messages[-100:]
-        self.save(user_id, messages)
+        self.save(user_id, session_key, messages)
         return messages
     
-    def clear(self, user_id: str):
-        """清空用户聊天记录"""
-        file = self._get_file(user_id)
+    def new_conversation(self, user_id: str, session_key: str):
+        """创建新会话文件。同名存在则 rename 旧文件"""
+        file = self._get_file(user_id, session_key)
         if file.exists():
+            ts = int(time.time())
+            backup = self.data_dir / f'{file.stem}_{ts}.json.bak'
+            file.rename(backup)
+            logger.info(f'📦 Backup existing chat -> {backup.name}')
+        file.write_text('[]')
+        logger.info(f'📝 New chat file: {file.name}')
+        self.set_current_session(user_id, '', session_key)
+    
+    def clear(self, user_id: str, session_key=None):
+        """清空指定 session 的聊天记录（兼容旧接口）"""
+        if session_key:
+            file = self._get_file(user_id, session_key)
+        else:
+            file = self._find_latest(user_id)
+        if file and file.exists():
             file.unlink()
+    
+    def _get_config_file(self, user_id: str) -> Path:
+        return self.config_dir / f'{user_id}.json'
+    
+    def load_config(self, user_id: str) -> dict:
+        file = self._get_config_file(user_id)
+        if file.exists():
+            try:
+                return json.loads(file.read_text())
+            except:
+                pass
+        return {
+            'userId': user_id,
+            'currentSessionKey': '',
+            'sessionHistory': []
+        }
+    
+    def save_config(self, user_id: str, config: dict):
+        config['updatedAt'] = datetime.now().isoformat()
+        file = self._get_config_file(user_id)
+        file.write_text(json.dumps(config, ensure_ascii=False, indent=2))
+    
+    def set_current_session(self, user_id: str, agent_id: str, session_key: str):
+        """更新当前 sessionKey 到配置文件"""
+        config = self.load_config(user_id)
+        if agent_id:
+            config['agentId'] = agent_id
+        config['currentSessionKey'] = session_key
+        history = config.get('sessionHistory', [])
+        found = False
+        now = datetime.now().isoformat()
+        for h in history:
+            if h['sessionKey'] == session_key:
+                h['lastActive'] = now
+                found = True
+                break
+        if not found:
+            history.insert(0, {
+                'sessionKey': session_key,
+                'createdAt': now,
+                'lastActive': now
+            })
+            if len(history) > 20:
+                history = history[:20]
+        config['sessionHistory'] = history
+        self.save_config(user_id, config)
+    
+    def get_current_session_key(self, user_id: str) -> str:
+        config = self.load_config(user_id)
+        return config.get('currentSessionKey', '')
 
 
 # 创建全局实例
@@ -505,7 +592,7 @@ async def handle_history(request):
             return web.json_response(auth_result, status=401)
 
         user_id = auth_result.get('userId')
-        messages = chat_store.load(user_id)
+        messages = chat_store.load(user_id, session_key)
 
         return web.json_response({
             'success': True,
@@ -533,7 +620,7 @@ async def handle_clear_history(request):
             return web.json_response(auth_result, status=401)
 
         user_id = auth_result.get('userId')
-        chat_store.clear(user_id)
+        chat_store.clear(user_id, session_key)
 
         return web.json_response({'success': True, 'cleared': True})
 
@@ -543,7 +630,7 @@ async def handle_clear_history(request):
 
 
 async def handle_new_conversation(request):
-    """新建对话：通过 /new 命令清除上下文（兼容 Lossless-Claw）"""
+    """新建对话：通过 sessions.create 创建新会话（官方 API，无消息残留）"""
     try:
         data = await request.json()
         token = data.get('token')
@@ -559,13 +646,9 @@ async def handle_new_conversation(request):
 
         user_id = auth_result.get('userId')
         agent_id = auth_result.get('agentId')
-        session_key = f'agent:{agent_id}:main'
+        main_session_key = f'agent:{agent_id}:main'
         
-        # 步骤2：清除本地聊天记录（ChatStore）
-        chat_store.clear(user_id)
-        logger.info(f'✅ Cleared ChatStore for user: {user_id}')
-
-        # 步骤3：通过 WebSocket 发送 /new 命令（自动清理 OpenClaw + Lossless-Claw）
+        # 步骤2：通过 sessions.create 创建新会话
         try:
             async with aiohttp.ClientSession() as ws_session:
                 gateway_url = f'{GATEWAY_WS}?token={GATEWAY_TOKEN}'
@@ -576,13 +659,15 @@ async def handle_new_conversation(request):
                     heartbeat=30
                 ) as gateway_ws:
                     connected = False
-                    new_sent = False
+                    session_created = False
+                    new_session_key = None
                     
-                    # 设置超时
+                    ws_req_id = str(uuid.uuid4())
+                    
                     async def timeout_handler():
                         await asyncio.sleep(10)
-                        if not new_sent:
-                            logger.warning('WebSocket /new command timeout')
+                        if not session_created:
+                            logger.warning('WebSocket sessions.create timeout')
                     
                     timeout_task = asyncio.create_task(timeout_handler())
                     
@@ -595,13 +680,13 @@ async def handle_new_conversation(request):
                                 if ws_data.get('event') == 'connect.challenge' and not connected:
                                     connect_req = {
                                         'type': 'req',
-                                        'id': 'new_conv_connect',
+                                        'id': ws_req_id,
                                         'method': 'connect',
                                         'params': {
                                             'minProtocol': 4,
                                             'maxProtocol': 4,
                                             'client': {
-                                                'id': 'gateway-client',
+                                                'id': f'quantclaw-{user_id}',
                                                 'version': '1.0.0',
                                                 'platform': 'linux',
                                                 'mode': 'backend'
@@ -616,37 +701,42 @@ async def handle_new_conversation(request):
                                     }
                                     await gateway_ws.send_json(connect_req)
                                 
-                                # 握手成功，发送 /new
-                                elif ws_data.get('type') == 'res' and ws_data.get('id') == 'new_conv_connect':
+                                # 握手成功，调用 sessions.create
+                                elif ws_data.get('type') == 'res' and ws_data.get('id') == ws_req_id:
                                     if ws_data.get('ok'):
                                         connected = True
-                                        msg_req = {
+                                        create_id = str(uuid.uuid4())
+                                        create_req = {
                                             'type': 'req',
-                                            'id': 'send_new',
-                                            'method': 'chat.send',
+                                            'id': create_id,
+                                            'method': 'sessions.create',
                                             'params': {
-                                                'sessionKey': session_key,
-                                                'message': '/new',
-                                                'idempotencyKey': str(uuid.uuid4())
+                                                'agentId': agent_id,
+                                                'parentSessionKey': main_session_key,
+                                                'emitCommandHooks': True
                                             }
                                         }
-                                        await gateway_ws.send_json(msg_req)
-                                        logger.info(f'📤 Sent /new command to {session_key}')
+                                        await gateway_ws.send_json(create_req)
+                                        logger.info(f'📤 Sent sessions.create for agent:{agent_id}')
+                                        ws_req_id = create_id
                                     else:
                                         logger.error(f'Handshake failed: {ws_data.get("error")}')
                                         break
                                 
-                                # /new 命令响应
-                                elif ws_data.get('type') == 'res' and ws_data.get('id') == 'send_new':
+                                # sessions.create 响应（payload 包裹）
+                                elif ws_data.get('type') == 'res' and ws_data.get('id') == ws_req_id:
                                     if ws_data.get('ok'):
-                                        logger.info(f'✅ /new command executed for {session_key}')
-                                        new_sent = True
+                                        payload = ws_data.get('payload', {})
+                                        new_session_key = payload.get('key', '')
+                                        new_session_id = payload.get('sessionId', '')
+                                        logger.info(f'✅ Session created: {new_session_key} (sessionId={new_session_id})')
+                                        session_created = True
                                     else:
-                                        logger.error(f'/new command failed: {ws_data.get("error")}')
+                                        logger.error(f'sessions.create failed: {ws_data.get("error")}')
                                     break
                             
                             elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                                logger.warning('WebSocket closed during /new')
+                                logger.warning('WebSocket closed during sessions.create')
                                 break
                     
                     finally:
@@ -656,29 +746,31 @@ async def handle_new_conversation(request):
                         except asyncio.CancelledError:
                             pass
             
-            if new_sent:
-                logger.info(f'🎉 Session reset via /new for: {user_id}, agent: {agent_id}')
+            if session_created:
+                # 为新 session 创建聊天文件（同名冲突则备份旧文件）
+                chat_store.new_conversation(user_id, new_session_key)
+                
+                logger.info(f'🎉 New session for user:{user_id}, agent:{agent_id} -> {new_session_key}')
                 return web.json_response({
                     'success': True,
-                    'cleared': True,
                     'sessionReset': True,
-                    'method': 'websocket_new_command',
+                    'method': 'sessions.create',
                     'userId': user_id,
                     'agentId': agent_id,
-                    'sessionKey': session_key,
+                    'newSessionKey': new_session_key,
                 })
             else:
-                logger.error('Failed to send /new command (timeout or error)')
+                logger.error('Failed to create session (timeout or error)')
                 return web.json_response({
                     'success': False,
-                    'error': 'Failed to reset session via /new command'
+                    'error': 'Failed to create new session'
                 }, status=500)
         
         except Exception as ws_error:
-            logger.error(f'WebSocket /new error: {ws_error}')
+            logger.error(f'WebSocket sessions.create error: {ws_error}')
             return web.json_response({
                 'success': False,
-                'error': f'Failed to send /new command: {str(ws_error)}'
+                'error': f'Failed to create session: {str(ws_error)}'
             }, status=500)
 
     except Exception as e:
@@ -711,16 +803,19 @@ async def handle_websocket(request):
     ws_client = web.WebSocketResponse()
     await ws_client.prepare(request)
 
-    session_key = request.query.get('sessionKey')
+    _session_key = request.query.get('sessionKey')
     user_id = request.query.get('userId')
     user_token = request.query.get('token')
     
-    if not session_key or not user_id:
+    if not _session_key or not user_id:
         await ws_client.send_json({'type': 'error', 'error': 'Missing parameters'})
         await ws_client.close()
         return ws_client
 
-    logger.info(f'WS connect: {session_key} (user: {user_id})')
+    # 可变容器，支持 switch_session 动态切换
+    session_key = [_session_key]
+    
+    logger.info(f'WS connect: {_session_key} (user: {user_id})')
     
     try:
         async with aiohttp.ClientSession() as http_session:
@@ -733,7 +828,7 @@ async def handle_websocket(request):
             ) as gateway_ws:
                 
                 # 完成握手
-                connect_id = f'conn_{session_key}'
+                connect_id = f'conn_{session_key[0]}'
                 connected = False
                 
                 # 握手逻辑
@@ -750,7 +845,7 @@ async def handle_websocket(request):
                                     'minProtocol': 4,
                                     'maxProtocol': 4,
                                     'client': {
-                                        'id': 'gateway-client',
+                                        'id': f'quantclaw-ws-{user_id}',
                                         'version': '1.0.0',
                                         'platform': 'linux',
                                         'mode': 'backend'
@@ -783,34 +878,61 @@ async def handle_websocket(request):
                             if msg.type == WSMsgType.TEXT:
                                 data = json.loads(msg.data)
                                 
-                                # 特殊处理：ping/pong 心跳
+                                # 心跳
                                 if data.get('type') == 'ping':
                                     await ws_client.send_json({'type': 'pong'})
                                     continue
                                 
-                                # 特殊处理：历史记录请求
+                                # 历史记录请求
                                 if data.get('type') == 'history':
-                                    messages = chat_store.load(user_id)
+                                    messages = chat_store.load(user_id, session_key[0])
                                     await ws_client.send_json({
                                         'type': 'history',
                                         'messages': messages
                                     })
                                     continue
                                 
+                                # 切换 session（新建对话后前端发来新 key）
+                                if data.get('type') == 'switch_session':
+                                    new_key = data.get('sessionKey', '').strip()
+                                    if new_key:
+                                        old_key = session_key[0]
+                                        session_key[0] = new_key
+                                        chat_store.set_current_session(user_id, '', new_key)
+                                        logger.info(f'🔄 Session switched: {old_key} -> {new_key}')
+                                        await ws_client.send_json({
+                                            'type': 'session_switched',
+                                            'sessionKey': new_key
+                                        })
+                                    continue
+                                
+                                # 停止输出（chat.abort）
+                                if data.get('method') == 'chat.abort':
+                                    abort_req = {
+                                        'type': 'req',
+                                        'id': next_id(),
+                                        'method': 'chat.abort',
+                                        'params': {
+                                            'sessionKey': session_key[0]
+                                        }
+                                    }
+                                    await gateway_ws.send_json(abort_req)
+                                    logger.info(f'🛑 Sent chat.abort for {session_key[0]}')
+                                    continue
+                                
                                 # 🔑 处理用户消息
                                 if data.get('type') == 'message':
-                                    message_text = data.get('text', '').strip()  # 前端用 'text' 字段
+                                    message_text = data.get('text', '').strip()
                                     if message_text:
                                         logger.info(f'💬 User message from {user_id}: {len(message_text)} chars')
-                                        chat_store.append(user_id, 'user', message_text)
+                                        chat_store.append(user_id, session_key[0], 'user', message_text)
                                         
-                                        # 使用正确的 RPC 格式发送到 Gateway
                                         rpc_msg = {
                                             'type': 'req',
                                             'id': next_id(),
                                             'method': 'chat.send',
                                             'params': {
-                                                'sessionKey': session_key,
+                                                'sessionKey': session_key[0],
                                                 'message': message_text,
                                                 'idempotencyKey': str(uuid.uuid4()),
                                             }
@@ -818,7 +940,7 @@ async def handle_websocket(request):
                                         await gateway_ws.send_json(rpc_msg)
                                     continue
                                 
-                                # 其他消息类型直接转发
+                                # 其他消息直接转发
                                 await gateway_ws.send_json(data)
                                 
                             elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
@@ -863,7 +985,7 @@ async def handle_websocket(request):
                                     if msg_type == 'event':
                                         msg_session_key = payload.get('sessionKey', '')
                                         
-                                        if session_key != msg_session_key:  # 忽略 sessionKey
+                                        if session_key[0] != msg_session_key:
                                             continue
                                         # 不过滤 sessionKey，接收所有消息
                                         
