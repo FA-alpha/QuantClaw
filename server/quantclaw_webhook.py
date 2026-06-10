@@ -345,6 +345,8 @@ class UserManager:
             'token': token,
             'agentId': agent_id,
             'workspace': str(workspace),
+            'sessionKey': f'agent:{agent_id}:main',
+            'sessionHistory': [],
             'createdAt': datetime.now().isoformat(),
             'updatedAt': datetime.now().isoformat(),
             'enabled': True
@@ -562,6 +564,7 @@ async def handle_register(request: web.Request):
             'agentId': user['agentId'],
             'token': user['token'],
             'workspace': user.get('workspace'),
+            'sessionKey': user.get('sessionKey', ''),
             'createdAt': user.get('createdAt'),
             'updatedAt': user.get('updatedAt'),
             'enabled': user.get('enabled', True)
@@ -569,6 +572,92 @@ async def handle_register(request: web.Request):
         
     except Exception as e:
         logger.error(f'❌ Registration error: {e}', exc_info=True)
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+async def handle_sync_session(request: web.Request):
+    """
+    同步 sessionKey 到用户配置
+
+    POST /api/sync-session
+    Body: {userId, agentId, sessionKey}
+    """
+    user_manager = request.app['user_manager']
+
+    try:
+        body = await request.json()
+        user_id = body.get('userId', '').strip()
+        agent_id = body.get('agentId', '').strip()
+        session_key = body.get('sessionKey', '').strip()
+
+        if not user_id or not session_key:
+            return web.json_response({
+                'success': False,
+                'error': 'Missing userId or sessionKey'
+            }, status=400)
+
+        updated = False
+        for user in user_manager.users.values():
+            if user.get('userId') == user_id:
+                user['sessionKey'] = session_key
+                user['updatedAt'] = datetime.now().isoformat()
+                history = user.get('sessionHistory', [])
+                found = False
+                now = datetime.now().isoformat()
+                for h in history:
+                    if h['sessionKey'] == session_key:
+                        h['lastActive'] = now
+                        found = True
+                        break
+                if not found:
+                    history.insert(0, {
+                        'sessionKey': session_key,
+                        'createdAt': now,
+                        'lastActive': now
+                    })
+                    if len(history) > 20:
+                        history = history[:20]
+                user['sessionHistory'] = history
+                updated = True
+                break
+
+        if not updated and agent_id:
+            user = user_manager.find_by_agent_id(agent_id)
+            if user:
+                user['sessionKey'] = session_key
+                user['updatedAt'] = datetime.now().isoformat()
+                history = user.get('sessionHistory', [])
+                history.insert(0, {
+                    'sessionKey': session_key,
+                    'createdAt': datetime.now().isoformat(),
+                    'lastActive': datetime.now().isoformat()
+                })
+                if len(history) > 20:
+                    history = history[:20]
+                user['sessionHistory'] = history
+                updated = True
+
+        if updated:
+            user_manager.save_users()
+            logger.info(f'📡 Session synced: userId={user_id}, sessionKey={session_key}')
+            return web.json_response({
+                'success': True,
+                'synced': True,
+                'userId': user_id,
+                'sessionKey': session_key
+            })
+        else:
+            logger.warning(f'⚠️ User not found for session sync: userId={user_id}, agentId={agent_id}')
+            return web.json_response({
+                'success': False,
+                'error': f'User not found: {user_id}'
+            }, status=404)
+
+    except Exception as e:
+        logger.error(f'Sync session error: {e}')
         return web.json_response({
             'success': False,
             'error': str(e)
@@ -623,6 +712,7 @@ async def init_app():
     
     # 注册路由
     app.router.add_post('/api/register', handle_register)
+    app.router.add_post('/api/sync-session', handle_sync_session)
     app.router.add_get('/health', handle_health)
     
     logger.info('✅ Application initialized')

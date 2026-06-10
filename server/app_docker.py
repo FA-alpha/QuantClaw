@@ -300,8 +300,6 @@ class ChatStore:
     
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
-        self.config_dir = data_dir.parent / 'config'
-        self.config_dir.mkdir(exist_ok=True, parents=True)
         self.data_dir.mkdir(exist_ok=True, parents=True)
         self._migrate_old_format()
     
@@ -381,7 +379,6 @@ class ChatStore:
             logger.info(f'📦 Backup existing chat -> {backup.name}')
         file.write_text('[]')
         logger.info(f'📝 New chat file: {file.name}')
-        self.set_current_session(user_id, '', session_key)
     
     def clear(self, user_id: str, session_key=None):
         """清空指定 session 的聊天记录（兼容旧接口）"""
@@ -391,57 +388,6 @@ class ChatStore:
             file = self._find_latest(user_id)
         if file and file.exists():
             file.unlink()
-    
-    def _get_config_file(self, user_id: str) -> Path:
-        return self.config_dir / f'{user_id}.json'
-    
-    def load_config(self, user_id: str) -> dict:
-        file = self._get_config_file(user_id)
-        if file.exists():
-            try:
-                return json.loads(file.read_text())
-            except:
-                pass
-        return {
-            'userId': user_id,
-            'currentSessionKey': '',
-            'sessionHistory': []
-        }
-    
-    def save_config(self, user_id: str, config: dict):
-        config['updatedAt'] = datetime.now().isoformat()
-        file = self._get_config_file(user_id)
-        file.write_text(json.dumps(config, ensure_ascii=False, indent=2))
-    
-    def set_current_session(self, user_id: str, agent_id: str, session_key: str):
-        """更新当前 sessionKey 到配置文件"""
-        config = self.load_config(user_id)
-        if agent_id:
-            config['agentId'] = agent_id
-        config['currentSessionKey'] = session_key
-        history = config.get('sessionHistory', [])
-        found = False
-        now = datetime.now().isoformat()
-        for h in history:
-            if h['sessionKey'] == session_key:
-                h['lastActive'] = now
-                found = True
-                break
-        if not found:
-            history.insert(0, {
-                'sessionKey': session_key,
-                'createdAt': now,
-                'lastActive': now
-            })
-            if len(history) > 20:
-                history = history[:20]
-        config['sessionHistory'] = history
-        self.save_config(user_id, config)
-    
-    def get_current_session_key(self, user_id: str) -> str:
-        config = self.load_config(user_id)
-        return config.get('currentSessionKey', '')
-
 
 # 创建全局实例
 chat_store = ChatStore(CHAT_DIR)
@@ -492,6 +438,36 @@ async def call_auth_service(token: str) -> dict:
     except Exception as e:
         logger.error(f'Auth service error: {e}')
         return {'success': False, 'error': f'Authentication failed: {str(e)}'}
+
+
+async def sync_session_to_webhook(user_id: str, agent_id: str, session_key: str) -> bool:
+    """
+    同步 sessionKey 到 quantclaw_webhook 用户配置
+    
+    POST /api/sync-session
+    Body: {userId, agentId, sessionKey}
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{AUTH_SERVICE_URL}/api/sync-session',
+                json={
+                    'userId': user_id,
+                    'agentId': agent_id,
+                    'sessionKey': session_key,
+                },
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                result = await resp.json()
+                if result.get('success'):
+                    logger.info(f'📡 Synced session to webhook: {user_id} -> {session_key}')
+                    return True
+                else:
+                    logger.warning(f'Sync session failed: {result.get("error")}')
+                    return False
+    except Exception as e:
+        logger.error(f'Sync session error: {e}')
+        return False
 
 
 # ============ HTTP 处理器 ============
@@ -749,6 +725,8 @@ async def handle_new_conversation(request):
             if session_created:
                 # 为新 session 创建聊天文件（同名冲突则备份旧文件）
                 chat_store.new_conversation(user_id, new_session_key)
+                # 同步 sessionKey 到 webhook 用户配置
+                await sync_session_to_webhook(user_id, agent_id, new_session_key)
                 
                 logger.info(f'🎉 New session for user:{user_id}, agent:{agent_id} -> {new_session_key}')
                 return web.json_response({
@@ -898,7 +876,8 @@ async def handle_websocket(request):
                                     if new_key:
                                         old_key = session_key[0]
                                         session_key[0] = new_key
-                                        chat_store.set_current_session(user_id, '', new_key)
+                                        # 同步 sessionKey 到 webhook
+                                        await sync_session_to_webhook(user_id, '', new_key)
                                         logger.info(f'🔄 Session switched: {old_key} -> {new_key}')
                                         await ws_client.send_json({
                                             'type': 'session_switched',
