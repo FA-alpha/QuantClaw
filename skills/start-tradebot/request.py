@@ -45,6 +45,9 @@ class TradeRequest:
                 "INVALID_AGENT_ID"
             )
         
+        # 保存 agent_id 用于日志记录
+        self.agent_id = agent_id
+        
         # 尝试获取用户令牌，如果失败会在后续请求中抛出错误
         self.token = get_user_token_by_agent_id(agent_id)
         self.base_url = "https://www.fourieralpha.com/Mobile"
@@ -88,8 +91,16 @@ class TradeRequest:
             # 记录请求日志
             import os
             from datetime import datetime
+            from pathlib import Path
             
-            log_path = os.path.join(os.path.dirname(__file__), 'requestlog.txt')
+            # 创建日志目录：~/.quantclaw/logs/{agent_id}/
+            log_base_dir = Path.home() / '.quantclaw' / 'logs' / self.agent_id
+            log_base_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 日志文件名：yyyy-mm-dd.txt
+            log_filename = datetime.now().strftime('%Y-%m-%d') + '.txt'
+            log_path = log_base_dir / log_filename
+            
             log_content = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\n"
             log_content += f"接口: {endpoint}\n"
             log_content += f"请求参数: {json.dumps(data, ensure_ascii=False, indent=2)}\n"
@@ -117,6 +128,8 @@ class TradeRequest:
 
             log_content += "---\n"
             log_content += f"返回参数: {result}\n"
+            with open(log_path, 'a', encoding='utf-8') as log_file:
+                log_file.write(log_content)
             return result
 
         except requests.RequestException as e:
