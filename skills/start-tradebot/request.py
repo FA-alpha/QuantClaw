@@ -16,7 +16,7 @@ import logging
 import os
 import sys
 import typer
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, NamedTuple
 
 class TradeRequestError(Exception):
     """自定义异常类，用于标准化错误处理"""
@@ -26,6 +26,7 @@ class TradeRequestError(Exception):
         super().__init__(self.message)
 
 class TradeRequest:
+    
     """
     交易接口请求管理器
     
@@ -84,10 +85,23 @@ class TradeRequest:
                 "lang": 1
             })
 
+            # 记录请求日志
+            import os
+            from datetime import datetime
+            
+            log_path = os.path.join(os.path.dirname(__file__), 'requestlog.txt')
+            log_content = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\n"
+            log_content += f"接口: {endpoint}\n"
+            log_content += f"请求参数: {json.dumps(data, ensure_ascii=False, indent=2)}\n"
+            log_content += "---\n"
+
+            with open(log_path, 'a', encoding='utf-8') as log_file:
+                log_file.write(log_content)
+
             # 发起请求
             response = requests.post(
                 f"{self.base_url}/{endpoint}",
-                json=data,
+                data=data,
                 timeout=30
             )
             response.raise_for_status()
@@ -101,7 +115,8 @@ class TradeRequest:
                     "API_REQUEST_FAILED"
                 )
 
-            print(f"返回数据详细信息: {result}")
+            log_content += "---\n"
+            log_content += f"返回参数: {result}\n"
             return result
 
         except requests.RequestException as e:
@@ -315,7 +330,345 @@ class TradeRequest:
                 "message": e.message,
                 "error_code": e.error_code
             }
+    def get_strategy_groups(
+        self, 
+        agent_id: Optional[str] = None,
+        page: int = 1, 
+        limit: int = -1,
+        search_val: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        获取策略组列表
+        
+        :param agent_id: agentid,用于获取用户认证Token
+        :param page: 页码，默认第一页
+        :param limit: 每页数量，默认10个，全部传-1
+        :param search_val: 搜索内容
+        :return: 策略组列表
+        """
+        try:
+            # 构造请求参数
+            params: Dict[str, Any] = {
+                "usertoken": get_user_token_by_agent_id(agent_id) or self.token,
+                "page": page,
+                "limit": limit,
+                "app_v": "2.0.0"
+            }
+            
+            # 添加搜索参数
+            if search_val:
+                params["search_val"] = search_val
 
+            return self._make_request("Strategy/group_lists", params)
+        except TradeRequestError as e:
+            self.logger.error(f"获取策略组失败: {e.message}")
+            return {
+                "status": "error",
+                "message": e.message,
+                "error_code": e.error_code
+            }
+    ##包装好的,用于根据策略组id,获取该策略组内所有策略的详细信息的方法
+    def get_strategy_group_with_groupid(
+        self, 
+        group_id: str,
+        agent_id: str
+    ) -> Dict[str, Any]:
+        """
+        根据策略组ID获取具体的策略组信息
+        
+        :param group_id: 策略组ID
+        :agent_id: 智能体的ID,用于接口内部获取usertoken
+        :return: 策略组详情 或 错误信息
+        """
+        try:
+            page = 1
+            while page <= 10:  # 最多查询10页
+                result = self.get_strategy_groups(
+                    agent_id=agent_id,
+                    page=page, 
+                    limit= -1, 
+                    app_v= "2.0.0"
+                )
+
+                # 检查返回状态
+                if result.get("status") != 1:
+                    return {
+                        "status": "error",
+                        "message": "获取策略组列表失败",
+                        "error_code": "GROUP_LIST_ERROR"
+                    }
+
+                # 获取策略组列表
+                strategy_groups = result.get("info", [])
+                
+                # 查找匹配的策略组
+                for group in strategy_groups:
+                    if str(group.get("id")) == str(group_id):
+                        return {
+                            "status": 1,
+                            "info": group
+                        }
+
+                # 检查是否是最后一页
+                is_end = result.get("url", {}).get("is_end") == 1
+                if is_end:
+                    break
+
+                page += 1
+
+            # 未找到策略组
+            return {
+                "status": "error",
+                "message": f"未找到ID为 {group_id} 的策略组",
+                "error_code": "GROUP_NOT_FOUND"
+            }
+
+        except TradeRequestError as e:
+            self.logger.error(f"获取策略组详情失败: {e.message}")
+            return {
+                "status": "error",
+                "message": e.message,
+                "error_code": e.error_code
+            }
+    class StrategyRequirement(NamedTuple):
+        """策略分配需求"""
+        coin_long_pairs: List[str]
+        coin_short_pairs: List[str]
+        ai_time_long_types: List[str]
+        ai_time_short_types: List[str]
+        ai_time_id_mapping: Dict[str, str]
+        has_ai_time: bool
+    ##检查并分析策略需要哪些参数,传入的可能是策略组id,也可能是多个策略的id数组,之所以是多个策略(策略组的策略的id数组),是因为可能用户将一个原有的策略组减少了策略
+    ## ,或者利用回测的策略组的信息的方式去获取原有的一个完整的策略组的策略列表
+    def analyze_strategies_for_allocation(
+        self, 
+        strategy_ids: Optional[List[str]] = None,
+        strategy_group_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        分析策略分配需求
+        
+        :param strategy_ids: 策略ID列表
+        :param strategy_group_id: 策略组ID
+        :return: 分析结果
+        :raises BacktestRequestError: 参数不合法或获取策略失败时
+        """
+        # 参数校验
+        if (strategy_ids is None and strategy_group_id is None) or \
+           (strategy_ids is not None and strategy_group_id is not None):
+            raise TradeRequestError(
+                "必须且仅能传入 strategy_ids 或 strategy_group_id 其中一个", 
+                "INVALID_STRATEGY_PARAMS"
+            )
+
+        try:
+            # 根据传入参数选择获取策略的方法
+            if strategy_ids:
+                strategies_info = []
+                for sid in strategy_ids:
+                    strategy_info = self.get_strategy_with_id(strategy_id=sid)
+                    if strategy_info.get("status") == "error":
+                        return strategy_info
+                    strategies_info.extend(strategy_info.get("info", []))
+            
+            elif strategy_group_id:
+                group_result = self.get_strategy_group_with_groupid(strategy_group_id)
+                if group_result.get("status") == "error":
+                    return group_result
+                
+                group_info = group_result.get("info", {})
+                strategies_info = group_info.get("strategy_lists", [])
+
+            # 解析策略需求
+            coin_long_pairs = set()
+            coin_short_pairs = set()
+            ai_time_long_types = set()
+            ai_time_short_types = set()
+            ai_time_id_mapping = {}
+
+            for strategy in strategies_info:
+                # 币种分析
+                coin = strategy.get("coin")
+                direction = strategy.get("direction")
+                ai_time_id = strategy.get("ai_time_id")
+                ai_time_name = strategy.get("ai_time_name")
+
+                if direction == "long" and coin:
+                    coin_long_pairs.add(coin)
+                elif direction == "short" and coin:
+                    coin_short_pairs.add(coin)
+
+                # AI时间分析
+                if ai_time_id and ai_time_name:
+                    if direction == "long":
+                        ai_time_long_types.add(ai_time_name)
+                    else:
+                        ai_time_short_types.add(ai_time_name)
+                    ai_time_id_mapping[ai_time_name] = ai_time_id
+
+            result = {
+                "coin_long_pairs": list(coin_long_pairs),
+                "coin_short_pairs": list(coin_short_pairs),
+                "ai_time_long_types": list(ai_time_long_types),
+                "ai_time_short_types": list(ai_time_short_types),
+                "ai_time_id_mapping": ai_time_id_mapping,
+                "has_ai_time": bool(ai_time_long_types or ai_time_short_types)
+            }
+
+            return {
+                "status": 1,
+                "info": result
+            }
+
+        except TradeRequestError as e:
+            self.logger.error(f"策略分析失败: {e.message}")
+            return {
+                "status": "error",
+                "message": e.message,
+                "error_code": e.error_code
+            }
+    
+    def check_allocation_completeness(
+        self, 
+        strategy_ids: Optional[List[str]] = None,
+        strategy_group_id: Optional[str] = None, 
+        user_allocation: Dict[str, Any] = {}
+    ) -> Dict[str, Any]:
+        """
+        检查保证金分配方案完整性
+        
+        :param strategy_ids: 策略ID列表
+        :param strategy_group_id: 策略组ID
+        :param user_allocation: 用户提供的分配方案
+        :return: 完整性检查结果
+        """
+        try:
+            # 分析策略需求
+            requirement_result = self.analyze_strategies_for_allocation(
+                strategy_ids, 
+                strategy_group_id
+            )
+
+            if requirement_result.get("status") == "error":
+                return requirement_result
+
+            requirement_info = requirement_result.get("info", {})
+            requirement = self.StrategyRequirement(
+                coin_long_pairs=requirement_info.get("coin_long_pairs", []),
+                coin_short_pairs=requirement_info.get("coin_short_pairs", []),
+                ai_time_long_types=requirement_info.get("ai_time_long_types", []),
+                ai_time_short_types=requirement_info.get("ai_time_short_types", []),
+                ai_time_id_mapping=requirement_info.get("ai_time_id_mapping", {}),
+                has_ai_time=requirement_info.get("has_ai_time", False)
+            )
+
+            # 检查分配方案完整性
+            missing = self.check_allocation_iscomplete(requirement, user_allocation)
+            
+            # 格式化消息
+            message = self.format_missing_params_message(requirement, missing)
+
+            # 构造返回结果
+            result = {
+                "requirement": {
+                    "coin_long_pairs": requirement.coin_long_pairs,
+                    "coin_short_pairs": requirement.coin_short_pairs,
+                    "ai_time_long_types": requirement.ai_time_long_types,
+                    "ai_time_short_types": requirement.ai_time_short_types,
+                    "ai_time_id_mapping": requirement.ai_time_id_mapping,
+                    "has_ai_time": requirement.has_ai_time
+                },
+                "missing": missing,
+                "is_complete": not any(missing.values()),
+                "message": message
+            }
+
+            return {
+                "status": 1,
+                "info": result
+            }
+
+        except TradeRequestError as e:
+            self.logger.error(f"分配方案完整性检查失败: {e.message}")
+            return {
+                "status": "error",
+                "message": e.message,
+                "error_code": e.error_code
+            }
+    def check_allocation_iscomplete(
+        self, 
+        requirement: StrategyRequirement, 
+        user_allocation: Dict[str, Any]
+    ) -> Dict[str, List[str]]:
+        """
+        检查分配方案完整性
+        
+        :param requirement: 策略需求
+        :param user_allocation: 用户提供的分配方案
+        :return: 缺失参数列表
+        """
+        missing = {
+            "coin_long_allocation": [],
+            "coin_short_allocation": [],
+            "ai_time_long_allocation": [],
+            "ai_time_short_allocation": []
+        }
+
+        # 检查做多币种分配
+        user_coin_long_alloc = user_allocation.get("coin_long_allocation", {})
+        for coin in requirement.coin_long_pairs:
+            if coin not in user_coin_long_alloc:
+                missing["coin_long_allocation"].append(coin)
+
+        # 检查做空币种分配  
+        user_coin_short_alloc = user_allocation.get("coin_short_allocation", {})
+        for coin in requirement.coin_short_pairs:
+            if coin not in user_coin_short_alloc:
+                missing["coin_short_allocation"].append(coin)
+
+        # 检查AI时间做多分配
+        if requirement.has_ai_time:
+            user_ai_time_long_alloc = user_allocation.get("ai_time_long_allocation", {})
+            for ai_time in requirement.ai_time_long_types:
+                if ai_time not in user_ai_time_long_alloc:
+                    missing["ai_time_long_allocation"].append(ai_time)
+
+            # 检查AI时间做空分配
+            user_ai_time_short_alloc = user_allocation.get("ai_time_short_allocation", {})
+            for ai_time in requirement.ai_time_short_types:
+                if ai_time not in user_ai_time_short_alloc:
+                    missing["ai_time_short_allocation"].append(ai_time)
+
+        return {k: v for k, v in missing.items() if v}
+    def format_missing_params_message(
+        self, 
+        requirement: StrategyRequirement, 
+        missing: Dict[str, List[str]]
+    ) -> str:
+        """
+        格式化缺失参数消息
+            
+        :param requirement: 策略需求
+        :param missing: 缺失参数列表
+        :return: 格式化的消息
+        """
+        if not missing:
+            return "✅ 分配方案完整"
+
+        message_parts = []
+        if missing.get("coin_long_allocation"):
+            message_parts.append(f"❌ 做多币种分配缺失: {', '.join(missing['coin_long_allocation'])}")
+            
+        if missing.get("coin_short_allocation"):
+            message_parts.append(f"❌ 做空币种分配缺失: {', '.join(missing['coin_short_allocation'])}")
+            
+        if missing.get("ai_time_long_allocation"):
+            message_parts.append(f"❌ AI时间做多分配缺失: {', '.join(missing['ai_time_long_allocation'])}")
+            
+        if missing.get("ai_time_short_allocation"):
+            message_parts.append(f"❌ AI时间做空分配缺失: {', '.join(missing['ai_time_short_allocation'])}")
+
+        return " | ".join(message_parts)
 def cli_support():
     """
     为request.py添加命令行接口支持
