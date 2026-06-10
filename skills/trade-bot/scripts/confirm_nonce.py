@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""二次确认机制"""
+
+import json
+import os
+import time
+import hashlib
+from typing import Optional
+
+NONCE_DIR = "/tmp/quantclaw/nonces"
+DEFAULT_TTL = 300
+
+
+def _key(*parts: str) -> str:
+    raw = ":".join(str(p) if p is not None else "" for p in parts)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def check(*nonce_parts: str) -> str:
+    """返回 "none" / "expired" / "confirmed" """
+    path = os.path.join(NONCE_DIR, _key(*nonce_parts))
+    if not os.path.exists(path):
+        return "none"
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        if time.time() - data.get("created_at", 0) > data.get("ttl", DEFAULT_TTL):
+            os.remove(path)
+            return "expired"
+        return "confirmed"
+    except Exception:
+        return "none"
+
+
+def create(*nonce_parts: str, ttl: int = DEFAULT_TTL) -> None:
+    os.makedirs(NONCE_DIR, exist_ok=True)
+    agent_id = nonce_parts[0] if nonce_parts else ""
+    with open(os.path.join(NONCE_DIR, _key(*nonce_parts)), "w") as f:
+        json.dump({"created_at": time.time(), "ttl": ttl, "agent_id": agent_id}, f)
+
+
+def clear(*nonce_parts: str) -> None:
+    path = os.path.join(NONCE_DIR, _key(*nonce_parts))
+    if os.path.exists(path):
+        os.remove(path)
+
+
+def sweep_expired() -> int:
+    if not os.path.isdir(NONCE_DIR):
+        return 0
+    now = time.time()
+    cleaned = 0
+    for fname in os.listdir(NONCE_DIR):
+        path = os.path.join(NONCE_DIR, fname)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            if now - data.get("created_at", 0) > data.get("ttl", DEFAULT_TTL):
+                os.remove(path)
+                cleaned += 1
+        except Exception:
+            os.remove(path)
+            cleaned += 1
+    return cleaned

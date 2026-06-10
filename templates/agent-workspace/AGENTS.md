@@ -85,6 +85,14 @@ read /home/ubuntu/.npm-global/lib/node_modules/clawdbot/skills/backtest-query/SK
 
 ---
 
+### trade-bot - 交易机器人管理
+
+**📄 详见**: `./skills/trade-bot/SKILL.md`
+
+**何时使用**：用户需要管理 fourieralpha 平台的交易机器人时（查看/停止/加仓/调整保证金/编辑策略参数等）。使用前先读取 SKILL.md。
+
+---
+
 ### start-backtest - 启动回测任务
 
 **⚡ 技能路径**（必须使用本地路径）：

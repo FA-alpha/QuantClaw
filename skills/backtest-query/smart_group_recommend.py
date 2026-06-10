@@ -16,15 +16,8 @@ from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from query import query_backtest, get_backtest_detail, get_version_info
 from analysis import recommend_combinations
-import sys
-from pathlib import Path
 
-# 添加项目根目录到 sys.path
-project_root = Path(__file__).resolve().parent.parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
-from scripts.logging import log_error, ErrorType
+from qc_log import log_error, ErrorType
 
 
 # ==================== 全局日志控制 ====================
@@ -1137,18 +1130,18 @@ class SmartGroupRecommender:
         self.log(f"🎯 返回数量: {limit}")
         
         # 2. 按收益率排序（或使用API指定的排序）
-        sort_key = 'profit_rate'  # 默认按收益率
+        sort_key = 'year_rate'  # 默认按收益率
         if api_sort_type == 3:
             sort_key = 'sharp_rate'
         elif api_sort_type == 4:
-            sort_key = 'max_draw_down'
+            sort_key = 'max_loss'
             
         self.log(f"📈 排序字段: {sort_key}")
         
         sorted_strategies = sorted(
             strategies,
             key=lambda x: float(x.get(sort_key, 0) or 0),
-            reverse=(sort_key != 'max_draw_down')  # 回撤越小越好
+            reverse=(sort_key != 'max_loss')  # 回撤越小越好
         )
         
         # 3. 取前N个
@@ -1880,7 +1873,7 @@ class SmartGroupRecommender:
             print("📊 单策略推荐结果")
             print("="*70)
             print(f"查询: {result.get('total_fetched', 0)} → 已选: {result.get('total_selected', 0)} 个")
-            print(f"排序字段: {result.get('sort_by', 'profit_rate')}")
+            print(f"排序字段: {result.get('sort_by', 'year_rate')}")
             
             strategies = result.get('strategies', [])
             if strategies:
@@ -1888,9 +1881,9 @@ class SmartGroupRecommender:
                 for i, s in enumerate(strategies, 1):
                     print(
                         f"  #{i} {s.get('name', 'N/A')} | "
-                        f"收益{s.get('profit_rate', 0)}% | "
+                        f"收益{s.get('year_rate', 0)}% | "
                         f"夏普{s.get('sharp_rate', 0)} | "
-                        f"回撤{s.get('max_draw_down', 0)}%"
+                        f"回撤{s.get('max_loss', 0)}%"
                     )
                     print(f"      Token: {s.get('strategy_token', 'N/A')}")
             
