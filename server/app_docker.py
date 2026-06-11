@@ -610,7 +610,7 @@ async def handle_new_conversation(request):
 
         user_id = auth_result.get('userId')
         agent_id = auth_result.get('agentId')
-        main_session_key = f'agent:{agent_id}:main'
+        main_session_key =auth_result.get('sessionKey') or f'agent:{agent_id}:main' 
         
         # 步骤2：通过 sessions.create 创建新会话
         try:
@@ -710,6 +710,8 @@ async def handle_new_conversation(request):
                                                     'params': {
                                                         'agentId': agent_id,
                                                         'includeUnknown': True,
+                                                        'configuredAgentsOnly': True,
+                                                        'includeGlobal': True,
                                                         'limit': 50
                                                     }
                                                 })
