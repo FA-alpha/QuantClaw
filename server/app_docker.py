@@ -301,7 +301,6 @@ class ChatStore:
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
         self.data_dir.mkdir(exist_ok=True, parents=True)
-        self._migrate_old_format()
     
     def _safe_key(self, session_key: str) -> str:
         """agent:qc-xxx:dashboard:uuid -> agent_qc-xxx_dashboard_uuid"""
@@ -320,20 +319,7 @@ class ChatStore:
         )
         return files[0] if files else None
     
-    def _migrate_old_format(self):
-        """迁移 {user_id}.json -> {user_id}__agent_default_main.json"""
-        for old_file in self.data_dir.glob('*.json'):
-            name = old_file.stem
-            if '__' not in name and not name.endswith('.bak') and not name.endswith('.migrated'):
-                try:
-                    data = json.loads(old_file.read_text())
-                    new_file = self.data_dir / f'{name}__agent_default_main.json'
-                    new_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-                    old_file.rename(old_file.with_suffix('.json.migrated'))
-                    logger.info(f'📦 Migrated chat: {old_file.name} -> {new_file.name}')
-                except Exception as e:
-                    logger.error(f'Migration error {old_file.name}: {e}')
-    
+
     def has_messages(self, user_id: str) -> bool:
         return self._find_latest(user_id) is not None
     
