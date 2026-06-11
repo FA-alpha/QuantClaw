@@ -32,7 +32,7 @@ CORS_ENABLED = os.getenv('CORS_ENABLED', 'true').lower() == 'true'
 # 配置 (Docker 容器内地址)
 GATEWAY_URL = os.getenv('GATEWAY_URL', 'http://127.0.0.1:18789')
 GATEWAY_WS = os.getenv('GATEWAY_WS', 'ws://127.0.0.1:18789')
-GATEWAY_TOKEN = os.getenv('GATEWAY_TOKEN', 'a9bde4f80151115b2fef2669fd6f1fbb79f0c69cf1487c5781e342eac070e57e')  # 需要从环境变量获取
+GATEWAY_TOKEN = os.getenv('GATEWAY_TOKEN', '94dfe6383735dccc9b4d800c42b653787d550bc13b7fe3a4')  # 需要从环境变量获取
 
 # 认证服务地址（quantclaw_webhook.py 服务）
 AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://127.0.0.1:8081')
@@ -196,7 +196,7 @@ class GlobalMessageListener:
                                 'minProtocol': 4,
                                 'maxProtocol': 4,
                                 'client': {
-                                    'id': f'quantclaw-listener-{id(self)}',
+                                    'id': 'gateway-client',
                                     'version': '1.0.0',
                                     'platform': 'linux',
                                     'mode': 'backend'
@@ -650,7 +650,7 @@ async def handle_new_conversation(request):
                                             'minProtocol': 4,
                                             'maxProtocol': 4,
                                             'client': {
-                                                'id': f'quantclaw-{user_id}',
+                                                'id': 'gateway-client',
                                                 'version': '1.0.0',
                                                 'platform': 'linux',
                                                 'mode': 'backend'
@@ -813,7 +813,7 @@ async def handle_websocket(request):
                                     'minProtocol': 4,
                                     'maxProtocol': 4,
                                     'client': {
-                                        'id': f'quantclaw-ws-{user_id}',
+                                        'id': 'gateway-client',
                                         'version': '1.0.0',
                                         'platform': 'linux',
                                         'mode': 'backend'
