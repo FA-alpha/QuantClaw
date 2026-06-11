@@ -380,6 +380,64 @@ class TradeRequest:
                 "message": e.message,
                 "error_code": e.error_code
             }
+    def get_strategy_with_id(
+        self, 
+        strategy_id: str,
+        page: int = 1, 
+        limit: int = -1,
+        app_v: str = "2.0.0"
+    ) -> Dict[str, Any]:
+        """
+        根据传入的策略ID获取对应的策略详情
+        
+        :param strategy_id: 要查询的策略ID
+        :param page: 页码，默认第一页
+        :param limit: 每页数量，默认返回全部
+        :param app_v: 应用版本号，默认2.0.0
+        :return: 匹配的策略详情
+        """
+        try:
+            # 获取完整的策略列表
+            result = self.get_strategies(
+                page=page, 
+                limit=limit, 
+                app_v=app_v
+            )
+            
+            # 检查返回状态
+            if result.get("status") != 1:
+                return result
+            
+            # 获取策略列表
+            all_strategies = result.get("info", [])
+            
+            # 筛选出匹配的策略
+            matched_strategies = [
+                strategy for strategy in all_strategies
+                if str(strategy.get("id")) == str(strategy_id)
+            ]
+            
+            # 如果没有找到任何匹配的策略，返回错误信息
+            if not matched_strategies:
+                return {
+                    "status": "error",
+                    "message": f"未找到指定的策略ID: {strategy_id}",
+                    "error_code": "STRATEGY_NOT_FOUND"
+                }
+            
+            # 返回匹配的策略(只返回第一个)
+            return {
+                "status": 1,
+                "info": matched_strategies[0]
+            }
+        
+        except TradeRequestError as e:
+            self.logger.error(f"获取策略详情失败: {e.message}")
+            return {
+                "status": "error",
+                "message": e.message,
+                "error_code": e.error_code
+            }
     ##包装好的,用于根据策略组id,获取该策略组内所有策略的详细信息的方法
     def get_strategy_group_with_groupid(
         self, 
@@ -742,6 +800,64 @@ def cli_support():
             show_type=show_type, 
             data_grade=data_grade
         )
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    
+    @app.command()
+    def get_strategy_with_id(
+        agent_id: str = typer.Option(..., help="agent_id"),
+        strategy_id: str = typer.Argument(..., help="策略ID")
+    ):
+        """
+        根据策略ID获取策略详情
+        
+        参数类型:
+        - agent_id: str (必填) - agent_id
+        - strategy_id: str (必填) - 策略ID
+        """
+        requester = create_requester(agent_id)
+        result = requester.get_strategy_with_id(strategy_id)
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    
+    @app.command()
+    def get_strategy_groups(
+        agent_id: str = typer.Option(..., help="agent_id"),
+        page: int = typer.Option(1, help="页码"),
+        limit: int = typer.Option(10, help="每页数量"),
+        search_val: Optional[str] = typer.Option(None, help="搜索内容")
+    ):
+        """
+        获取策略组列表
+        
+        参数类型:
+        - agent_id: str (必填) - agent_id
+        - page: int (可选, 默认1) - 页码
+        - limit: int (可选, 默认10) - 每页数量
+        - search_val: Optional[str] (可选) - 搜索内容
+        """
+        requester = create_requester(agent_id)
+        result = requester.get_strategy_groups(
+            page=page,
+            limit=limit,
+            search_val=search_val
+        )
+        typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    
+    @app.command()
+    def get_strategy_group_with_groupid(
+        agent_id: str = typer.Option(..., help="agent_id"),
+        group_id: str = typer.Argument(..., help="策略组ID"),
+        limit: int = typer.Option(10, help="每页数量")
+    ):
+        """
+        根据策略组ID获取策略组详情
+        
+        参数类型:
+        - agent_id: str (必填) - agent_id
+        - group_id: str (必填) - 策略组ID
+        - limit: int (可选, 默认10) - 每页数量
+        """
+        requester = create_requester(agent_id)
+        result = requester.get_strategy_group_with_groupid(group_id, limit=limit)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
