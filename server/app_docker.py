@@ -793,6 +793,8 @@ async def handle_websocket(request):
 
     # 可变容器，支持 switch_session 动态切换
     session_key = [_session_key]
+    # 追踪 chat.abort 请求 ID，以便 Gateway 响应时通知前端
+    pending_abort_id = [None]
     
     logger.info(f'WS connect: {_session_key} (user: {user_id})')
     
@@ -888,16 +890,18 @@ async def handle_websocket(request):
                                 
                                 # 停止输出（chat.abort）
                                 if data.get('method') == 'chat.abort':
+                                    abort_id = next_id()
+                                    pending_abort_id[0] = abort_id
                                     abort_req = {
                                         'type': 'req',
-                                        'id': next_id(),
+                                        'id': abort_id,
                                         'method': 'chat.abort',
                                         'params': {
                                             'sessionKey': session_key[0]
                                         }
                                     }
                                     await gateway_ws.send_json(abort_req)
-                                    logger.info(f'🛑 Sent chat.abort for {session_key[0]}')
+                                    logger.info(f'🛑 Sent chat.abort for {session_key[0]} (id={abort_id})')
                                     continue
                                 
                                 # 🔑 处理用户消息
@@ -958,6 +962,14 @@ async def handle_websocket(request):
                                                 'type': 'message',
                                                 'role': 'system',
                                                 'content': f'⚠️ 错误: {error_msg}',
+                                            })
+                                        # chat.abort 响应：通知前端已收到并处理
+                                        if data.get('id') == pending_abort_id[0] and data.get('ok'):
+                                            pending_abort_id[0] = None
+                                            logger.info('✅ chat.abort acknowledged by Gateway')
+                                            await ws_client.send_json({
+                                                'type': 'aborted',
+                                                'sessionKey': session_key[0],
                                             })
                                         continue
                                     
