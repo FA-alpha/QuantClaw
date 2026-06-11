@@ -695,9 +695,76 @@ async def handle_new_conversation(request):
                                         new_session_id = payload.get('sessionId', '')
                                         logger.info(f'✅ Session created: {new_session_key} (sessionId={new_session_id})')
                                         session_created = True
+                                        break
                                     else:
-                                        logger.error(f'sessions.create failed: {ws_data.get("error")}')
-                                    break
+                                        error_msg = ws_data.get('error', {})
+                                        logger.warning(f'sessions.create failed: {error_msg}')
+                                        # unknown parent session → 查 sessions.list 找有效 parent 重试
+                                        if isinstance(error_msg, dict) and 'unknown parent' in error_msg.get('message', ''):
+                                            try:
+                                                list_id = str(uuid.uuid4())
+                                                await gateway_ws.send_json({
+                                                    'type': 'req',
+                                                    'id': list_id,
+                                                    'method': 'sessions.list',
+                                                    'params': {
+                                                        'agentId': agent_id,
+                                                        'includeUnknown': True,
+                                                        'limit': 50
+                                                    }
+                                                })
+                                                logger.info(f'📋 Querying sessions.list for agent:{agent_id}')
+                                                async for list_msg in gateway_ws:
+                                                    if list_msg.type != WSMsgType.TEXT:
+                                                        break
+                                                    list_data = json.loads(list_msg.data)
+                                                    if list_data.get('type') == 'res' and list_data.get('id') == list_id:
+                                                        sessions = list_data.get('payload', {}).get('sessions', [])
+                                                        # 优先找 agent:{agent_id}:main
+                                                        parent = None
+                                                        for s in sessions:
+                                                            if s.get('key') == main_session_key:
+                                                                parent = s
+                                                                break
+                                                        if not parent and sessions:
+                                                            # 回退：最近更新的 session
+                                                            parent = sessions[0]
+                                                        if parent:
+                                                            main_session_key = parent.get('key', main_session_key)
+                                                            logger.info(f'🔧 Retrying with parent: {main_session_key}')
+                                                            retry_id = str(uuid.uuid4())
+                                                            await gateway_ws.send_json({
+                                                                'type': 'req',
+                                                                'id': retry_id,
+                                                                'method': 'sessions.create',
+                                                                'params': {
+                                                                    'agentId': agent_id,
+                                                                    'parentSessionKey': main_session_key,
+                                                                    'emitCommandHooks': True
+                                                                }
+                                                            })
+                                                            ws_req_id = retry_id
+                                                            # 继续循环等重试响应
+                                                        else:
+                                                            # 完全没有 session，不传 parent
+                                                            logger.info(f'🔧 Retrying without parentSessionKey')
+                                                            retry_id = str(uuid.uuid4())
+                                                            await gateway_ws.send_json({
+                                                                'type': 'req',
+                                                                'id': retry_id,
+                                                                'method': 'sessions.create',
+                                                                'params': {
+                                                                    'agentId': agent_id,
+                                                                    'emitCommandHooks': True
+                                                                }
+                                                            })
+                                                            ws_req_id = retry_id
+                                                        break
+                                            except Exception as list_err:
+                                                logger.error(f'sessions.list fallback error: {list_err}')
+                                                break
+                                        else:
+                                            break
                             
                             elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
                                 logger.warning('WebSocket closed during sessions.create')
