@@ -77,6 +77,8 @@ class GlobalMessageListener:
         
         # 消息缓存：{session_key: current_response}
         self.response_cache = {}
+        # 已注册用户：{agent_id: user_id}（handle_auth 时注册）
+        self._agent_user = {}
         
         # 连接监控
         self.connection_count = 0  # 总连接次数
@@ -103,6 +105,11 @@ class GlobalMessageListener:
             except asyncio.CancelledError:
                 pass
         logger.info('🌍 GlobalMessageListener stopped')
+    
+    def register_user(self, agent_id: str, user_id: str):
+        """注册用户：auth 时调用，agent_id -> user_id 映射"""
+        self._agent_user[agent_id] = user_id
+        logger.info(f'📋 Registered user: {agent_id} -> {user_id}')
     
     async def _listen_loop(self):
         """持久监听循环"""
@@ -232,15 +239,12 @@ class GlobalMessageListener:
             if not session_key:
                 return
             
-            # 从 session_key 提取 user_id
-            # 格式: agent:qc-xxx:main → user_id = u_xxx
-            user_id = self._extract_user_id(session_key)
+            # 从 session_key 提取 agent_id，查 agent->user 映射
+            # session_key 格式: agent:qc-xxx:main
+            agent_id = session_key.split(':')[1] if ':' in session_key else ''
+            user_id = self._agent_user.get(agent_id)
             if not user_id:
-                return
-            
-            # 🔑 关键判断：用户是否有消息记录？
-            if not self.chat_store.has_messages(user_id):
-                # 没有消息记录 = 不是活跃用户 → 忽略
+                # 不是已注册的 QuantClaw 用户 → 忽略
                 return
             
             # 处理消息
@@ -271,26 +275,6 @@ class GlobalMessageListener:
             pass
         except Exception as e:
             logger.error(f'[GlobalListener] Handle message error: {e}')
-    
-    def _extract_user_id(self, session_key: str) -> str:
-        """
-        从 session_key 提取 user_id
-        
-        session_key 格式: agent:qc-xxx:main
-        agent_id: qc-xxx
-        user_id: u_xxx
-        """
-        try:
-            parts = session_key.split(':')
-            if len(parts) >= 2:
-                agent_id = parts[1]  # qc-xxx
-                if agent_id.startswith('qc-'):
-                    user_id = 'u_' + agent_id[3:]  # u_xxx
-                    return user_id
-        except Exception as e:
-            logger.error(f'Extract user_id error: {e}')
-        
-        return ''
 
 
 # ============ 聊天记录存储 ============
@@ -328,9 +312,6 @@ class ChatStore:
         return files[0] if files else None
     
 
-    def has_messages(self, user_id: str) -> bool:
-        return self._find_latest(user_id) is not None
-    
     def load(self, user_id: str, session_key=None) -> list:
         if session_key:
             file = self._get_file(user_id, session_key)
@@ -532,8 +513,13 @@ async def handle_auth(request):
             return web.json_response(auth_result, status=401)
 
         agent_id = auth_result.get('agentId')
+        user_id = auth_result.get('userId')
         # 从 webhook 拿 sessionKey，不再本地拼接
         session_key = auth_result.get('sessionKey') or f'agent:{agent_id}:{session_id}'
+
+        # 注册用户到 GlobalListener（agent_id -> user_id 映射）
+        if global_listener and agent_id and user_id:
+            global_listener.register_user(agent_id, user_id)
 
         return web.json_response({
             'success': True,
