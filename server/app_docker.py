@@ -665,8 +665,8 @@ async def handle_new_conversation(request):
                                     }
                                     await gateway_ws.send_json(connect_req)
                                 
-                                # 握手成功，调用 sessions.create
-                                elif ws_data.get('type') == 'res' and ws_data.get('id') == ws_req_id:
+                                # 握手成功，调用 sessions.create（仅首次握手时）
+                                elif ws_data.get('type') == 'res' and ws_data.get('id') == ws_req_id and not connected:
                                     if ws_data.get('ok'):
                                         connected = True
                                         create_id = str(uuid.uuid4())
