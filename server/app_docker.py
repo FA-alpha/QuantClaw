@@ -537,7 +537,8 @@ async def handle_auth(request):
             return web.json_response(auth_result, status=401)
 
         agent_id = auth_result.get('agentId')
-        session_key = f'agent:{agent_id}:{session_id}'
+        # 从 webhook 拿 sessionKey，不再本地拼接
+        session_key = auth_result.get('sessionKey') or f'agent:{agent_id}:{session_id}'
 
         return web.json_response({
             'success': True,
