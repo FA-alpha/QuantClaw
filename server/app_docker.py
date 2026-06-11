@@ -550,7 +550,8 @@ async def handle_history(request):
             return web.json_response(auth_result, status=401)
 
         user_id = auth_result.get('userId')
-        messages = chat_store.load(user_id, session_key)
+        session_key = data.get('sessionKey') or auth_result.get('sessionKey', '')
+        messages = chat_store.load(user_id, session_key) if session_key else []
 
         return web.json_response({
             'success': True,
@@ -578,7 +579,9 @@ async def handle_clear_history(request):
             return web.json_response(auth_result, status=401)
 
         user_id = auth_result.get('userId')
-        chat_store.clear(user_id, session_key)
+        session_key = data.get('sessionKey') or auth_result.get('sessionKey', '')
+        if session_key:
+            chat_store.clear(user_id, session_key)
 
         return web.json_response({'success': True, 'cleared': True})
 
