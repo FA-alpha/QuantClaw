@@ -1207,7 +1207,6 @@ def create_app():
         logger.info('🧹 Cleaning up...')
         if global_listener:
             await global_listener.stop()
-        await cleanup_auth_session()
         logger.info('✅ Cleanup complete')
     
     app.on_startup.append(on_startup)
