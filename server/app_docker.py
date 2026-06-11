@@ -296,7 +296,7 @@ class GlobalMessageListener:
 # ============ 聊天记录存储 ============
 
 class ChatStore:
-    """按用户+session存储聊天记录（支持多 session 切换）"""
+    """按用户+session存储聊天记录（用户目录 → session 文件）"""
     
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
@@ -306,14 +306,22 @@ class ChatStore:
         """agent:qc-xxx:dashboard:uuid -> agent_qc-xxx_dashboard_uuid"""
         return session_key.replace(':', '_').replace('-', '_')
     
+    def _user_dir(self, user_id: str) -> Path:
+        dir = self.data_dir / user_id
+        dir.mkdir(exist_ok=True, parents=True)
+        return dir
+    
     def _get_file(self, user_id: str, session_key: str) -> Path:
         safe = self._safe_key(session_key)
-        return self.data_dir / f'{user_id}__{safe}.json'
+        return self._user_dir(user_id) / f'{safe}.json'
     
     def _find_latest(self, user_id: str):
         """找用户最新的 session 聊天文件"""
+        user_dir = self.data_dir / user_id
+        if not user_dir.exists():
+            return None
         files = sorted(
-            self.data_dir.glob(f'{user_id}__*.json'),
+            user_dir.glob('*.json'),
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
@@ -357,14 +365,15 @@ class ChatStore:
     
     def new_conversation(self, user_id: str, session_key: str):
         """创建新会话文件。同名存在则 rename 旧文件"""
+        user_dir = self._user_dir(user_id)
         file = self._get_file(user_id, session_key)
         if file.exists():
             ts = int(time.time())
-            backup = self.data_dir / f'{file.stem}_{ts}.json.bak'
+            backup = user_dir / f'{file.stem}_{ts}.json.bak'
             file.rename(backup)
             logger.info(f'📦 Backup existing chat -> {backup.name}')
         file.write_text('[]')
-        logger.info(f'📝 New chat file: {file.name}')
+        logger.info(f'📝 New chat file: {user_id}/{file.name}')
     
     def clear(self, user_id: str, session_key=None):
         """清空指定 session 的聊天记录（兼容旧接口）"""

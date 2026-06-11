@@ -2,8 +2,10 @@
 """
 一键迁移旧格式聊天文件 -> 新格式
 
-旧格式: {user_id}.json   (例如 u_abc123.json)
-新格式: {user_id}__{safe_session_key}.json
+旧格式: {user_id}.json
+  例如: u_abc123.json
+新格式: chats/{user_id}/{safe_session_key}.json
+  例如: chats/u_abc123/agent_qc_abc123_main.json
 
 session_key = agent:{agent_id}:main
 safe 规则: ':' -> '_', '-' -> '_'
@@ -57,16 +59,18 @@ def migrate(chats_dir: Path, users_file: Path) -> int:
             print(f"[SKIP] {old_file.name}: user_id={user_id} not found in users.json")
             continue
 
-        # 构造新文件名
+        # 构造新文件名 - chats/{user_id}/{safe_session_key}.json
         session_key = f'agent:{agent_id}:main'
         safe = safe_key(session_key)
-        new_file = chats_dir / f'{user_id}__{safe}.json'
+        user_dir = chats_dir / user_id
+        user_dir.mkdir(exist_ok=True, parents=True)
+        new_file = user_dir / f'{safe}.json'
 
         try:
             data = json.loads(old_file.read_text())
             new_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
             old_file.rename(old_file.with_suffix('.json.migrated'))
-            print(f"[OK] {old_file.name} -> {new_file.name}")
+            print(f"[OK] {old_file.name} -> {user_id}/{new_file.name}")
             count += 1
         except Exception as e:
             print(f"[ERR] {old_file.name}: {e}")
