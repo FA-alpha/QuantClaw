@@ -384,8 +384,7 @@ class TradeRequest:
         self, 
         strategy_id: str,
         page: int = 1, 
-        limit: int = -1,
-        app_v: str = "2.0.0"
+        limit: int = -1
     ) -> Dict[str, Any]:
         """
         根据传入的策略ID获取对应的策略详情
@@ -393,15 +392,13 @@ class TradeRequest:
         :param strategy_id: 要查询的策略ID
         :param page: 页码，默认第一页
         :param limit: 每页数量，默认返回全部
-        :param app_v: 应用版本号，默认2.0.0
         :return: 匹配的策略详情
         """
         try:
             # 获取完整的策略列表
-            result = self.get_strategies(
+            result = self.get_strategy_lists(
                 page=page, 
-                limit=limit, 
-                app_v=app_v
+                limit=limit
             )
             
             # 检查返回状态
@@ -1001,6 +998,9 @@ def cli_support():
         except ValueError as e:
             typer.echo(json.dumps({'error': str(e)}, indent=2, ensure_ascii=False))
             raise typer.Exit(code=1)
+    
+    # 运行 Typer CLI
+    app()
 
 def calculate_investment_smart(
     fst_capital: Optional[float] = None,
