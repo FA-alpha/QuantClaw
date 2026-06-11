@@ -853,6 +853,170 @@ def cli_support():
             **specific_params
         )
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    
+    @app.command()
+    def calc_investment(
+        max_grid_size: int = typer.Option(..., help="最大加仓次数"),
+        add_amt_multiples: float = typer.Option(1.0, help="加仓倍数（默认1.0）"),
+        fst_capital: Optional[float] = typer.Option(None, help="初次下单金额"),
+        each_capital: Optional[float] = typer.Option(None, help="加仓下单金额"),
+        total_investment: Optional[float] = typer.Option(None, help="总投资金额")
+    ):
+        """
+        智能计算投资金额参数
+        
+        支持场景：
+        1. 提供 fst_capital + each_capital → 计算 total_investment
+        2. 提供 total_investment → 计算 fst_capital + each_capital
+        3. 提供 total_investment + fst_capital → 计算 each_capital
+        4. 提供 total_investment + each_capital → 计算 fst_capital
+        
+        ⚠️ 当 add_amt_multiples != 1 时，必须提供 each_capital
+        """
+        try:
+            result = calculate_investment_smart(
+                fst_capital=fst_capital,
+                each_capital=each_capital,
+                max_grid_size=max_grid_size,
+                add_amt_multiples=add_amt_multiples,
+                total_investment=total_investment
+            )
+            typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+        except ValueError as e:
+            typer.echo(json.dumps({'error': str(e)}, indent=2, ensure_ascii=False))
+            raise typer.Exit(code=1)
+
+def calculate_investment_smart(
+    fst_capital: Optional[float] = None,
+    each_capital: Optional[float] = None,
+    max_grid_size: Optional[int] = None,
+    add_amt_multiples: float = 1.0,
+    total_investment: Optional[float] = None
+) -> Dict[str, float]:
+    """
+    智能计算投资金额参数（双向计算）
+    
+    根据传入参数自动判断计算方向：
+    1. 提供 fst_capital, each_capital → 计算 total_investment
+    2. 提供 total_investment → 计算 fst_capital, each_capital (假设两者相等)
+    3. 提供 total_investment, fst_capital → 计算 each_capital
+    4. 提供 total_investment, each_capital → 计算 fst_capital
+    
+    ⚠️ 当 add_amt_multiples != 1 时，必须提供 fst_capital 和 each_capital
+    
+    :param fst_capital: 初次下单金额
+    :param each_capital: 加仓下单金额（第一次加仓）
+    :param max_grid_size: 最大加仓次数
+    :param add_amt_multiples: 加仓倍数（默认1.0）
+    :param total_investment: 总投资金额
+    :return: 包含所有参数的字典
+    """
+    from decimal import Decimal, getcontext
+    
+    # 设置精度
+    getcontext().prec = 100000
+    
+    # 参数验证
+    if max_grid_size is None or max_grid_size <= 0:
+        raise ValueError("max_grid_size 必须大于0")
+    
+    # ⚠️ 关键限制：当 add_amt_multiples != 1 时，必须提供 each_capital
+    # fst_capital 虽然可以传入，但不参与计算（成为无效参数）
+    if add_amt_multiples != 1.0:
+        if each_capital is None:
+            raise ValueError("当 add_amt_multiples != 1 时，必须提供 each_capital（加仓保证金）")
+        
+        # 只能正向计算 total_investment，fst_capital 不参与计算
+        if each_capital > 0:
+            # 递增加仓计算（fst_capital 不参与）
+            amt_count = Decimal(str(each_capital))
+            now_amt = Decimal(str(each_capital))
+            
+            for i in range(1, int(max_grid_size) + 1):
+                if i == 1:
+                    amt_count = amt_count + now_amt
+                else:
+                    now_amt = now_amt * Decimal(str(add_amt_multiples))
+                    amt_count = amt_count + now_amt
+            
+            total_investment = float(amt_count)
+        else:
+            total_investment = 0.0
+        
+        return {
+            'fst_capital': fst_capital,  # 传入但不参与计算
+            'each_capital': each_capital,
+            'max_grid_size': max_grid_size,
+            'add_amt_multiples': add_amt_multiples,
+            'total_investment': total_investment
+        }
+    
+    # 以下是 add_amt_multiples == 1 的场景（支持双向计算）
+    
+    # 场景1：已知 fst_capital 和 each_capital，计算 total_investment
+    if fst_capital is not None and each_capital is not None and total_investment is None:
+        if each_capital > 0 and fst_capital > 0:
+            # 等额加仓
+            a = Decimal(str(fst_capital))
+            b = Decimal(str(each_capital))
+            c = Decimal(str(int(max_grid_size)))
+            total_investment = float(a + (b * c))
+        else:
+            total_investment = 0.0
+        
+        return {
+            'fst_capital': fst_capital,
+            'each_capital': each_capital,
+            'max_grid_size': max_grid_size,
+            'add_amt_multiples': add_amt_multiples,
+            'total_investment': total_investment
+        }
+    
+    # 场景2：已知 total_investment，fst_capital 和 each_capital 都为 None
+    # 假设 fst_capital = each_capital，反推金额
+    elif total_investment is not None and fst_capital is None and each_capital is None:
+        # 等额加仓：total = fst + (each * n)
+        # 假设 fst = each，则：total = each * (1 + n)
+        each_capital = total_investment / (1 + max_grid_size)
+        fst_capital = each_capital
+        
+        return {
+            'fst_capital': fst_capital,
+            'each_capital': each_capital,
+            'max_grid_size': max_grid_size,
+            'add_amt_multiples': add_amt_multiples,
+            'total_investment': total_investment
+        }
+    
+    # 场景3：已知 total_investment 和 fst_capital，计算 each_capital
+    elif total_investment is not None and fst_capital is not None and each_capital is None:
+        # total = fst + (each * n) → each = (total - fst) / n
+        each_capital = (total_investment - fst_capital) / max_grid_size
+        
+        return {
+            'fst_capital': fst_capital,
+            'each_capital': each_capital,
+            'max_grid_size': max_grid_size,
+            'add_amt_multiples': add_amt_multiples,
+            'total_investment': total_investment
+        }
+    
+    # 场景4：已知 total_investment 和 each_capital，计算 fst_capital
+    elif total_investment is not None and each_capital is not None and fst_capital is None:
+        # total = fst + (each * n) → fst = total - (each * n)
+        fst_capital = total_investment - (each_capital * max_grid_size)
+        
+        return {
+            'fst_capital': fst_capital,
+            'each_capital': each_capital,
+            'max_grid_size': max_grid_size,
+            'add_amt_multiples': add_amt_multiples,
+            'total_investment': total_investment
+        }
+    
+    else:
+        raise ValueError("参数组合无效，请提供有效的参数组合")
+
 
 def get_user_token_by_agent_id(agent_id: str) -> Optional[str]:
     """
