@@ -363,13 +363,14 @@ class TradeRequest:
                 })
             
             elif strategy_type == 8:  # 策略类型8
-                required_params = ["trade_model", "trade_buy_type"]
+                required_params = ["trade_model", "trade_buy_type", "initial_capital"]
                 for param in required_params:
                     if param not in specific_params:
                         raise TradeRequestError(f"策略类型{strategy_type}必须提供{param}参数", "MISSING_STRATEGY_PARAMS")
                 params.update({
                     "trade_model": specific_params.get("trade_model"),
-                    "trade_buy_type": specific_params.get("trade_buy_type")
+                    "trade_buy_type": specific_params.get("trade_buy_type"),
+                    "initial_capital": specific_params.get("initial_capital")
                 })
             elif strategy_type in [25, 28]:
                 required_params = ["initial_capital"]

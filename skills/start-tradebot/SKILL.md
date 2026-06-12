@@ -57,13 +57,13 @@
   ### 开启单策略交易机器人流程:第四步：根据策略类型确认机器人需要的必备的额外参数
   - 根据用户用来开启机器人的策略中的参数type,用户在创建机器人的时候需要一些必备的额外的参数,规则如下:
     - type=1,2(风霆现货/合约)时需要额外传:1:"fst_capital": 初次下单金额   2:"each_capital": 加仓下单金额 3:"max_grid_size": 最大加仓次数 
-    - type=3时需要额外传"initial_capital": 投资总金额 
-    - type=4时需要额外传 1:"initial_capital": 投资总金额  2:"trade_buy_type": 买入类型（{market}代表吃单 {limit}代表挂单）
-    - type=5时需要额外传 1:"initial_capital": 投资总金额  2:"each_capital": 单笔买入/卖出金额 
-    - type=8时需要额外传 1:"trade_model": 交易类型（{all}两者全选 {long}做多 {short}做空） 2:"trade_buy_type": 买入类型（{market}代表吃单 {limit}代表挂单）
-    - type=11时需要额外传:1:"fst_capital": 初次下单金额   2:"each_capital": 加仓下单金额 3:"max_grid_size": 最大加仓次数 
-    - type=25时需要额外传"initial_capital": 投资总金额
-    - type=28时需要额外传"initial_capital": 投资总金额
+    - type=3(鲲鹏V1)时需要额外传"initial_capital": 投资总金额 
+    - type=4(鲲鹏V2)时需要额外传 1:"initial_capital": 投资总金额  2:"trade_buy_type": 买入类型（{market}代表吃单 {limit}代表挂单）
+    - type=5(鲲鹏V3)时需要额外传 1:"initial_capital": 投资总金额  2:"each_capital": 单笔买入/卖出金额 
+    - type=8(鲲鹏V4)时需要额外传 1:"trade_model": 交易类型（{all}两者全选 {long}做多 {short}做空） 2:"trade_buy_type": 买入类型（{market}代表吃单 {limit}代表挂单）3:"initial_capital": 投资总金额
+    - type=11(风霆V4)时需要额外传:1:"fst_capital": 初次下单金额   2:"each_capital": 加仓下单金额 3:"max_grid_size": 最大加仓次数 
+    - type=25(反脆弱V1)时需要额外传"initial_capital": 投资总金额
+    - type=28(反脆弱V2)时需要额外传"initial_capital": 投资总金额
   - backtest_date这个参数在用户选择的策略中,策略列表返回的参数里,若该策略属性中的is_backtest_single=1的话,这个参数必需要传入,他的默认值是当年的1月1日,也可以通过询问用户,让用户确认来得知具体的时间,传入格式是:YYYY-MM-DD
   ### 开启单策略交易机器人流程:第五步：确认无误后创建交易机器人
   - 将前面步骤中确认的必备的参数:
