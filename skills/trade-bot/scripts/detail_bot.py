@@ -58,6 +58,29 @@ def _fetch_cycle_page(token: str, bot_id: str, agent_id: str, page: int = 1, lim
     }
 
 
+def _fetch_grid_pending(token: str, bot_id: str, agent_id: str) -> Optional[dict]:
+    """strategy_type=7 时通过 /Trade/grid_strategy_pending_list 获取网格挂单"""
+    data = api_post(
+        "/Trade/grid_strategy_pending_list",
+        {"usertoken": token, "bot_id": bot_id},
+        agent_id,
+    )
+    ok, msg = check_auth(data)
+    if not ok:
+        return None
+    if data.get("status") != 1:
+        return None
+    info = data.get("info", {})
+    if not isinstance(info, dict):
+        return None
+    result: dict = {}
+    for key in ("long_buy_list", "long_sell_list", "short_buy_list", "short_sell_list"):
+        lst = info.get(key, [])
+        if isinstance(lst, list) and lst:
+            result[key] = lst
+    return result or None
+
+
 def run(
     token: str,
     bot_id: str,
@@ -66,7 +89,7 @@ def run(
     """
     查询机器人详情，返回分组结构，数据驱动。
 
-    API: /Trade/info（strategy_type=7 时额外调 /Trade/cycle_page）
+    API: /Trade/info（strategy_type=7 时额外调 /Trade/cycle_page 和 /Trade/grid_strategy_pending_list）
 
     返回分组（有数据才出现）：
       basic    — 基本信息（名称/状态/运行时长/交易所）
@@ -76,6 +99,7 @@ def run(
       amt      — amt_info 全量透传
       records  — cycle_record（strategy_type=7 走 /Trade/cycle_page）
       chart    — profit_chart
+      grid_pending — 网格挂单（strategy_type=7，多/空挂买卖单）
       fund_fee — 累计资金费率
       buttons  — 可操作按钮
     """
@@ -155,6 +179,10 @@ def run(
         records = _fetch_cycle_page(token, bot_id, agent_id)
         if records:
             result["records"] = records
+        # 网格挂单 — strategy_type=7 特有
+        grid_pending = _fetch_grid_pending(token, bot_id, agent_id or "")
+        if grid_pending:
+            result["grid_pending"] = grid_pending
     else:
         cycle_record = info.get("cycle_record")
         if cycle_record and isinstance(cycle_record, list) and cycle_record:
@@ -231,6 +259,7 @@ def run(
         "amt": "金额信息",
         "records": "交易记录",
         "chart": "净值曲线",
+        "grid_pending": "网格挂单",
         "fund_fee": "累计资金费率",
         "actions": "可执行操作",
     }
@@ -264,6 +293,10 @@ def run(
         "stop": "停止", "edit": "编辑策略", "reserve_stop": "预约停止",
         "cancel_reserve": "取消预约", "pause_add": "暂停加仓", "resume_add": "恢复加仓",
         "margin": "调整保证金", "manual": "手动加仓",
+        # grid_pending (strategy_type=7)
+        "long_buy_list": "多头挂买单", "long_sell_list": "多头挂卖单",
+        "short_buy_list": "空头挂买单", "short_sell_list": "空头挂卖单",
+        "price": "挂单价格", "diff": "距现价", "diff_abs_percent": "价差百分比",
     }
 
     return result
