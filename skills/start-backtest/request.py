@@ -166,9 +166,8 @@ class BacktestRequest:
     def __init__(self, agent_id: Optional[str] = None):
         """
         初始化请求管理器
-        :param token: 用户token
         :param agent_id: 当前Agent的ID（可选）
-        :raises BacktestRequestError: 如果未提供有效的用户令牌
+        :raises BacktestRequestError: 如果未提供有效的agent_id
         """
         # 移除原有的 if not token 检查
         # 改为更严格的令牌检查
@@ -182,7 +181,7 @@ class BacktestRequest:
         self.token = get_user_token_by_agent_id(agent_id)
         self.base_url = "https://www.fourieralpha.com/Mobile"
         self.logger = logging.getLogger(__name__)
-        self._cache = {}
+        self.agent_id = agent_id
 
     def _validate_params(self, params: Dict[str, Any]) -> None:
         """
@@ -942,9 +941,9 @@ def cli_support():
 
     app = typer.Typer()
 
-    def create_requester(token: str, agent_id: Optional[str] = None):
+    def create_requester(agent_id: Optional[str] = None):
         """创建BacktestRequest实例"""
-        return BacktestRequest(token, agent_id)
+        return BacktestRequest(agent_id)
 
     @app.command()
     def get_strategy_groups(
@@ -1247,7 +1246,8 @@ def cli_support():
         )
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
-    
+    # 运行 Typer CLI
+    app()
 
 def main():
     """

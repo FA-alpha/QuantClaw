@@ -1043,9 +1043,10 @@ def cli_support():
         except ValueError as e:
             typer.echo(json.dumps({'error': str(e)}, indent=2, ensure_ascii=False))
             raise typer.Exit(code=1)
-    
+        
     # 运行 Typer CLI
     app()
+    
 
 def calculate_investment_smart(
     fst_capital: Optional[float] = None,
@@ -1216,7 +1217,8 @@ def get_user_token_by_agent_id(agent_id: str) -> Optional[str]:
     except Exception as e:
         print(f"❌ 获取UserToken时发生错误: {e}")
         return None
-
+    
+    
 def main():
     """
     主函数，用于测试接口请求
