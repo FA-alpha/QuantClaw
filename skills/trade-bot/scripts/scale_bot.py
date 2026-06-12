@@ -4,7 +4,7 @@ import time
 from typing import Optional
 
 from api_client import api_post, check_auth
-from bot_check import check_bots, filter_executable
+from bot_check import check_bots, filter_executable, check_holdings
 from realtime_info import run as get_realtime
 from agent_display import blocked_result, prompt_result, preview_result, ok_result, error_result
 from confirm_nonce import check, create, clear
@@ -95,6 +95,14 @@ def run(
                          bot_id=bot_id)
 
     # ── 手动加仓(save_type=8) ──
+    h = check_holdings(token, bot_id, agent_id or "")
+    if not h["has_holdings"]:
+        return blocked_result(
+            title=f"❌ 无法{action_label}",
+            reason="当前无持仓，手动加仓操作仅在持有仓位时可用",
+            rule="该机器人无持仓，不得尝试绕过",
+        )
+
     realtime = _fetch_realtime(token, bot_id, "1,2", agent_id)
     state = check(agent_id or "", "scale", bot_id, save_type, str(price), str(amt))
 

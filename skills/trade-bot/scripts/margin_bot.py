@@ -4,7 +4,7 @@ import time
 from typing import Optional, Union
 
 from api_client import api_post, check_auth
-from bot_check import check_bots, filter_executable
+from bot_check import check_bots, filter_executable, check_holdings
 from realtime_info import run as get_realtime
 from agent_display import blocked_result, prompt_result, preview_result, ok_result, error_result
 from confirm_nonce import check, create, clear
@@ -47,6 +47,15 @@ def run(
             title=f"❌ 无法{action_label}",
             reason=bot_state["reason"],
             rule="该机器人不可操作，不得尝试绕过",
+        )
+
+    # 持仓判断：无仓位时不显示 margin/manual 操作，但实际脚本也做最终校验
+    h = check_holdings(token, bot_id, agent_id or "")
+    if not h["has_holdings"]:
+        return blocked_result(
+            title=f"❌ 无法{action_label}",
+            reason="当前无持仓，调整保证金操作仅在持有仓位时可用",
+            rule="该机器人无持仓，不得尝试绕过",
         )
 
     max_info = _fetch_max(token, bot_id, save_type, agent_id)

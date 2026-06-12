@@ -142,6 +142,45 @@ def check_bots(
     }
 
 
+def check_holdings(token: str, bot_id: str, agent_id: str = "") -> dict:
+    """
+    检查机器人是否有持仓。
+
+    策略类型7: grids_info.long.holdings + grids_info.short.holdings
+    其他类型: grids_info.holdings
+    holdings 可能是字符串或数字，统一用 float() 处理。
+
+    Returns:
+        {"has_holdings": bool, "detail": str, "holdings": float|dict}
+    """
+    data = api_post(
+        "/Trade/info",
+        {"usertoken": token, "app_v": "2.0.0", "bot_id": bot_id},
+        agent_id,
+    )
+    if data.get("status") != 1:
+        return {"has_holdings": False, "detail": "无法获取持仓信息", "holdings": 0}
+
+    info = data.get("info", {})
+    grids_info = info.get("grids_info", {})
+    strategy_type = str(info.get("strategy_type", ""))
+
+    if not isinstance(grids_info, dict) or not grids_info:
+        return {"has_holdings": False, "detail": "无持仓数据", "holdings": 0}
+
+    if strategy_type == "7":
+        long_info = grids_info.get("long", {}) if isinstance(grids_info, dict) else {}
+        short_info = grids_info.get("short", {}) if isinstance(grids_info, dict) else {}
+        long_h = float(long_info.get("holdings", 0) or 0)
+        short_h = float(short_info.get("holdings", 0) or 0)
+        has = long_h > 0 or short_h > 0
+        return {"has_holdings": has, "detail": f"多{long_h} / 空{short_h}",
+                "holdings": {"long": long_h, "short": short_h}}
+    else:
+        h = float(grids_info.get("holdings", 0) or 0)
+        return {"has_holdings": h > 0, "detail": str(h), "holdings": h}
+
+
 def filter_executable(bot_states: list) -> List[str]:
     """从 check_bots() 返回的 bots 列表中提取可执行的 bot_id"""
     return [b["id"] for b in bot_states if b["can_execute"]]
