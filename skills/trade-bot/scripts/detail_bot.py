@@ -203,10 +203,21 @@ def run(
             elif aps == "1":
                 actions["resume_add"] = True
     if is_live:
-        # 保证金/手动加仓 — 仅实盘运行中
-        if info.get("is_margin_btn") == 1:
+        # 保证金/手动加仓 — 仅实盘运行中且有仓位
+        grids_info = info.get("grids_info", {})
+        has_holdings = False
+        if strategy_type == "7":
+            long_info = grids_info.get("long", {}) if isinstance(grids_info, dict) else {}
+            short_info = grids_info.get("short", {}) if isinstance(grids_info, dict) else {}
+            long_h = float(long_info.get("holdings", 0) or 0)
+            short_h = float(short_info.get("holdings", 0) or 0)
+            has_holdings = long_h > 0 or short_h > 0
+        else:
+            h = grids_info.get("holdings", 0) if isinstance(grids_info, dict) else 0
+            has_holdings = float(h or 0) > 0
+        if info.get("is_margin_btn") == 1 and has_holdings:
             actions["margin"] = True
-        if info.get("is_manual_btn") == 1:
+        if info.get("is_manual_btn") == 1 and has_holdings:
             actions["manual"] = True
     if actions:
         result["actions"] = actions
