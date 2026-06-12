@@ -1009,6 +1009,8 @@ def cli_support():
                 specific_params['trade_model'] = trade_model
             if trade_buy_type is not None:
                 specific_params['trade_buy_type'] = trade_buy_type
+            if initial_capital is not None:
+                specific_params['initial_capital'] = initial_capital
         elif strategy_type in [25,28]:
             if initial_capital is not None:
                 specific_params['initial_capital'] = initial_capital
