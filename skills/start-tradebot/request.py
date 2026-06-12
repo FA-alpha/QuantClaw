@@ -932,7 +932,7 @@ def cli_support():
         account_id: str = typer.Option(..., help="交易所账户ID"),
         trade_type: int = typer.Option(1, help="交易类型（1-模拟盘 2-实盘）"),
         basic_unit: str = typer.Option("USDT", help="币本位/U本位"),
-        margin_mode: str = type.Option("cross", help="逐仓/全仓模式(cross-全仓 isolated-逐仓)"),
+        margin_mode: str = typer.Option("cross", help="逐仓/全仓模式(cross-全仓 isolated-逐仓)"),
         multiple_num: Optional[float] = typer.Option(None, help="杠杆倍数"),
         backtest_date: Optional[str] = typer.Option(None, help="回测信号开启日期"),
         auto_redeem: bool = typer.Option(False, help="资金不足时是否自动赎回理财"),
