@@ -17,86 +17,55 @@ import sys
 import typer
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Union, NamedTuple
+from pathlib import Path
 
-# 调试开关配置
-class DebugConfig:
-    DEBUG_MODE = False  # 默认关闭调试
-    LOG_BASE_PATH = os.path.expanduser("~/.quantclaw/logs")
-    AGENT_ID = None  # Agent ID 初始为 None
+# ============================================
+# 🔧 全局配置参数
+# ============================================
+# 是否开启接口请求日志记录
+# True - 开启日志，所有接口请求和响应会写入 ~/.quantclaw/logs/{agent_id}/yyyy-mm-dd.log
+# False - 关闭日志（默认True,False）
+ENABLE_DEBUG_LOG = True
+# ============================================
+
+def _log_network_request(agent_id: str, api_name: str, request_params: Dict[str, Any], response_data: Optional[Dict[str, Any]] = None):
+    """
+    记录网络请求和响应日志（内部函数）
     
-    @classmethod
-    def set_debug_mode(cls, mode: bool, agent_id: Optional[str] = None):
-        """
-        设置调试模式
+    :param agent_id: Agent ID
+    :param api_name: 接口名称
+    :param request_params: 请求参数
+    :param response_data: 接口返回的数据
+    """
+    # 检查全局开关
+    if not ENABLE_DEBUG_LOG:
+        return
+
+    try:
+        # 创建日志目录：~/.quantclaw/logs/{agent_id}/
+        log_base_dir = Path.home() / '.quantclaw' / 'logs' / agent_id
+        log_base_dir.mkdir(parents=True, exist_ok=True)
         
-        使用方法:
-        1. 在调用接口前通过 enable_network_debug_log() 开启
-        2. 传入当前 Agent 的 ID
-        3. 默认关闭调试模式
+        # 日志文件名：yyyy-mm-dd.log
+        log_filename = datetime.now().strftime('%Y-%m-%d') + '.log'
+        log_path = log_base_dir / log_filename
         
-        :param mode: 是否开启调试模式
-        :param agent_id: 当前Agent的ID
-        """
-        cls.DEBUG_MODE = mode
-        if agent_id:
-            # 尝试获取当前 Agent ID
-            try:
-                # 从系统配置或环境变量获取 Agent ID
-                with open(os.path.expanduser("~/.quantclaw/agent_config.json"), 'r') as f:
-                    agent_config = json.load(f)
-                    cls.AGENT_ID = agent_config.get('agent_id', agent_id)
-            except FileNotFoundError:
-                cls.AGENT_ID = agent_id
-
-        # 打印调试状态
-        print(f"🔧 网络请求调试模式: {'开启' if cls.DEBUG_MODE else '关闭'}")
-        if cls.AGENT_ID:
-            print(f"🆔 当前 Agent ID: {cls.AGENT_ID}")
-        else:
-            print("❌ 未获取到 Agent ID")
-
-    @classmethod
-    def log_network_request(cls, api_name: str, request_params: Dict[str, Any], response_data: Optional[Dict[str, Any]] = None):
-        """
-        记录网络请求和响应日志
+        log_content = f"调用:start-backtest技能[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\n"
+        log_content += f"接口: {api_name}\n"
+        log_content += f"请求参数: {request_params}\n"
+        log_content += "---\n"
+        if response_data is not None:
+            log_content += f"返回参数: {response_data}\n"
+        log_content += "\n"
         
-        :param api_name: 接口名称
-        :param request_params: 请求参数
-        :param response_data: 接口返回的数据
-        """
-        if not cls.DEBUG_MODE or not cls.AGENT_ID:
-            return
-
-        try:
-            # 创建日志目录
-            log_dir = os.path.join(os.path.expanduser(cls.LOG_BASE_PATH), f"clawd-{cls.AGENT_ID}")
-            os.makedirs(log_dir, exist_ok=True)
-
-            # 生成日志文件名（按日期）
-            today = datetime.now().strftime("%Y-%m-%d")
-            log_file = os.path.join(log_dir, f"network_logs_{today}.log")
-
-            # 准备日志内容
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_content = f"[{timestamp}] API: {api_name}\n"
-            log_content += "Request Params:\n"
-            log_content += json.dumps(request_params, indent=2, ensure_ascii=False)
-            
-            # 记录响应数据（如果有）
-            if response_data is not None:
-                log_content += "\n\nResponse Data:\n"
-                log_content += json.dumps(response_data, indent=2, ensure_ascii=False)
-            
-            log_content += "\n\n---\n\n"
-
-            # 写入日志
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(log_content)
-
-            # 打印日志路径（调试用）
-            print(f"🔍 日志已写入: {log_file}")
-        except Exception as e:
-            print(f"❌ 日志记录失败: {e}")
+        # 写入日志文件
+        with open(log_path, 'a', encoding='utf-8') as log_file:
+            log_file.write(log_content)
+        
+        # 打印日志路径（调试用）
+        print(f"🔍 日志已写入: {log_path}")
+    except Exception as e:
+        print(f"❌ 日志记录失败: {e}")
 
 class StrategyRequirement(NamedTuple):
     """策略分配需求"""
@@ -215,10 +184,6 @@ class BacktestRequest:
         self.logger = logging.getLogger(__name__)
         self._cache = {}
 
-        # 设置 Agent ID 用于日志记录
-        if agent_id:
-            DebugConfig.set_debug_mode(False, agent_id) # 默认关闭调试模式
-
     def _validate_params(self, params: Dict[str, Any]) -> None:
         """
         通用参数校验方法
@@ -252,7 +217,7 @@ class BacktestRequest:
             })
 
             # 如果开启调试模式，记录网络请求日志
-            DebugConfig.log_network_request(endpoint, data)
+            _log_network_request(self.agent_id, endpoint, data)
 
             # 发起请求
             response = requests.post(
@@ -264,7 +229,7 @@ class BacktestRequest:
             result = response.json()
 
             # 如果开启调试模式，记录响应数据
-            DebugConfig.log_network_request(endpoint, data, result)
+            _log_network_request(self.agent_id, endpoint, data, result)
 
             # 检查接口返回状态
             if result.get("status") != 1:
@@ -927,20 +892,6 @@ class BacktestRequest:
                 "error_code": e.error_code
             }
 
-def enable_network_debug_log(agent_id: Optional[str] = None):
-    """
-    启用网络请求调试日志
-
-    :param agent_id: 当前Agent的ID（可选）
-    """
-    DebugConfig.set_debug_mode(True, agent_id)
-
-def disable_network_debug_log():
-    """
-    禁用网络请求调试日志
-    """
-    DebugConfig.set_debug_mode(False)
-    
 def get_user_token_by_agent_id(agent_id: str) -> Optional[str]:
     """
     根据传入的AgentID获取对应的UserToken

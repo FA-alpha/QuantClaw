@@ -17,6 +17,56 @@ import os
 import sys
 import typer
 from typing import Dict, Any, Optional, List, Union, NamedTuple
+from datetime import datetime
+from pathlib import Path
+
+# ============================================
+# 🔧 全局配置参数
+# ============================================
+# 是否开启接口请求日志记录
+# True - 开启日志，所有接口请求和响应会写入 ~/.quantclaw/logs/{agent_id}/yyyy-mm-dd.log
+# False - 关闭日志（默认）
+ENABLE_DEBUG_LOG = True
+# ============================================
+
+def _log_network_request(agent_id: str, api_name: str, request_params: Dict[str, Any], response_data: Optional[Dict[str, Any]] = None):
+    """
+    记录网络请求和响应日志（内部函数）
+    
+    :param agent_id: Agent ID
+    :param api_name: 接口名称
+    :param request_params: 请求参数
+    :param response_data: 接口返回的数据
+    """
+    # 检查全局开关
+    if not ENABLE_DEBUG_LOG:
+        return
+
+    try:
+        # 创建日志目录：~/.quantclaw/logs/{agent_id}/
+        log_base_dir = Path.home() / '.quantclaw' / 'logs' / agent_id
+        log_base_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 日志文件名：yyyy-mm-dd.log
+        log_filename = datetime.now().strftime('%Y-%m-%d') + '.log'
+        log_path = log_base_dir / log_filename
+        
+        log_content = f"调用:start-tradebot技能[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\n"
+        log_content += f"接口: {api_name}\n"
+        log_content += f"请求参数: {request_params}\n"
+        log_content += "---\n"
+        if response_data is not None:
+            log_content += f"返回参数: {response_data}\n"
+        log_content += "\n"
+        
+        # 写入日志文件
+        with open(log_path, 'a', encoding='utf-8') as log_file:
+            log_file.write(log_content)
+        
+        # 打印日志路径（调试用）
+        print(f"🔍 日志已写入: {log_path}")
+    except Exception as e:
+        print(f"❌ 日志记录失败: {e}")
 
 class TradeRequestError(Exception):
     """自定义异常类，用于标准化错误处理"""
@@ -49,6 +99,7 @@ class TradeRequest:
         self.agent_id = agent_id
         
         # 尝试获取用户令牌，如果失败会在后续请求中抛出错误
+
         self.token = get_user_token_by_agent_id(agent_id)
         self.base_url = "https://www.fourieralpha.com/Mobile"
         self.logger = logging.getLogger(__name__)
@@ -77,8 +128,6 @@ class TradeRequest:
         self._validate_params(data)
 
         try:
-            print("usertoken=")
-            print(self.token)
             # 添加用户token
             data['usertoken'] = self.token
 
@@ -88,26 +137,8 @@ class TradeRequest:
                 "lang": 1
             })
 
-            # 记录请求日志
-            import os
-            from datetime import datetime
-            from pathlib import Path
-            
-            # 创建日志目录：~/.quantclaw/logs/{agent_id}/
-            log_base_dir = Path.home() / '.quantclaw' / 'logs' / self.agent_id
-            log_base_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 日志文件名：yyyy-mm-dd.txt
-            log_filename = datetime.now().strftime('%Y-%m-%d') + '.txt'
-            log_path = log_base_dir / log_filename
-            
-            log_content = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\n"
-            log_content += f"接口: {endpoint}\n"
-            log_content += f"请求参数: {json.dumps(data, ensure_ascii=False, indent=2)}\n"
-            log_content += "---\n"
-
-            with open(log_path, 'a', encoding='utf-8') as log_file:
-                log_file.write(log_content)
+            # 如果开启调试模式，记录网络请求日志
+            _log_network_request(self.agent_id, endpoint, data)
 
             # 发起请求
             response = requests.post(
@@ -126,10 +157,8 @@ class TradeRequest:
                     "API_REQUEST_FAILED"
                 )
 
-            log_content += "---\n"
-            log_content += f"返回参数: {result}\n"
-            with open(log_path, 'a', encoding='utf-8') as log_file:
-                log_file.write(log_content)
+            # 如果开启调试模式，记录响应数据
+            _log_network_request(self.agent_id, endpoint, data, result)
             return result
 
         except requests.RequestException as e:
@@ -250,6 +279,7 @@ class TradeRequest:
         trade_type: int = 1,  # 默认模拟盘
         multiple_num: Optional[float] = None,
         basic_unit: str = "USDT",
+        margin_mode: str = "cross",
         backtest_date: Optional[str] = None,
         auto_redeem: Optional[bool] = None,
         **specific_params
@@ -264,6 +294,7 @@ class TradeRequest:
         :param trade_type: 交易类型（1-模拟盘 2-实盘）
         :param multiple_num: 杠杆倍数
         :param basic_unit: 币本位/U本位（USD-币本位 USDT-U本位）
+        :param margin_mode: 逐仓/全仓模式(cross-全仓 isolated-逐仓)
         :param backtest_date: 回测信号开启日期
         :param auto_redeem: 资金不足时是否自动赎回理财
         :param specific_params: 策略特定参数
@@ -275,7 +306,8 @@ class TradeRequest:
                 "name": name,
                 "account_id": account_id,
                 "trade_type": trade_type,
-                "basic_unit": basic_unit
+                "basic_unit": basic_unit,
+                "margin_mode": margin_mode
             }
             
             # 添加可选参数
@@ -287,7 +319,7 @@ class TradeRequest:
                 params["auto_redeem"] = 1 if auto_redeem else 0
             
             # 根据策略类型添加特定参数
-            if strategy_type in [1, 2]:  # 现货/合约马丁
+            if strategy_type in [1, 2, 11]:  # 现货/合约马丁
                 required_params = ["fst_capital", "each_capital", "max_grid_size"]
                 for param in required_params:
                     if param not in specific_params:
@@ -300,14 +332,14 @@ class TradeRequest:
             
             elif strategy_type == 3:  # 鲲鹏V1
                 if "initial_capital" not in specific_params:
-                    raise TradeRequestError("策略类型3必须提供initial_capital参数", "MISSING_STRATEGY_PARAMS")
+                    raise TradeRequestError(f"策略类型{strategy_type}必须提供initial_capital参数", "MISSING_STRATEGY_PARAMS")
                 params["initial_capital"] = specific_params.get("initial_capital")
             
             elif strategy_type == 4:  # 策略类型4
                 required_params = ["initial_capital", "trade_buy_type"]
                 for param in required_params:
                     if param not in specific_params:
-                        raise TradeRequestError(f"策略类型4必须提供{param}参数", "MISSING_STRATEGY_PARAMS")
+                        raise TradeRequestError(f"策略类型{strategy_type}必须提供{param}参数", "MISSING_STRATEGY_PARAMS")
                 params.update({
                     "initial_capital": specific_params.get("initial_capital"),
                     "trade_buy_type": specific_params.get("trade_buy_type")
@@ -317,7 +349,7 @@ class TradeRequest:
                 required_params = ["initial_capital", "each_capital"]
                 for param in required_params:
                     if param not in specific_params:
-                        raise TradeRequestError(f"策略类型5必须提供{param}参数", "MISSING_STRATEGY_PARAMS")
+                        raise TradeRequestError(f"策略类型{strategy_type}必须提供{param}参数", "MISSING_STRATEGY_PARAMS")
                 params.update({
                     "initial_capital": specific_params.get("initial_capital"),
                     "each_capital": specific_params.get("each_capital")
@@ -327,12 +359,19 @@ class TradeRequest:
                 required_params = ["trade_model", "trade_buy_type"]
                 for param in required_params:
                     if param not in specific_params:
-                        raise TradeRequestError(f"策略类型8必须提供{param}参数", "MISSING_STRATEGY_PARAMS")
+                        raise TradeRequestError(f"策略类型{strategy_type}必须提供{param}参数", "MISSING_STRATEGY_PARAMS")
                 params.update({
                     "trade_model": specific_params.get("trade_model"),
                     "trade_buy_type": specific_params.get("trade_buy_type")
                 })
-            
+            elif strategy_type in [25, 28]:
+                required_params = ["initial_capital"]
+                for param in required_params:
+                    if param not in specific_params:
+                        raise TradeRequestError(f"策略类型{strategy_type}必须提供{param}参数", "MISSING_STRATEGY_PARAMS")
+                params.update({
+                    "initial_capital": specific_params.get("initial_capital"),
+                })
             else:
                 required_params = [""]
             return self._make_request("Trade/apply_do", params)
@@ -765,7 +804,7 @@ def cli_support():
         - page: int (可选, 默认1) - 页码
         - limit: int (可选, 默认10) - 每页数量
         """
-        requester = create_requester(agent_id)
+        requester = create_requester(get_user_token_by_agent_id(agent_id))
         result = requester.get_exchange_lists(page, limit)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
@@ -789,7 +828,7 @@ def cli_support():
         - show_type: int (可选, 默认1) - 显示类型
         - data_grade: int (可选, 默认0) - 数据代次
         """
-        requester = create_requester(agent_id)
+        requester = create_requester(get_user_token_by_agent_id(agent_id))
         result = requester.get_strategy_lists(
             page=page, 
             limit=limit, 
@@ -811,7 +850,7 @@ def cli_support():
         - agent_id: str (必填) - agent_id
         - strategy_id: str (必填) - 策略ID
         """
-        requester = create_requester(agent_id)
+        requester = create_requester(get_user_token_by_agent_id(agent_id))
         result = requester.get_strategy_with_id(strategy_id)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
     
@@ -831,7 +870,7 @@ def cli_support():
         - limit: int (可选, 默认10) - 每页数量
         - search_val: Optional[str] (可选) - 搜索内容
         """
-        requester = create_requester(agent_id)
+        requester = create_requester(get_user_token_by_agent_id(agent_id))
         result = requester.get_strategy_groups(
             page=page,
             limit=limit,
@@ -853,13 +892,13 @@ def cli_support():
         - group_id: str (必填) - 策略组ID
         - limit: int (可选, 默认10) - 每页数量
         """
-        requester = create_requester(agent_id)
+        requester = create_requester(get_user_token_by_agent_id(agent_id))
         result = requester.get_strategy_group_with_groupid(group_id, limit=limit)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
     @app.command()
     def get_balance(
-        token: str = typer.Option(..., help="UserToken"),
+        agent_id: str = typer.Option(..., help="agent_id"),
         account_id: str = typer.Option(..., help="交易所账户ID"),
         basic_unit: str = typer.Option("USDT", help="币本位/U本位"),
         coin: Optional[str] = typer.Option(None, help="币种"),
@@ -869,13 +908,13 @@ def cli_support():
         获取账户余额
         
         参数类型:
-        - token: str (必填) - UserToken
+        - agent_id: str (必填) - agent_id
         - account_id: str (必填) - 交易所账户ID
         - basic_unit: str (可选, 默认USDT) - 币本位/U本位
         - coin: Optional[str] (可选) - 币种
         - strategy_id: Optional[str] (可选) - 策略ID
         """
-        requester = create_requester(token)
+        requester = create_requester(get_user_token_by_agent_id(agent_id))
         result = requester.get_balance(
             account_id=account_id,
             basic_unit=basic_unit,
@@ -893,6 +932,7 @@ def cli_support():
         account_id: str = typer.Option(..., help="交易所账户ID"),
         trade_type: int = typer.Option(1, help="交易类型（1-模拟盘 2-实盘）"),
         basic_unit: str = typer.Option("USDT", help="币本位/U本位"),
+        margin_mode: str = type.Option("cross", help="逐仓/全仓模式(cross-全仓 isolated-逐仓)"),
         multiple_num: Optional[float] = typer.Option(None, help="杠杆倍数"),
         backtest_date: Optional[str] = typer.Option(None, help="回测信号开启日期"),
         auto_redeem: bool = typer.Option(False, help="资金不足时是否自动赎回理财"),
@@ -914,6 +954,7 @@ def cli_support():
         - account_id: str (必填) - 交易所账户ID
         - trade_type: int (可选, 默认1) - 交易类型
         - basic_unit: str (可选, 默认USDT) - 币本位/U本位
+        - margin_mode: str (可选, 默认cross全仓) - 仓位模式逐仓/全仓
         - multiple_num: Optional[float] (可选) - 杠杆倍数
         - backtest_date: Optional[str] (可选) - 回测信号开启日期
         - auto_redeem: bool (可选, 默认False) - 资金不足时是否自动赎回理财
@@ -923,7 +964,7 @@ def cli_support():
         
         # 准备策略特定参数
         specific_params = {}
-        if strategy_type in [1, 2]:  # 现货/合约马丁
+        if strategy_type in [1, 2, 11]:  # 现货/合约马丁
             if fst_capital is not None:
                 specific_params['fst_capital'] = fst_capital
             if each_capital is not None:
@@ -952,7 +993,10 @@ def cli_support():
                 specific_params['trade_model'] = trade_model
             if trade_buy_type is not None:
                 specific_params['trade_buy_type'] = trade_buy_type
-        
+        elif strategy_type in [25,28]:
+            if initial_capital is not None:
+                specific_params['initial_capital'] = initial_capital
+
         result = requester.apply_trade_bot(
             strategy_id=strategy_id,
             strategy_type=strategy_type,
@@ -960,6 +1004,7 @@ def cli_support():
             account_id=account_id,
             trade_type=trade_type,
             basic_unit=basic_unit,
+            margin_mode=margin_mode,
             multiple_num=multiple_num,
             backtest_date=backtest_date,
             auto_redeem=auto_redeem,
