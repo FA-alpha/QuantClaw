@@ -786,9 +786,9 @@ def cli_support():
 
     app = typer.Typer()
 
-    def create_requester(token: str):
+    def create_requester(agent_id: str):
         """创建TradeRequest实例"""
-        return TradeRequest(token)
+        return TradeRequest(agent_id)
 
     @app.command()
     def get_exchange_lists(
@@ -804,7 +804,7 @@ def cli_support():
         - page: int (可选, 默认1) - 页码
         - limit: int (可选, 默认10) - 每页数量
         """
-        requester = create_requester(get_user_token_by_agent_id(agent_id))
+        requester = create_requester(agent_id)
         result = requester.get_exchange_lists(page, limit)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
@@ -828,7 +828,7 @@ def cli_support():
         - show_type: int (可选, 默认1) - 显示类型
         - data_grade: int (可选, 默认0) - 数据代次
         """
-        requester = create_requester(get_user_token_by_agent_id(agent_id))
+        requester = create_requester(agent_id)
         result = requester.get_strategy_lists(
             page=page, 
             limit=limit, 
@@ -850,7 +850,7 @@ def cli_support():
         - agent_id: str (必填) - agent_id
         - strategy_id: str (必填) - 策略ID
         """
-        requester = create_requester(get_user_token_by_agent_id(agent_id))
+        requester = create_requester(agent_id)
         result = requester.get_strategy_with_id(strategy_id)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
     
@@ -870,7 +870,7 @@ def cli_support():
         - limit: int (可选, 默认10) - 每页数量
         - search_val: Optional[str] (可选) - 搜索内容
         """
-        requester = create_requester(get_user_token_by_agent_id(agent_id))
+        requester = create_requester(agent_id)
         result = requester.get_strategy_groups(
             page=page,
             limit=limit,
@@ -892,7 +892,7 @@ def cli_support():
         - group_id: str (必填) - 策略组ID
         - limit: int (可选, 默认10) - 每页数量
         """
-        requester = create_requester(get_user_token_by_agent_id(agent_id))
+        requester = create_requester(agent_id)
         result = requester.get_strategy_group_with_groupid(group_id, limit=limit)
         typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
 
@@ -914,7 +914,7 @@ def cli_support():
         - coin: Optional[str] (可选) - 币种
         - strategy_id: Optional[str] (可选) - 策略ID
         """
-        requester = create_requester(get_user_token_by_agent_id(agent_id))
+        requester = create_requester(agent_id)
         result = requester.get_balance(
             account_id=account_id,
             basic_unit=basic_unit,
