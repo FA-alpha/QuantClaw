@@ -129,9 +129,9 @@ class UserManager:
     def __init__(self, config: Dict, validator: TokenValidator):
         self.config = config
         self.validator = validator
-        self.users = {}  # platform_user_id -> user_record
-        self.token_index = {}  # token -> platform_user_id
-        self.agent_index = {}  # agent_id -> platform_user_id
+        self.users = {}  # user_key (platform_user_id:account_type:parent_user_id) -> user_record
+        self.token_index = {}  # token -> user_key
+        self.agent_index = {}  # agent_id -> user_key
         
         # 展开路径
         self.data_path = Path(config['dataPath']).expanduser()
@@ -142,6 +142,18 @@ class UserManager:
         self.load_users()
     
     @staticmethod
+    def make_user_key(platform_user_id: str, account_type: str, parent_user_id: str) -> str:
+        """
+        生成用户唯一键
+        
+        格式: platform_user_id:account_type:parent_user_id
+        例如:
+        - 主账号: "18:1:0"
+        - 子账号: "4:2:18"
+        """
+        return f"{platform_user_id}:{account_type}:{parent_user_id}"
+    
+    @staticmethod
     def decode_token(token: str) -> Optional[Dict]:
         """
         解码 token 提取用户信息
@@ -149,12 +161,23 @@ class UserManager:
         Token 格式（Base64 编码）:
         18##laihui@fourieralpha.com##1779792069##plant_v2##0##1##user
         
+        字段说明:
+        [0] platform_user_id - 平台用户ID（唯一且不变）
+        [1] email - 邮箱
+        [2] timestamp - 时间戳
+        [3] version - 系统版本
+        [4] parent_user_id - 如果是子账号，则为主账号ID；主账号则为0
+        [5] account_type - 账号类型：1=主账号，2=子账号
+        [6] role - 角色（通常为 'user'）
+        
         Returns:
             {
                 'platform_user_id': '18',  # 平台用户ID（唯一且不变）
                 'email': 'laihui@fourieralpha.com',
                 'timestamp': 1779792069,
                 'version': 'plant_v2',
+                'parent_user_id': '0',  # 主账号ID（0表示是主账号）
+                'account_type': '1',  # 1=主账号, 2=子账号
                 'role': 'user'
             }
         """
@@ -168,6 +191,8 @@ class UserManager:
                     'email': parts[1],
                     'timestamp': int(parts[2]),
                     'version': parts[3],
+                    'parent_user_id': parts[4],  # 主账号ID（子账号时有值）
+                    'account_type': parts[5],  # 1=主账号, 2=子账号
                     'role': parts[6]
                 }
             else:
@@ -185,10 +210,14 @@ class UserManager:
                 data = json.loads(self.data_path.read_text())
                 for user in data.get('users', []):
                     platform_user_id = user.get('platformUserId')
+                    account_type = user.get('accountType', '1')  # 默认主账号
+                    parent_user_id = user.get('parentUserId', '0')  # 默认0
+                    
                     if platform_user_id:
-                        self.users[platform_user_id] = user
-                        self.token_index[user['token']] = platform_user_id
-                        self.agent_index[user['agentId']] = platform_user_id
+                        user_key = self.make_user_key(platform_user_id, account_type, parent_user_id)
+                        self.users[user_key] = user
+                        self.token_index[user['token']] = user_key
+                        self.agent_index[user['agentId']] = user_key
                 logger.info(f'✅ Loaded {len(self.users)} users from {self.data_path}')
             except Exception as e:
                 logger.warning(f'⚠️ Failed to load users: {e}')
@@ -204,45 +233,54 @@ class UserManager:
             logger.error(f'❌ Failed to save users: {e}')
     
     def find_by_token(self, token: str) -> Optional[Dict]:
-        """根据 token 查找用户（通过解码提取平台用户ID）"""
+        """根据 token 查找用户（通过解码提取完整用户标识）"""
         # 先尝试从 token_index 查找
-        platform_user_id = self.token_index.get(token)
-        if platform_user_id:
-            return self.users.get(platform_user_id)
+        user_key = self.token_index.get(token)
+        if user_key:
+            return self.users.get(user_key)
         
-        # 如果找不到，尝试解码 token 获取平台用户ID
+        # 如果找不到，尝试解码 token 获取完整标识
         token_info = self.decode_token(token)
-        if token_info and token_info['platform_user_id'] in self.users:
-            # 更新 token_index 缓存
-            self.token_index[token] = token_info['platform_user_id']
-            return self.users[token_info['platform_user_id']]
+        if token_info:
+            user_key = self.make_user_key(
+                token_info['platform_user_id'],
+                token_info['account_type'],
+                token_info['parent_user_id']
+            )
+            if user_key in self.users:
+                # 更新 token_index 缓存
+                self.token_index[token] = user_key
+                return self.users[user_key]
         
         return None
     
-    def find_by_platform_user_id(self, platform_user_id: str) -> Optional[Dict]:
-        """根据平台用户ID查找用户"""
-        return self.users.get(platform_user_id)
+    def find_by_platform_user_id(self, platform_user_id: str, account_type: str = '1', parent_user_id: str = '0') -> Optional[Dict]:
+        """根据平台用户ID查找用户（需要完整标识）"""
+        user_key = self.make_user_key(platform_user_id, account_type, parent_user_id)
+        return self.users.get(user_key)
     
     def find_by_agent_id(self, agent_id: str) -> Optional[Dict]:
         """根据 agent_id 查找用户"""
-        platform_user_id = self.agent_index.get(agent_id)
-        return self.users.get(platform_user_id) if platform_user_id else None
+        user_key = self.agent_index.get(agent_id)
+        return self.users.get(user_key) if user_key else None
     
     async def auto_register(self, token: str) -> Dict:
         """
         自动注册新用户
         
         流程：
-        1. 解码 token 提取平台用户ID
-        2. 检查平台用户ID是否已注册（如果是，更新 token）
+        1. 解码 token 提取完整用户信息（platform_user_id + account_type + parent_user_id）
+        2. 检查用户是否已注册（用完整标识判断，如果是则更新 token）
         3. 调用外部 API 验证 token 真实性
-        4. 生成唯一 agent_id (qc-{platform_user_id_hash})
+        4. 生成唯一 agent_id (qc-{user_key_hash})
         5. 创建 workspace
         6. 保存用户记录
         
         Returns:
             {
                 'platformUserId': '18',
+                'accountType': '1',  # 1=主账号, 2=子账号
+                'parentUserId': '0',  # 主账号ID（主账号为0）
                 'userId': 'u_4ec9599fc203',
                 'email': 'laihui@fourieralpha.com',
                 'token': 'client_token_abc123',
@@ -253,24 +291,31 @@ class UserManager:
                 'enabled': True
             }
         """
-        # 1. 解码 token 提取平台用户ID
+        # 1. 解码 token 提取完整用户信息
         token_info = self.decode_token(token)
         if not token_info:
             raise ValueError('Failed to decode token')
         
         platform_user_id = token_info['platform_user_id']
+        account_type = token_info['account_type']
+        parent_user_id = token_info['parent_user_id']
         email = token_info['email']
-        logger.info(f'👤 Extracted platform user ID: {platform_user_id}, email: {email}')
         
-        # 2. 检查平台用户ID是否已注册
-        existing_user = self.users.get(platform_user_id)
+        # 生成用户唯一键
+        user_key = self.make_user_key(platform_user_id, account_type, parent_user_id)
+        
+        account_type_label = "主账号" if account_type == "1" else "子账号"
+        logger.info(f'👤 Extracted user: {user_key} ({account_type_label}), email: {email}')
+        
+        # 2. 检查用户是否已注册（使用完整标识）
+        existing_user = self.users.get(user_key)
         if existing_user:
             # 用户已存在，更新 token、邮箱和时间戳
             logger.info(f'✅ User exists, updating token: {existing_user["agentId"]}')
             existing_user['token'] = token
             existing_user['email'] = email  # 邮箱可能变化，需要更新
             existing_user['updatedAt'] = datetime.now().isoformat()
-            self.token_index[token] = platform_user_id
+            self.token_index[token] = user_key
             self.save_users()
             return existing_user
         
@@ -281,8 +326,8 @@ class UserManager:
         
         logger.info(f'✅ Token validated successfully')
         
-        # 4. 生成唯一 agent_id（基于平台用户ID，保证同一用户的 ID 固定）
-        hash_part = hashlib.sha256(platform_user_id.encode()).hexdigest()[:12]
+        # 4. 生成唯一 agent_id（基于完整用户标识，保证主账号和子账号有不同的 ID）
+        hash_part = hashlib.sha256(user_key.encode()).hexdigest()[:12]
         user_id = f'u_{hash_part}'
         agent_id = f'qc-{hash_part}'
         workspace = self.workspace_base / f'clawd-{agent_id}'
@@ -292,23 +337,27 @@ class UserManager:
         
         # 6. 保存用户记录
         user = {
-            'platformUserId': platform_user_id,  # 平台用户ID（唯一且不变）
+            'platformUserId': platform_user_id,  # 平台用户ID
+            'accountType': account_type,  # 1=主账号, 2=子账号
+            'parentUserId': parent_user_id,  # 主账号ID（主账号为0）
             'userId': user_id,  # 内部用户ID
             'email': email,  # 邮箱（可能变化）
             'token': token,
             'agentId': agent_id,
             'workspace': str(workspace),
+            'sessionKey': f'agent:{agent_id}:main',
+            'sessionHistory': [],
             'createdAt': datetime.now().isoformat(),
             'updatedAt': datetime.now().isoformat(),
             'enabled': True
         }
         
-        self.users[platform_user_id] = user
-        self.token_index[token] = platform_user_id
-        self.agent_index[agent_id] = platform_user_id
+        self.users[user_key] = user
+        self.token_index[token] = user_key
+        self.agent_index[agent_id] = user_key
         self.save_users()
         
-        logger.info(f'🎉 Registered new user: {user_id} (agent: {agent_id}, platform_id: {platform_user_id})')
+        logger.info(f'🎉 Registered new user: {user_id} (agent: {agent_id}, user_key: {user_key})')
         return user
     
     def create_workspace(self, workspace: Path, agent_id: str):
@@ -352,7 +401,16 @@ class UserManager:
         memory_dir.mkdir(exist_ok=True)
         logger.info(f'📂 Created memory directory')
         
-        # 4. 更新 openclaw.json 添加 agent 配置
+        # 4. 修改权限（Docker 环境中确保 node 用户可写）
+        try:
+            import subprocess
+            # chown -R 1000:1000（node 用户的 UID:GID）
+            subprocess.run(['chown', '-R', '1000:1000', str(workspace)], check=True)
+            logger.info(f'✅ Set workspace permissions to node:node')
+        except Exception as e:
+            logger.warning(f'⚠️ Failed to set permissions: {e}')
+        
+        # 5. 更新 openclaw.json 添加 agent 配置
         self.add_agent_to_config(agent_id, workspace)
         
         logger.info(f'✅ Workspace created successfully')
@@ -506,6 +564,7 @@ async def handle_register(request: web.Request):
             'agentId': user['agentId'],
             'token': user['token'],
             'workspace': user.get('workspace'),
+            'sessionKey': user.get('sessionKey', ''),
             'createdAt': user.get('createdAt'),
             'updatedAt': user.get('updatedAt'),
             'enabled': user.get('enabled', True)
@@ -513,6 +572,92 @@ async def handle_register(request: web.Request):
         
     except Exception as e:
         logger.error(f'❌ Registration error: {e}', exc_info=True)
+        return web.json_response({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+async def handle_sync_session(request: web.Request):
+    """
+    同步 sessionKey 到用户配置
+
+    POST /api/sync-session
+    Body: {userId, agentId, sessionKey}
+    """
+    user_manager = request.app['user_manager']
+
+    try:
+        body = await request.json()
+        user_id = body.get('userId', '').strip()
+        agent_id = body.get('agentId', '').strip()
+        session_key = body.get('sessionKey', '').strip()
+
+        if not user_id or not session_key:
+            return web.json_response({
+                'success': False,
+                'error': 'Missing userId or sessionKey'
+            }, status=400)
+
+        updated = False
+        for user in user_manager.users.values():
+            if user.get('userId') == user_id:
+                user['sessionKey'] = session_key
+                user['updatedAt'] = datetime.now().isoformat()
+                history = user.get('sessionHistory', [])
+                found = False
+                now = datetime.now().isoformat()
+                for h in history:
+                    if h['sessionKey'] == session_key:
+                        h['lastActive'] = now
+                        found = True
+                        break
+                if not found:
+                    history.insert(0, {
+                        'sessionKey': session_key,
+                        'createdAt': now,
+                        'lastActive': now
+                    })
+                    if len(history) > 20:
+                        history = history[:20]
+                user['sessionHistory'] = history
+                updated = True
+                break
+
+        if not updated and agent_id:
+            user = user_manager.find_by_agent_id(agent_id)
+            if user:
+                user['sessionKey'] = session_key
+                user['updatedAt'] = datetime.now().isoformat()
+                history = user.get('sessionHistory', [])
+                history.insert(0, {
+                    'sessionKey': session_key,
+                    'createdAt': datetime.now().isoformat(),
+                    'lastActive': datetime.now().isoformat()
+                })
+                if len(history) > 20:
+                    history = history[:20]
+                user['sessionHistory'] = history
+                updated = True
+
+        if updated:
+            user_manager.save_users()
+            logger.info(f'📡 Session synced: userId={user_id}, sessionKey={session_key}')
+            return web.json_response({
+                'success': True,
+                'synced': True,
+                'userId': user_id,
+                'sessionKey': session_key
+            })
+        else:
+            logger.warning(f'⚠️ User not found for session sync: userId={user_id}, agentId={agent_id}')
+            return web.json_response({
+                'success': False,
+                'error': f'User not found: {user_id}'
+            }, status=404)
+
+    except Exception as e:
+        logger.error(f'Sync session error: {e}')
         return web.json_response({
             'success': False,
             'error': str(e)
@@ -567,6 +712,7 @@ async def init_app():
     
     # 注册路由
     app.router.add_post('/api/register', handle_register)
+    app.router.add_post('/api/sync-session', handle_sync_session)
     app.router.add_get('/health', handle_health)
     
     logger.info('✅ Application initialized')

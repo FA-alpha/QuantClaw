@@ -638,7 +638,7 @@ async def handle_new_conversation(request):
 
         # 步骤3：删除 Clawdbot session 文件，强制创建新 session
         session_key = f'agent:{agent_id}:main'
-        session_dir = Path(f'/home/ubuntu/.clawdbot/agents/{agent_id}/sessions')
+        session_dir = Path(f'{os.path.expanduser("~")}/.clawdbot/agents/{agent_id}/sessions')
         
         if session_dir.exists():
             # 删除当前 session 的 JSONL 文件

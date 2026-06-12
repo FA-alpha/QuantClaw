@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""单个机器人操作 — /Trade/status_do（含预检 + 二次确认）"""
+from typing import Optional
+
+from api_client import api_post, check_auth
+from bot_check import check_bots, filter_executable, STATUS_LABEL
+from agent_display import blocked_result, preview_result, ok_result, error_result
+from confirm_nonce import check, create, clear
+
+SAVE_TYPE_LABEL = {
+    "4": "停止", "5": "停止当周期", "6": "预约停止",
+    "7": "取消预约终止", "8": "暂停加仓", "9": "取消暂停加仓",
+}
+
+_STOP_RULES = {
+    "4": ({"1", "2"}, None, None, False, False),
+    "5": ({"1", "2"}, None, None, False, False),
+    "6": ({"1", "2"}, {"0"}, None, True, False),
+    "7": ({"1", "2"}, {"1", "2"}, None, True, False),
+    "8": ({"1", "2"}, None, {"0"}, False, True),
+    "9": ({"1", "2"}, None, {"1"}, False, True),
+}
+
+
+def run(
+    token: str,
+    bot_id: str,
+    save_type: str,
+    agent_id: Optional[str] = None,
+) -> dict:
+    action_label = SAVE_TYPE_LABEL.get(save_type, f"未知操作({save_type})")
+
+    statuses, reserves, pause_statuses, need_reserve_btn, need_pause_btn = _STOP_RULES.get(save_type, (set(), None, None, False, False))
+    pre = check_bots(token, [bot_id], statuses, reserves, pause_statuses,
+                     require_reserve_btn=need_reserve_btn, require_pause_btn=need_pause_btn,
+                     agent_id=agent_id)
+    bot_state = pre["bots"][0]
+
+    state = check(agent_id or "", "stop", bot_id, save_type)
+
+    if state != "confirmed":
+        if not bot_state["can_execute"]:
+            return blocked_result(
+                title=f"❌ 无法{action_label}",
+                reason=bot_state["reason"],
+                rule="该机器人不可执行此操作，不得尝试绕过",
+            )
+
+        detail_lines = [
+            f"机器人: {bot_id}",
+            f"当前状态: {bot_state['status_label']}",
+            f"操作: {action_label}",
+        ]
+        if state == "expired":
+            detail_lines.append(f"{action_label}操作未能执行，确认操作已超时（5分钟），需要用户重新确认")
+            rule = f"确认超时（5分钟），请重新确认后原样重跑相同命令"
+        else:
+            rule = "等待用户确认后，原样重跑相同命令即可执行"
+
+        create(agent_id or "", "stop", bot_id, save_type)
+        return preview_result(
+            title=f"⚠️ {action_label} - 待确认",
+            detail_lines=detail_lines,
+            rule=rule,
+            bot_id=bot_id,
+            action=action_label,
+            save_type=save_type,
+            bot_state=bot_state,
+        )
+
+    executable = filter_executable(pre["bots"])
+    if not executable:
+        clear(agent_id or "", "stop", bot_id, save_type)
+        return blocked_result(
+            title=f"❌ 无法{action_label}",
+            reason=bot_state["reason"],
+            rule="该机器人不可执行此操作",
+        )
+
+    data = api_post(
+        "/Trade/status_do",
+        {"usertoken": token, "app_v": "2.0.0", "bot_id": bot_id, "save_type": save_type},
+        agent_id,
+    )
+    clear(agent_id or "", "stop", bot_id, save_type)
+
+    ok_msg, msg = check_auth(data)
+    if not ok_msg:
+        return error_result(title=f"❌ {action_label}失败", message=msg, rule="不得自行重试")
+    if data.get("status") != 1:
+        err_msg = str(data.get("msg", "未知错误"))
+        if "URL rejected" in err_msg or "No host" in err_msg:
+            return error_result(
+                title=f"❌ {action_label}失败",
+                message="该机器人暂时无法操作",
+                rule="该机器人当前不支持此操作，告知用户暂时无法操作即可",
+            )
+        return error_result(title=f"❌ {action_label}失败",
+                            message=err_msg, rule="不得自行重试")
+
+    info = data.get("info", {})
+    new_status = str(info.get("status", ""))
+    return ok_result(
+        title=f"✅ {action_label}成功",
+        detail_lines=[
+            f"机器人: {bot_id}",
+            f"{bot_state['status_label']} → {STATUS_LABEL.get(new_status, new_status)}",
+        ],
+        bot_id=bot_id,
+        action=action_label,
+        before_status=bot_state["status_label"],
+        after_status=STATUS_LABEL.get(new_status, new_status),
+    )

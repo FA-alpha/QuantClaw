@@ -4,6 +4,54 @@
 
 ---
 
+## ⚠️ 必读：常见错误
+
+### 错误1：查看回测详情使用错误的字段
+
+**❌ 错误做法**：
+```python
+strategy_id = result['back_id']  # 错误！不要用 back_id
+strategy_id = result['strategy_token']  # 错误！不要用 strategy_token
+```
+
+**✅ 正确做法**：
+```python
+# 从推荐结果中取 id 字段
+strategy_id = result['id']  # 正确！就用这个字段
+
+cd skills/backtest-query && python3 query.py \
+  --detail "${strategy_id}" \
+  --agent-id "qc-xxx"
+```
+
+### 错误2：对冲/多空策略未传递方向参数
+
+**错误做法**：
+```bash
+# ❌ 用户说“对冲策略”，但命令缺少方向参数
+cd skills/backtest-query && python3 smart_group_recommend.py \
+  --coins "DOGE,BCH" \
+  --strategy-types "11" \
+  --intent-json '{...}'  # 缺少 --strategy-direction-map
+```
+
+**✅ 正确做法**：
+```bash
+# 检测到“对冲”关键词，必须传递方向参数！
+cd skills/backtest-query && python3 smart_group_recommend.py \
+  --coins "DOGE,BCH" \
+  --strategy-types "11" \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
+  --intent-json '{...}'
+```
+
+**关键词检测：**
+- 用户说 "对冲"/"多空" → 必须传 `["long", "short"]`
+- 用户说 "做多" → 必须传 `["long"]`
+- 用户说 "做空" → 必须传 `["short"]`
+
+---
+
 ## 📁 脚本路径规范
 
 **重要**：本 skill 的脚本位于 `skills/backtest-query/` 目录内。
@@ -16,55 +64,21 @@ cd skills/backtest-query && python3 smart_group_recommend.py --agent-id xxx --qu
 
 ---
 
-## 🚨 脚本选择（意图识别）
+## 🚨 意图识别与脚本选择
 
-### 意图判断优先级（从上到下）
-
-**优先级1️⃣：复合意图（创建+回测）**
-- **触发**：同时出现 "挑选/推荐/创建/建" + "回测"
-- **示例**：
-  - "挑选doge的策略，分别回测2025年"
-  - "推荐sol策略搭配，资金配比各50%，回测全年"
-- **处理**：**直接创建策略组**（不询问，不只推荐）
-- **理由**：用户明确要回测，说明需要立即使用策略组
-
-**优先级2️⃣：纯创建意图**
-- **触发**："创建"/"新建"/"建"/"构建"/"帮我建"（无"回测"）
-- **示例**：
-  - "创建一个BTC和ETH的对冲策略组"
-  - "帮我建个多币种策略组"
-- **处理**：**直接创建策略组**
-
-**优先级3️⃣：纯推荐意图**
-- **触发**："推荐"/"建议"/"给我看看"/"挑选"（无"回测"）
-- **示例**：
-  - "推荐一些BTC策略"
-  - "给我看看sol的策略搭配"
-- **处理**：展示结果，**询问是否创建**
-
-**优先级4️⃣：其他操作**
-- 保存单个策略："保存"/"收藏"
-- 查询列表："有哪些"/"列出"/"查看"
-
-### 意图识别表格
-
-| 用户意图 | 触发条件 | 执行方式 |
+| 用户意图 | 触发条件 | 处理方式 |
 |---------|---------|---------|
-| **复合意图（创建+回测）** | 有"挑选/推荐/创建/建" + 有"回测" | **直接创建**，然后提醒回测 |
-| **纯创建** | 有"创建/新建/建/构建" + 无"回测" | **直接创建** |
-| **纯推荐** | 有"推荐/建议/给我看看/挑选" + 无"回测" | 展示结果，**询问是否创建** |
-| **保存单策略** | "保存"/"收藏" | 收藏到策略库 |
-| **查询列表** | "有哪些"/"列出"/"查看" | 展示列表 |
+| **复合意图（创建+回测）** | "挑选/推荐/创建/建" + "回测" | **直接创建策略组**，然后提醒回测 |
+| **纯创建** | "创建/新建/建/构建" + 无"回测" | **直接创建策略组** |
+| **纯推荐** | "推荐/建议/给我看看/挑选" + 无"回测" | 展示结果，**询问是否创建** |
+| **保存单策略** | "保存"/"收藏" | 使用 --add-strategy |
+| **查询列表** | "有哪些"/"列出"/"查看" | 使用 --list-coins/strategies/ai-times |
+| **查看回测详情** | "查看回测/策略 xxx 的详情" | 使用 --detail (id 字段) |
 
-**⚠️ 核心规则**：
-1. **检测关键词组合**，不要只看单个词
-2. 看到 "回测" + 任何创建/挑选词 → **直接创建**
-3. 只看到 "推荐/建议"，没有"回测" → 只展示，询问是否创建
-4. 创建时 `--max-combinations 1` 确保只返回一个最佳组合
-
----
-
-## 🔗 复合意图识别（重要）
+**核心规则**：
+- 看到 "回测" + 任何创建/挑选词 → **直接创建策略组**
+- 只看到 "推荐/建议"，没有"回测" → 展示结果，询问是否创建
+- 创建模式使用 `--max-combinations 1`
 
 ### 识别"策略组创建 + 回测"的复合需求
 
@@ -227,6 +241,7 @@ cd skills/backtest-query && python3 smart_group_recommend.py \
   --query "用户原话" \
   --coins "DOGE,BCH" \
   --strategy-types "11" \
+  --strategy-direction-map '{"11": ["long", "short"]}' \
   --intent-json '{"strategy_goal":"hedging","constraints":{"coins":["DOGE","BCH"],"directions":["long","short"],"min_strategies":4},"preferences":{"risk_level":"balanced","diversity_priority":"coin"}}' \
   --max-combinations 1 \
   --top-per-group 3 \
@@ -479,9 +494,37 @@ cd skills/backtest-query && python3 query.py \
 ```bash
 --agent-id "qc-xxx"              # 用于自动获取 token
 --list-coins / --list-strategies / --list-ai-times  # 查询列表
+--detail "strategy_id"           # 查看回测详情（使用 id 字段，不是 back_id）
 --create-group --group-name "xxx" --strategy-tokens "t1,t2,t3"  # 创建组
 --add-strategy --strategy-token "xxx"  # 保存单策略
 ```
+
+**⚠️ 字段区分（重要）**：
+
+| 字段 | 用途 | 取值方式 |
+|------|------|--------|
+| `id` | 查看回测详情（--detail） | `result['id']` |
+| `back_id` | 内部字段 | 不直接使用 |
+| `strategy_token` | 保存单策略（--add-strategy） | `result['strategy_token']` |
+
+**查看回测详情示例**：
+```bash
+# 从推荐结果中取 id 字段
+strategy_id=result['id']  # 直接取 id 字段的值
+
+cd skills/backtest-query && python3 query.py \
+  --detail "${strategy_id}" \
+  --agent-id "qc-xxx"
+```
+
+**返回字段简要说明**：
+- `status`: 回测状态（1-待回测 2-回测中 3-回测成功 4-回测失败）
+- `bgn_date` / `end_date`: 开始/结束时间
+- `strategy`: 策略信息列表
+- `total_stat`: 回测统计（收益率、最大回撤、夏普率等）
+- `trade_lists`: 交易记录
+
+**详细字段说明见**：`BACKTEST_DETAIL.md`
 
 ### 参数规则
 - 版本：用户说 "V4.3" → `{"11": ["4.3"]}`；未说 → 不传

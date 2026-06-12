@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""
+QuantClaw 日志查看工具
+
+使用示例：
+    ./scripts/view-logs -n 20              # 查看最近 20 条
+    ./scripts/view-logs -v                 # 详细模式
+    ./scripts/view-logs --error-only       # 只看错误
+    ./scripts/view-logs --filter coin_lists  # 过滤特定接口
+    ./scripts/view-logs --agent-id qc-123  # 指定 agent
+"""
+
+import sys
+from pathlib import Path
+
+# 添加项目根目录到 sys.path
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+
+# 导入并运行
+from scripts.logging.view_logs import main
+
+if __name__ == "__main__":
+    main()

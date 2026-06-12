@@ -16,7 +16,8 @@ from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from query import query_backtest, get_backtest_detail, get_version_info
 from analysis import recommend_combinations
-from api_logger import log_error, ErrorType
+
+from qc_log import log_error, ErrorType
 
 
 # ==================== 全局日志控制 ====================
@@ -132,7 +133,8 @@ def get_user_token(agent_id: Optional[str] = None) -> Optional[str]:
         log_error(
             error_msg=f"读取用户配置失败: {e}",
             exception=e,
-            context={"function": "get_user_token", "agent_id": agent_id, "users_file": users_file}
+            context={"function": "get_user_token", "agent_id": agent_id, "users_file": users_file},
+            agent_id=agent_id
         )
     
     return None
@@ -146,7 +148,7 @@ def validate_args(args):
     return None
 
 
-def build_query_combinations(args, token: str) -> List[Dict]:
+def build_query_combinations(args, token: str, agent_id: str = None) -> List[Dict]:
     """
     根据参数生成查询组合（统一返回字典列表）
     
@@ -179,7 +181,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             strategy_version_map = json.loads(args.strategy_version_map)
         except json.JSONDecodeError as e:
             error_msg = f"--strategy-version-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_version_map})
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_version_map}, agent_id=agent_id)
             raise ValidationError(error_msg)
     
     if args.strategy_direction_map:
@@ -187,7 +189,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             strategy_direction_map = json.loads(args.strategy_direction_map)
         except json.JSONDecodeError as e:
             error_msg = f"--strategy-direction-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_direction_map})
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.strategy_direction_map}, agent_id=agent_id)
             raise ValidationError(error_msg)
     
     if args.coin_pct_map:
@@ -195,7 +197,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
             coin_pct_map = json.loads(args.coin_pct_map)
         except json.JSONDecodeError as e:
             error_msg = f"--coin-pct-map JSON 解析失败: {e}"
-            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.coin_pct_map})
+            log_error(error_msg, error_type=ErrorType.PARSE, context={"input": args.coin_pct_map}, agent_id=agent_id)
             raise ValidationError(error_msg)
     
     # ==================== 第1步：获取独立参数 ====================
@@ -205,7 +207,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         coins = parse_csv(args.coins)
     elif args.auto_expand:
         # 自动扩展模式：查询所有币种
-        result = get_coin_list(token)
+        result = get_coin_list(token, agent_id=agent_id)
         if "error" in result:
             if _should_print_warning():
                 print(f"⚠️  获取币种列表失败: {result['error']}，使用默认值")
@@ -223,7 +225,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         strategy_types = parse_csv_int(args.strategy_types)
     elif args.auto_expand:
         # 自动扩展模式：查询所有策略类型
-        result = get_ai_strategy_list(token)
+        result = get_ai_strategy_list(token, agent_id=agent_id)
         if "error" in result:
             if _should_print_warning():
                 print(f"⚠️  获取策略列表失败: {result['error']}，使用默认值")
@@ -241,7 +243,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
         ai_time_ids = parse_csv(args.ai_time_ids)
     elif args.auto_expand:
         # 自动扩展模式：查询所有时间ID
-        result = get_ai_time_list(token)
+        result = get_ai_time_list(token, agent_id=agent_id)
         if "error" in result:
             if _should_print_warning():
                 print(f"⚠️  获取时间列表失败: {result['error']}，使用默认值")
@@ -257,7 +259,7 @@ def build_query_combinations(args, token: str) -> List[Dict]:
     # ==================== 第2步：获取策略完整信息（用于提取 versions） ====================
     
     strategy_info_map = {}  # {strategy_type: strategy_info}
-    result = get_ai_strategy_list(token)
+    result = get_ai_strategy_list(token, agent_id=agent_id)
     if "error" not in result:
         for s in result.get("info", []):
             strategy_info_map[s["strategy_type"]] = s
@@ -731,9 +733,10 @@ class ParallelQueryExecutor:
 class SmartGroupRecommender:
     """智能分组推荐器"""
     
-    def __init__(self, token: str, verbose: bool = True):
+    def __init__(self, token: str, verbose: bool = True, agent_id: str = None):
         self.token = token
         self.verbose = verbose
+        self.agent_id = agent_id
     
     def log(self, msg: str):
         if self.verbose:
@@ -893,6 +896,7 @@ class SmartGroupRecommender:
         # 保留前3个策略作为样本（只保留关键字段）
         for s in strategies[:3]:
             summary["sample_strategies"].append({
+                "id": s.get("id"),
                 "back_id": s.get("back_id"),
                 "coin": s.get("coin"),
                 "direction": s.get("direction"),
@@ -930,7 +934,7 @@ class SmartGroupRecommender:
                 continue
             
             try:
-                detail = get_backtest_detail(self.token, back_id)
+                detail = get_backtest_detail(self.token, back_id, agent_id=self.agent_id)
                 
                 if "error" not in detail:
                     # 提取关键详情指标
@@ -1126,18 +1130,18 @@ class SmartGroupRecommender:
         self.log(f"🎯 返回数量: {limit}")
         
         # 2. 按收益率排序（或使用API指定的排序）
-        sort_key = 'profit_rate'  # 默认按收益率
+        sort_key = 'year_rate'  # 默认按收益率
         if api_sort_type == 3:
             sort_key = 'sharp_rate'
         elif api_sort_type == 4:
-            sort_key = 'max_draw_down'
+            sort_key = 'max_loss'
             
         self.log(f"📈 排序字段: {sort_key}")
         
         sorted_strategies = sorted(
             strategies,
             key=lambda x: float(x.get(sort_key, 0) or 0),
-            reverse=(sort_key != 'max_draw_down')  # 回撤越小越好
+            reverse=(sort_key != 'max_loss')  # 回撤越小越好
         )
         
         # 3. 取前N个
@@ -1869,7 +1873,7 @@ class SmartGroupRecommender:
             print("📊 单策略推荐结果")
             print("="*70)
             print(f"查询: {result.get('total_fetched', 0)} → 已选: {result.get('total_selected', 0)} 个")
-            print(f"排序字段: {result.get('sort_by', 'profit_rate')}")
+            print(f"排序字段: {result.get('sort_by', 'year_rate')}")
             
             strategies = result.get('strategies', [])
             if strategies:
@@ -1877,9 +1881,9 @@ class SmartGroupRecommender:
                 for i, s in enumerate(strategies, 1):
                     print(
                         f"  #{i} {s.get('name', 'N/A')} | "
-                        f"收益{s.get('profit_rate', 0)}% | "
+                        f"收益{s.get('year_rate', 0)}% | "
                         f"夏普{s.get('sharp_rate', 0)} | "
-                        f"回撤{s.get('max_draw_down', 0)}%"
+                        f"回撤{s.get('max_loss', 0)}%"
                     )
                     print(f"      Token: {s.get('strategy_token', 'N/A')}")
             
@@ -2032,7 +2036,8 @@ def main():
         log_error(
             error_msg=str(e),
             error_type=ErrorType.VALIDATION,
-            context={"script": "smart_group_recommend.py", "args": vars(args)}
+            context={"script": "smart_group_recommend.py", "args": vars(args)},
+            agent_id=args.agent_id
         )
         
         error_result = {
@@ -2068,7 +2073,7 @@ def main():
     
     # 4. 生成查询组合
     try:
-        combinations = build_query_combinations(args, token)
+        combinations = build_query_combinations(args, token, agent_id=args.agent_id)
     except Exception as e:
         # 根据错误信息生成用户友好的建议
         error_msg = str(e)
@@ -2107,7 +2112,8 @@ def main():
         'page': 1,
         'limit': -1,
         'search_recommand_type': args.search_recommand_type,
-        'sort_type': args.api_sort if args.api_sort else 2  # 默认按收益排序
+        'sort_type': args.api_sort if args.api_sort else 2,  # 默认按收益排序
+        'agent_id': args.agent_id  # 传递 agent_id
     }
     
     # 6. 并行批量查询
@@ -2142,7 +2148,6 @@ def main():
             "error": "未查询到任何策略",
             "message": "查询参数未匹配到任何策略数据",
             "suggestions": [
-                "放宽查询条件（如增加币种、移除版本限制）",
                 "检查时间范围是否有数据",
                 "使用 query.py --list-coins 确认币种是否存在"
             ],
@@ -2160,7 +2165,7 @@ def main():
     sort_methods = parse_csv(args.sort_methods) if args.sort_methods else None
     
     # 8. 智能推荐
-    recommender = SmartGroupRecommender(token, verbose=not args.quiet)
+    recommender = SmartGroupRecommender(token, verbose=not args.quiet, agent_id=args.agent_id)
     
     try:
         result = recommender.smart_recommend(
@@ -2221,7 +2226,8 @@ if __name__ == "__main__":
         log_error(
             error_msg=str(e),
             exception=e,
-            context={"script": "smart_group_recommend.py", "args": sys.argv[1:]}
+            context={"script": "smart_group_recommend.py", "args": sys.argv[1:]},
+            agent_id=getattr(args, 'agent_id', None) if 'args' in locals() else None
         )
         
         error_result = {
