@@ -83,8 +83,8 @@ exec python3 ./skills/backtest-query/query.py --coin BTC
 read /home/ubuntu/.npm-global/lib/node_modules/clawdbot/skills/backtest-query/SKILL.md
 ```
 ---
-### start-tradbot - 创建交易机器人
-**📄 详见**: `./skills/start-tradbot/SKILL.md`
+### start-tradebot - 创建交易机器人
+**📄 详见**: `./skills/start-tradebot/SKILL.md`
 
 **何时使用**：用户需要在 fourieralpha 平台新建交易机器人时。使用前先读取 SKILL.md。
 

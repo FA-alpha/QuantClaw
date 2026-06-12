@@ -64,7 +64,7 @@ def _log_network_request(agent_id: str, api_name: str, request_params: Dict[str,
             log_file.write(log_content)
         
         # 打印日志路径（调试用）
-        print(f"🔍 日志已写入: {log_path}")
+        # print(f"🔍 日志已写入: {log_path}")
     except Exception as e:
         print(f"❌ 日志记录失败: {e}")
 
