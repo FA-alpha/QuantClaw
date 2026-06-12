@@ -27,6 +27,10 @@ from pathlib import Path
 # True - 开启日志，所有接口请求和响应会写入 ~/.quantclaw/logs/{agent_id}/yyyy-mm-dd.log
 # False - 关闭日志（默认）
 ENABLE_DEBUG_LOG = True
+
+# 接口请求失败时的固定提示词
+# 当接口返回 status != 1 时，会在错误信息前显示此提示
+API_ERROR_PREFIX = "⚠️ strangeError,接口请求失败，请停止当前操作并告知用户出错环节，等待用户指示。"
 # ============================================
 
 def _log_network_request(agent_id: str, api_name: str, request_params: Dict[str, Any], response_data: Optional[Dict[str, Any]] = None):
@@ -151,9 +155,12 @@ class TradeRequest:
 
             # 检查接口返回状态
             if result.get("status") != 1:
-                error_msg = result.get('msg', '未知错误')
+                # 获取接口返回的所有参数
+                error_details = json.dumps(result, ensure_ascii=False, indent=2)
+                # 组合完整错误信息（使用全局配置的提示词）
+                full_error_msg = f"{API_ERROR_PREFIX}\n\n📋 接口返回详情：\n{error_details}"
                 raise TradeRequestError(
-                    f"接口请求失败: {error_msg}", 
+                    full_error_msg, 
                     "API_REQUEST_FAILED"
                 )
 
@@ -442,7 +449,13 @@ class TradeRequest:
             
             # 检查返回状态
             if result.get("status") != 1:
-                return result
+                # 添加全局错误提示词
+                error_details = json.dumps(result, ensure_ascii=False, indent=2)
+                return {
+                    "status": "error",
+                    "message": f"{API_ERROR_PREFIX}\n\n📋 接口返回详情：\n{error_details}",
+                    "error_code": "API_REQUEST_FAILED"
+                }
             
             # 获取策略列表
             all_strategies = result.get("info", [])
@@ -499,10 +512,12 @@ class TradeRequest:
 
                 # 检查返回状态
                 if result.get("status") != 1:
+                    # 添加全局错误提示词
+                    error_details = json.dumps(result, ensure_ascii=False, indent=2)
                     return {
                         "status": "error",
-                        "message": "获取策略组列表失败",
-                        "error_code": "GROUP_LIST_ERROR"
+                        "message": f"{API_ERROR_PREFIX}\n\n📋 接口返回详情：\n{error_details}",
+                        "error_code": "API_REQUEST_FAILED"
                     }
 
                 # 获取策略组列表
