@@ -90,7 +90,9 @@ cd skills/trade-bot/scripts && python3 trade_bot.py detail \
 
 **⚠️ 投资金额**：机器人实际投入本金在 `detail.trade.initial_capital`（即 `trade_info.initial_capital`）。策略参数中不再展示 `initial_capital`（那是策略模板的回测参数，对实盘无意义）。
 
-### 3. leverage — 杠杆率统计
+### 3. leverage — 杠杆率 / 杠杆率统计
+
+查询当前杠杆率、保证金使用、资产分布等统计信息。用户问"杠杆率""杠杆率多少""杠杆率统计""仓位杠杆"都对应这个命令。
 
 ```bash
 cd skills/trade-bot/scripts && python3 trade_bot.py leverage \
