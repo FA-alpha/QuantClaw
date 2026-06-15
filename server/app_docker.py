@@ -945,7 +945,7 @@ async def handle_websocket(request):
                                     continue
                                 
                                 # 停止输出（chat.abort）
-                                if data.get('method') == 'chat.abort':
+                                if data.get('type') == 'chat.abort':
                                     abort_id = next_id()
                                     pending_abort_id[0] = abort_id
                                     abort_req = {
@@ -1013,11 +1013,6 @@ async def handle_websocket(request):
                                             await ws_client.send_json({
                                                 'type': 'error',
                                                 'error': error_msg,
-                                            })
-                                            await ws_client.send_json({
-                                                'type': 'message',
-                                                'role': 'system',
-                                                'content': f'⚠️ 错误: {error_msg}',
                                             })
                                         # chat.abort 响应：通知前端已收到并处理
                                         if data.get('id') == pending_abort_id[0] and data.get('ok'):
