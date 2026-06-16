@@ -48,6 +48,13 @@ def clear(*nonce_parts: str) -> None:
         os.remove(path)
 
 
+def reject(agent_id: str) -> int:
+    """用户拒绝确认时调用，清除该 agent 所有 nonce 凭证"""
+    if not agent_id:
+        return 0
+    return _clear_agent_nonces(agent_id)
+
+
 def _clear_agent_nonces(agent_id: str) -> int:
     """清除同一 agent 的所有 nonce，确保同一 agent 同时只保留一个凭证"""
     if not os.path.isdir(NONCE_DIR) or not agent_id:

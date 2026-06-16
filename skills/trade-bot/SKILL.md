@@ -176,7 +176,17 @@ cd skills/trade-bot/scripts && python3 trade_bot.py grid-detail \
 - `blocked`=true 时 → 展示 `agent_display.title` + `agent_display.lines`，显示 `agent_display.user_prompt`，**不做任何操作**
 - `preview` 时 → 展示 `agent_display.title` + `agent_display.lines`。用户确认后，**原样重跑相同命令**即可执行
 - `prompt` 时 → 展示引导语，等用户给数据
+- **用户拒绝确认**（说「不要」「不行」「取消」等）→ **必须立即调用** `trade_bot.py reject --agent-id "qc-xxx"` 清除 nonce 凭证，防止后续被意外复用
 - **禁止裸返回**：返回中没有 `agent_display` 时应视为异常
+
+### ❌ 拒绝确认（清除 nonce）
+
+```bash
+# 用户拒绝确认时调用，清除该 agent 所有待确认凭证
+cd skills/trade-bot/scripts && python3 trade_bot.py reject --agent-id "qc-xxx"
+```
+
+**何时调用**：用户回复「不要」「不行」「取消」「算了」「先不管」等否定/取消语义时，**先调 reject 再回复用户**。
 
 ### 6. stop — 单个机器人操作
 

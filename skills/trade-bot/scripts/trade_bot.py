@@ -129,6 +129,20 @@ def cmd_margin(args):
         agent_id=args.agent_id,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_reject(args):
+    """清除当前 agent 所有 nonce 凭证（用户拒绝确认时调用）"""
+    from confirm_nonce import reject
+    n = reject(args.agent_id)
+    result = {
+        "ok": True,
+        "message": f"已清除 {n} 个待确认凭证" if n else "没有待确认凭证",
+        "cleared": n,
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def cmd_edit(args):
     """编辑策略参数（三步流程：预览 → 差异对比 → 确认执行）"""
     from edit_bot import run, run_diff, run_execute
@@ -297,6 +311,11 @@ def main():
     sp.add_argument("--bot-id", required=True, help="机器人 ID")
     sp.add_argument("--grid-id", required=True, help="周期ID（grid_id）")
     sp.set_defaults(func=cmd_grid_detail)
+
+    # ── reject ──
+    sp = subs.add_parser("reject", help="清除待确认的 nonce 凭证（用户拒绝确认时调用）")
+    sp.add_argument("--agent-id", required=True, help="Agent ID")
+    sp.set_defaults(func=cmd_reject)
 
     args = p.parse_args()
     if not args.command:
