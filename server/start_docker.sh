@@ -149,10 +149,10 @@ echo "🔐 Starting Authentication Service (port 8081)..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 export PORT=8081
-nohup python3 quantclaw_webhook.py > /tmp/quantclaw_webhook.log 2>&1 &
+nohup python3 quantclaw_webhook.py >> /dev/null 2>&1 &
 AUTH_PID=$!
 echo "   PID: $AUTH_PID"
-echo "   Log: /tmp/quantclaw_webhook.log"
+echo "   Log: /tmp/quantclaw_webhook.log (managed by Python RotatingFileHandler)"
 
 # 等待认证服务启动
 sleep 3
@@ -182,10 +182,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 export PORT=8080
 export AUTH_SERVICE_URL="http://127.0.0.1:8081"
 export GATEWAY_TOKEN="$GATEWAY_TOKEN"
-nohup python3 app_docker.py > /tmp/app_docker.log 2>&1 &
+nohup python3 app_docker.py >> /dev/null 2>&1 &
 APP_PID=$!
 echo "   PID: $APP_PID"
-echo "   Log: /tmp/app_docker.log"
+echo "   Log: /tmp/app_docker.log (managed by Python RotatingFileHandler)"
 
 # 等待主服务启动
 sleep 3
