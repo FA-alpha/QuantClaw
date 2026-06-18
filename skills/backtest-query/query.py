@@ -11,7 +11,8 @@ import os
 import time
 from datetime import datetime
 import requests
-from api_logger import log_http_request, log_error
+
+from qc_log import log_http_request, log_error
 
 # API 配置
 API_BASE = "https://www.fourieralpha.com/Mobile"
@@ -46,7 +47,7 @@ def check_auth(response: dict) -> tuple[bool, str]:
     return True, '[]'
 
 
-def get_coin_list(token: str, force_refresh: bool = False) -> dict:
+def get_coin_list(token: str, force_refresh: bool = False, agent_id: str = None) -> dict:
     """
     获取可用币种列表（带缓存）
     
@@ -77,7 +78,7 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
         result = resp.json()
         
         # 记录日志
-        log_http_request(url, data, response=result)
+        log_http_request(url, data, response=result, agent_id=agent_id)
         
         # 检查认证状态
         ok, msg = check_auth(result)
@@ -92,11 +93,11 @@ def get_coin_list(token: str, force_refresh: bool = False) -> dict:
         return result
     except requests.RequestException as e:
         error_msg = str(e)
-        log_http_request(url, data, error=error_msg)
+        log_http_request(url, data, error=error_msg, agent_id=agent_id)
         return {"error": error_msg}
 
 
-def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
+def get_ai_time_list(token: str, force_refresh: bool = False, agent_id: str = None) -> dict:
     """
     获取 AI 回测时间列表（带缓存）
     
@@ -127,7 +128,7 @@ def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
         result = resp.json()
         
         # 记录日志
-        log_http_request(url, data, response=result)
+        log_http_request(url, data, response=result, agent_id=agent_id)
         
         # 检查认证状态
         ok, msg = check_auth(result)
@@ -142,11 +143,11 @@ def get_ai_time_list(token: str, force_refresh: bool = False) -> dict:
         return result
     except requests.RequestException as e:
         error_msg = str(e)
-        log_http_request(url, data, error=error_msg)
+        log_http_request(url, data, error=error_msg, agent_id=agent_id)
         return {"error": error_msg}
 
 
-def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
+def get_ai_strategy_list(token: str, force_refresh: bool = False, agent_id: str = None) -> dict:
     """
     获取 AI 回测策略列表（带缓存）
     
@@ -177,7 +178,7 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
         result = resp.json()
         
         # 记录日志
-        log_http_request(url, data, response=result)
+        log_http_request(url, data, response=result, agent_id=agent_id)
         
         # 检查认证状态
         ok, msg = check_auth(result)
@@ -192,17 +193,18 @@ def get_ai_strategy_list(token: str, force_refresh: bool = False) -> dict:
         return result
     except requests.RequestException as e:
         error_msg = str(e)
-        log_http_request(url, data, error=error_msg)
+        log_http_request(url, data, error=error_msg, agent_id=agent_id)
         return {"error": error_msg}
 
 
-def add_strategy(token: str, strategy_token: str) -> dict:
+def add_strategy(token: str, strategy_token: str, agent_id: str = None) -> dict:
     """
     保存单个策略到策略库（收藏策略）
     
     Args:
         token: 用户登录 token
         strategy_token: 策略 token
+        agent_id: Agent ID
     
     Returns:
         dict: API 响应数据，包含策略ID
@@ -220,7 +222,7 @@ def add_strategy(token: str, strategy_token: str) -> dict:
         result = resp.json()
         
         # 记录日志
-        log_http_request(url, data, response=result)
+        log_http_request(url, data, response=result, agent_id=agent_id)
         
         # 检查认证状态
         ok, msg = check_auth(result)
@@ -230,11 +232,11 @@ def add_strategy(token: str, strategy_token: str) -> dict:
         return result
     except requests.RequestException as e:
         error_msg = str(e)
-        log_http_request(url, data, error=error_msg)
+        log_http_request(url, data, error=error_msg, agent_id=agent_id)
         return {"error": error_msg}
 
 
-def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
+def create_strategy_group(token: str, strategy_tokens: str, name: str, agent_id: str = None) -> dict:
     """
     创建策略组
     
@@ -260,7 +262,7 @@ def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
         result = resp.json()
         
         # 记录日志
-        log_http_request(url, data, response=result)
+        log_http_request(url, data, response=result, agent_id=agent_id)
         
         # 检查认证状态
         ok, msg = check_auth(result)
@@ -270,11 +272,11 @@ def create_strategy_group(token: str, strategy_tokens: str, name: str) -> dict:
         return result
     except requests.RequestException as e:
         error_msg = str(e)
-        log_http_request(url, data, error=error_msg)
+        log_http_request(url, data, error=error_msg, agent_id=agent_id)
         return {"error": error_msg}
 
 
-def get_backtest_detail(token: str, back_id: int) -> dict:
+def get_backtest_detail(token: str, back_id: int, agent_id: str = None) -> dict:
     """
     获取回测详细统计信息
     
@@ -298,7 +300,7 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
         result = resp.json()
         
         # 记录日志
-        log_http_request(url, data, response=result)
+        log_http_request(url, data, response=result, agent_id=agent_id)
         
         # 检查认证状态
         ok, msg = check_auth(result)
@@ -308,22 +310,24 @@ def get_backtest_detail(token: str, back_id: int) -> dict:
         return result
     except requests.RequestException as e:
         error_msg = str(e)
-        log_http_request(url, data, error=error_msg)
+        log_http_request(url, data, error=error_msg, agent_id=agent_id)
         return {"error": error_msg}
 
 
-def get_version_info(token: str, strategy_type: int, version: str) -> dict:
+def get_version_info(token: str, strategy_type: int, version: str, agent_id: str = None) -> dict:
     """
     根据策略类型和版本获取版本信息
     
     Args:
+        token: 用户 token
         strategy_type: 策略类型
         version: 策略版本
+        agent_id: Agent ID
     
     Returns:
         dict: 版本信息（不含 id 和 name）
     """
-    strategies = get_ai_strategy_list(token)
+    strategies = get_ai_strategy_list(token, agent_id=agent_id)
     info = strategies.get("info", [])
     
     for strategy in info:
@@ -358,6 +362,7 @@ def query_backtest(
     search_extend: str = None,
     app_v: str = "2.0.0",
     version_extra: dict = None,
+    agent_id: str = None,
 ) -> dict:
     """
     查询回测列表
@@ -381,6 +386,7 @@ def query_backtest(
         ai_time_id: 时间ID
         search_recommand_type: 推荐类型（1推荐 2交易中策略）
         version: 策略版本
+        agent_id: Agent ID（用于日志记录）
     
     Returns:
         dict: API 响应数据
@@ -451,7 +457,7 @@ def query_backtest(
         result = resp.json()
         
         # 记录日志
-        log_http_request(url, data, response=result)
+        log_http_request(url, data, response=result, agent_id=agent_id)
         
         # 检查认证状态
         ok, msg = check_auth(result)
@@ -465,7 +471,7 @@ def query_backtest(
         return result
     except requests.RequestException as e:
         error_msg = str(e)
-        log_http_request(url, data, error=error_msg)
+        log_http_request(url, data, error=error_msg, agent_id=agent_id)
         return {"error": error_msg}
 
 
@@ -619,7 +625,7 @@ def auto_get_token(agent_id: str = None):
     except Exception as e:
         error_msg = f"读取用户配置失败: {e}"
         print(f"[ERROR] {error_msg}")
-        log_error(error_msg, exception=e, context={"function": "auto_get_token"})
+        log_error(error_msg, exception=e, context={"function": "auto_get_token"}, agent_id=agent_id)
         return None
 
 
@@ -627,7 +633,7 @@ def main():
     parser = argparse.ArgumentParser(description="查询回测数据")
     parser.add_argument("--token", help="用户 token（可选，未提供时自动获取）")
     parser.add_argument("--agent-id", dest="agent_id", help="Agent ID（可选，用于 token 自动获取）")
-    parser.add_argument("--detail", dest="back_id", type=int, help="查看回测详情（需要回测记录ID）")
+    parser.add_argument("--detail", dest="back_id", type=str, help="查看回测详情（需要回测记录ID）")
     parser.add_argument("--add-strategy", action="store_true", help="保存策略到策略库")
     parser.add_argument("--strategy-token", help="策略 token（用于保存单个策略）")
     parser.add_argument("--create-group", action="store_true", help="创建策略组")
@@ -701,7 +707,7 @@ def main():
         if not args.strategy_token:
             print("错误: 需要 --strategy-token")
             return
-        result = add_strategy(args.token, args.strategy_token)
+        result = add_strategy(args.token, args.strategy_token, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -714,7 +720,7 @@ def main():
         if not args.token:
             print("错误: 需要 --token")
             return
-        result = get_coin_list(args.token, force_refresh=args.refresh_cache)
+        result = get_coin_list(args.token, force_refresh=args.refresh_cache, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -729,7 +735,7 @@ def main():
         if not args.token:
             print("错误: 需要 --token")
             return
-        result = get_ai_time_list(args.token, force_refresh=args.refresh_cache)
+        result = get_ai_time_list(args.token, force_refresh=args.refresh_cache, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -744,7 +750,7 @@ def main():
         if not args.token:
             print("错误: 需要 --token")
             return
-        result = get_ai_strategy_list(args.token, force_refresh=args.refresh_cache)
+        result = get_ai_strategy_list(args.token, force_refresh=args.refresh_cache, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -768,7 +774,7 @@ def main():
         if not args.strategy_tokens:
             print("错误: 需要 --strategy-tokens")
             return
-        result = create_strategy_group(args.token, args.strategy_tokens, args.group_name)
+        result = create_strategy_group(args.token, args.strategy_tokens, args.group_name, agent_id=args.agent_id)
         if "error" in result:
             print(f"错误: {result['error']}")
         else:
@@ -781,7 +787,7 @@ def main():
         if not args.token:
             print("错误: 查看详情需要 --token")
             return
-        result = get_backtest_detail(args.token, args.back_id)
+        result = get_backtest_detail(args.token, args.back_id, agent_id=args.agent_id)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     
@@ -820,7 +826,7 @@ def main():
     # 获取版本额外信息
     version_extra = None
     if args.strategy_type and args.version:
-        version_extra = get_version_info(args.token, args.strategy_type, args.version)
+        version_extra = get_version_info(args.token, args.strategy_type, args.version, agent_id=args.agent_id)
     
     result = query_backtest(
         token=args.token,
@@ -844,6 +850,7 @@ def main():
         search_recommand_type=args.search_recommand_type,
         leverage=args.leverage,
         search_extend=args.search_extend,
+        agent_id=args.agent_id,
     )
     
     print(format_result(result, args.output_format))
@@ -856,6 +863,7 @@ if __name__ == "__main__":
         # 记录未捕获的异常
         log_error(
             error_msg=str(e),
+            agent_id=args.agent_id,
             exception=e,
             context={"script": "query.py", "args": sys.argv[1:]}
         )
