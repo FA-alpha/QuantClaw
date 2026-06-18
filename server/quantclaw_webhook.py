@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import asyncio
 import logging
+from logging.handlers import RotatingFileHandler
 import base64
 from pathlib import Path
 from datetime import datetime
@@ -26,12 +27,33 @@ from typing import Optional, Dict, List
 import aiohttp
 from aiohttp import web
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
-)
+# 日志配置：支持轮转，避免日志文件无限增长
+LOG_FILE = os.getenv('WEBHOOK_LOG_FILE', '/tmp/quantclaw_webhook.log')
+LOG_MAX_BYTES = int(os.getenv('LOG_MAX_BYTES', 10 * 1024 * 1024))  # 默认 10MB
+LOG_BACKUP_COUNT = int(os.getenv('LOG_BACKUP_COUNT', 5))  # 保留 5 个备份
+
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# 控制台输出
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+
+# 文件输出（带轮转）
+file_handler = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=LOG_MAX_BYTES,
+    backupCount=LOG_BACKUP_COUNT,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+
+logger.info(f'📝 Logging to {LOG_FILE} (max {LOG_MAX_BYTES/1024/1024:.1f}MB, {LOG_BACKUP_COUNT} backups)')
 
 
 # ============ Token 验证器 ============
