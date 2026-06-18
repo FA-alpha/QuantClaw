@@ -1216,7 +1216,6 @@ class SmartGroupRecommender:
             min_strategies = constraints.get('min_strategies', 3)
             coin_strategies_count = constraints.get('coin_strategies_count')
             group_strategies_count = constraints.get('group_strategies_count')
-            
             # 验证一致性（优先级：group_strategies_count > coin_strategies_count）
             if group_strategies_count:
                 expected_total = sum(group_strategies_count.values())

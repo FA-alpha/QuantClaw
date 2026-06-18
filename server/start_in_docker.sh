@@ -12,22 +12,22 @@ echo "🚀 Starting QuantClaw Services in Docker"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # 检查 Gateway 容器是否运行
-RUNNING=$(docker ps --format '{{.Names}}' | grep "^${CONTAINER_NAME}$" || true)
+RUNNING=$(sudo docker ps --format '{{.Names}}' | grep "^${CONTAINER_NAME}$" || true)
 if [ -z "$RUNNING" ]; then
     echo "⚠️  Gateway container is not running"
     echo ""
 
     # 检查容器是否存在（只是停止了）
-    EXISTS=$(docker ps -a --format '{{.Names}}' | grep "^${CONTAINER_NAME}$" || true)
+    EXISTS=$(sudo docker ps -a --format '{{.Names}}' | grep "^${CONTAINER_NAME}$" || true)
     if [ -n "$EXISTS" ]; then
         echo "📦 Container exists but stopped, starting docker-compose services..."
         cd ${COMPOSE_DIR}
-        docker compose up -d
+        sudo docker compose up -d
 
         # 等待容器启动和健康检查
         echo "⏳ Waiting for Gateway to be healthy..."
         for i in {1..30}; do
-            if docker ps --format '{{.Names}}\t{{.Status}}' | grep -q "^${CONTAINER_NAME}.*healthy"; then
+            if sudo docker ps --format '{{.Names}}\t{{.Status}}' | grep -q "^${CONTAINER_NAME}.*healthy"; then
                 echo "✅ Gateway is healthy"
                 break
             fi
@@ -39,7 +39,7 @@ if [ -z "$RUNNING" ]; then
         done
 
         # 再次检查是否运行
-        RUNNING2=$(docker ps --format '{{.Names}}' | grep "^${CONTAINER_NAME}$" || true)
+        RUNNING2=$(sudo docker ps --format '{{.Names}}' | grep "^${CONTAINER_NAME}$" || true)
         if [ -z "$RUNNING2" ]; then
             echo "❌ Failed to start Gateway container"
             exit 1
@@ -61,7 +61,7 @@ fi
 # 在容器内执行启动脚本（使用 root 权限安装依赖）
 echo ""
 echo "📦 Executing start script inside container..."
-docker exec -u root ${CONTAINER_NAME} bash /home/node/quantclaw/server/start_docker.sh
+sudo docker exec -u root ${CONTAINER_NAME} bash /home/node/quantclaw/server/start_docker.sh
 
 # 显示状态
 echo ""
