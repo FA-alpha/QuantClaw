@@ -1216,7 +1216,6 @@ class SmartGroupRecommender:
             min_strategies = constraints.get('min_strategies', 3)
             coin_strategies_count = constraints.get('coin_strategies_count')
             group_strategies_count = constraints.get('group_strategies_count')
-            
             # 验证一致性（优先级：group_strategies_count > coin_strategies_count）
             if group_strategies_count:
                 expected_total = sum(group_strategies_count.values())
@@ -1227,7 +1226,7 @@ class SmartGroupRecommender:
             elif coin_strategies_count:
                 # 检查是否在"同币种多空对冲"场景误用
                 strategy_goal = intent.get('strategy_goal')
-                diversity_priority = preferences_intent.get('diversity_priority')
+                diversity_priority = intent.get('preferences', {}).get('diversity_priority')
                 
                 # 只在同币种多空对冲时警告（diversity_priority == 'direction'）
                 if strategy_goal == 'hedging' and diversity_priority == 'direction':

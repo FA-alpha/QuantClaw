@@ -30,15 +30,24 @@ def migrate(chats_dir: Path, users_file: Path) -> int:
         print(f"[ERR] users.json not found: {users_file}")
         return 0
 
-    users = json.loads(users_file.read_text())
+    users_data = json.loads(users_file.read_text())
+    
+    # 适配两种格式：{"users": [...]} 或 {"key": {...}}
+    if isinstance(users_data, dict) and 'users' in users_data:
+        users_list = users_data['users']
+    elif isinstance(users_data, dict):
+        users_list = list(users_data.values())
+    else:
+        users_list = []
 
     # 构建 user_id -> agent_id 映射
     uid_to_agent = {}
-    for key, user in users.items():
-        uid = user.get('userId')
-        aid = user.get('agentId')
-        if uid and aid:
-            uid_to_agent[uid] = aid
+    for user in users_list:
+        if isinstance(user, dict):
+            uid = user.get('userId')
+            aid = user.get('agentId')
+            if uid and aid:
+                uid_to_agent[uid] = aid
 
     if not uid_to_agent:
         print("[WARN] No user_id->agent_id mapping found in users.json, nothing to migrate")
