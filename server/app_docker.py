@@ -32,7 +32,7 @@ CORS_ENABLED = os.getenv('CORS_ENABLED', 'true').lower() == 'true'
 # 配置 (Docker 容器内地址)
 GATEWAY_URL = os.getenv('GATEWAY_URL', 'http://127.0.0.1:18789')
 GATEWAY_WS = os.getenv('GATEWAY_WS', 'ws://127.0.0.1:18789')
-GATEWAY_TOKEN = os.getenv('GATEWAY_TOKEN', 'a9bde4f80151115b2fef2669fd6f1fbb79f0c69cf1487c5781e342eac070e57e')  # 需要从环境变量获取
+GATEWAY_TOKEN = os.getenv('GATEWAY_TOKEN', '94dfe6383735dccc9b4d800c42b653787d550bc13b7fe3a4')  # 需要从环境变量获取
 
 # 认证服务地址（quantclaw_webhook.py 服务）
 AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://127.0.0.1:8081')
@@ -77,6 +77,8 @@ class GlobalMessageListener:
         
         # 消息缓存：{session_key: current_response}
         self.response_cache = {}
+        # 已注册用户：{agent_id: user_id}（handle_auth 时注册）
+        self._agent_user = {}
         
         # 连接监控
         self.connection_count = 0  # 总连接次数
@@ -103,6 +105,11 @@ class GlobalMessageListener:
             except asyncio.CancelledError:
                 pass
         logger.info('🌍 GlobalMessageListener stopped')
+    
+    def register_user(self, agent_id: str, user_id: str):
+        """注册用户：auth 时调用，agent_id -> user_id 映射"""
+        self._agent_user[agent_id] = user_id
+        logger.info(f'📋 Registered user: {agent_id} -> {user_id}')
     
     async def _listen_loop(self):
         """持久监听循环"""
@@ -173,7 +180,7 @@ class GlobalMessageListener:
     
     async def _complete_handshake(self, ws) -> bool:
         """完成 Gateway 握手（使用成功的方法）"""
-        connect_id = f'conn_listener_{id(ws)}'
+        connect_id = f'conn_{id(ws)}'
         
         try:
             async for msg in ws:
@@ -232,15 +239,12 @@ class GlobalMessageListener:
             if not session_key:
                 return
             
-            # 从 session_key 提取 user_id
-            # 格式: agent:qc-xxx:main → user_id = u_xxx
-            user_id = self._extract_user_id(session_key)
+            # 从 session_key 提取 agent_id，查 agent->user 映射
+            # session_key 格式: agent:qc-xxx:main
+            agent_id = session_key.split(':')[1] if ':' in session_key else ''
+            user_id = self._agent_user.get(agent_id)
             if not user_id:
-                return
-            
-            # 🔑 关键判断：用户是否有消息记录？
-            if not self.chat_store.has_messages(user_id):
-                # 没有消息记录 = 不是活跃用户 → 忽略
+                # 不是已注册的 QuantClaw 用户 → 忽略
                 return
             
             # 处理消息
@@ -261,7 +265,7 @@ class GlobalMessageListener:
                     response_text = self.response_cache.get(session_key, '')
                     if response_text:
                         logger.info(f'📝 [GlobalListener] Saving response for {user_id}: {len(response_text)} chars')
-                        self.chat_store.append(user_id, 'assistant', response_text)
+                        self.chat_store.append(user_id, session_key, 'assistant', response_text)
                         logger.info(f'✅ [GlobalListener] Saved for {user_id}')
                     
                     # 清理缓存
@@ -271,90 +275,95 @@ class GlobalMessageListener:
             pass
         except Exception as e:
             logger.error(f'[GlobalListener] Handle message error: {e}')
-    
-    def _extract_user_id(self, session_key: str) -> str:
-        """
-        从 session_key 提取 user_id
-        
-        session_key 格式: agent:qc-xxx:main
-        agent_id: qc-xxx
-        user_id: u_xxx
-        """
-        try:
-            parts = session_key.split(':')
-            if len(parts) >= 2:
-                agent_id = parts[1]  # qc-xxx
-                if agent_id.startswith('qc-'):
-                    user_id = 'u_' + agent_id[3:]  # u_xxx
-                    return user_id
-        except Exception as e:
-            logger.error(f'Extract user_id error: {e}')
-        
-        return ''
 
 
 # ============ 聊天记录存储 ============
 
 class ChatStore:
-    """按用户存储聊天记录"""
+    """按用户+session存储聊天记录（用户目录 → session 文件）"""
     
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
         self.data_dir.mkdir(exist_ok=True, parents=True)
     
-    def _get_file(self, user_id: str) -> Path:
-        return self.data_dir / f'{user_id}.json'
+    def _safe_key(self, session_key: str) -> str:
+        """agent:qc-xxx:dashboard:uuid -> agent_qc-xxx_dashboard_uuid"""
+        return session_key.replace(':', '_').replace('-', '_')
     
-    def has_messages(self, user_id: str) -> bool:
-        """
-        判断用户是否有消息记录
-        
-        有消息记录 = 用户发送过消息 = 是活跃用户
-        """
-        file = self._get_file(user_id)
-        return file.exists()
+    def _user_dir(self, user_id: str) -> Path:
+        dir = self.data_dir / user_id
+        dir.mkdir(exist_ok=True, parents=True)
+        return dir
     
-    def load(self, user_id: str) -> list:
-        """加载用户的聊天记录"""
-        file = self._get_file(user_id)
-        if file.exists():
+    def _get_file(self, user_id: str, session_key: str) -> Path:
+        safe = self._safe_key(session_key)
+        return self._user_dir(user_id) / f'{safe}.json'
+    
+    def _find_latest(self, user_id: str):
+        """找用户最新的 session 聊天文件"""
+        user_dir = self.data_dir / user_id
+        if not user_dir.exists():
+            return None
+        files = sorted(
+            user_dir.glob('*.json'),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+        return files[0] if files else None
+    
+
+    def load(self, user_id: str, session_key=None) -> list:
+        if session_key:
+            file = self._get_file(user_id, session_key)
+        else:
+            file = self._find_latest(user_id)
+        if file and file.exists():
             try:
                 return json.loads(file.read_text())
             except:
                 return []
         return []
     
-    def save(self, user_id: str, messages: list):
-        """保存用户的聊天记录"""
-        file = self._get_file(user_id)
+    def save(self, user_id: str, session_key: str, messages: list):
+        file = self._get_file(user_id, session_key)
         file.write_text(json.dumps(messages, ensure_ascii=False, indent=2))
     
-    def append(self, user_id: str, role: str, content: str):
-        """添加一条消息（防止重复）"""
-        messages = self.load(user_id)
-        
-        # 检查最后一条消息是否重复（防止同一 role 的连续重复消息）
+    def append(self, user_id: str, session_key: str, role: str, content: str):
+        """添加消息（防止同一 role 连续重复）"""
+        messages = self.load(user_id, session_key)
         if messages and messages[-1]['role'] == role and messages[-1]['content'] == content:
-            logger.warning(f'⚠️ Duplicate message detected for {user_id}, skipping')
+            logger.warning(f'⚠️ Duplicate message for {user_id}, skipping')
             return messages
-        
         messages.append({
             'role': role,
             'content': content,
             'timestamp': datetime.now().isoformat(),
         })
-        # 只保留最近 100 条
         if len(messages) > 100:
             messages = messages[-100:]
-        self.save(user_id, messages)
+        self.save(user_id, session_key, messages)
         return messages
     
-    def clear(self, user_id: str):
-        """清空用户聊天记录"""
-        file = self._get_file(user_id)
+    def new_conversation(self, user_id: str, session_key: str):
+        """创建新会话文件。同名存在则 rename 旧文件"""
+        user_dir = self._user_dir(user_id)
+        file = self._get_file(user_id, session_key)
         if file.exists():
+            ts = int(time.time())
+            backup = user_dir / f'{file.stem}_{ts}.json.bak'
+            file.rename(backup)
+            logger.info(f'📦 Backup existing chat -> {backup.name}')
+        file.write_text('[]')
+        logger.info(f'📝 New chat file: {user_id}/{file.name}')
+    
+    def clear(self, user_id: str, session_key=None):
+        """清空指定 session 的聊天记录（兼容旧接口）"""
+        if session_key:
+            file = self._get_file(user_id, session_key)
+        else:
+            file = self._find_latest(user_id)
+        if file and file.exists():
             file.unlink()
-
 
 # 创建全局实例
 chat_store = ChatStore(CHAT_DIR)
@@ -405,6 +414,36 @@ async def call_auth_service(token: str) -> dict:
     except Exception as e:
         logger.error(f'Auth service error: {e}')
         return {'success': False, 'error': f'Authentication failed: {str(e)}'}
+
+
+async def sync_session_to_webhook(user_id: str, agent_id: str, session_key: str) -> bool:
+    """
+    同步 sessionKey 到 quantclaw_webhook 用户配置
+    
+    POST /api/sync-session
+    Body: {userId, agentId, sessionKey}
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{AUTH_SERVICE_URL}/api/sync-session',
+                json={
+                    'userId': user_id,
+                    'agentId': agent_id,
+                    'sessionKey': session_key,
+                },
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                result = await resp.json()
+                if result.get('success'):
+                    logger.info(f'📡 Synced session to webhook: {user_id} -> {session_key}')
+                    return True
+                else:
+                    logger.warning(f'Sync session failed: {result.get("error")}')
+                    return False
+    except Exception as e:
+        logger.error(f'Sync session error: {e}')
+        return False
 
 
 # ============ HTTP 处理器 ============
@@ -474,7 +513,13 @@ async def handle_auth(request):
             return web.json_response(auth_result, status=401)
 
         agent_id = auth_result.get('agentId')
-        session_key = f'agent:{agent_id}:{session_id}'
+        user_id = auth_result.get('userId')
+        # 从 webhook 拿 sessionKey，不再本地拼接
+        session_key = auth_result.get('sessionKey') or f'agent:{agent_id}:{session_id}'
+
+        # 注册用户到 GlobalListener（agent_id -> user_id 映射）
+        if global_listener and agent_id and user_id:
+            global_listener.register_user(agent_id, user_id)
 
         return web.json_response({
             'success': True,
@@ -505,7 +550,10 @@ async def handle_history(request):
             return web.json_response(auth_result, status=401)
 
         user_id = auth_result.get('userId')
-        messages = chat_store.load(user_id)
+        agent_id = auth_result.get('agentId')
+        session_id = data.get('sessionId', 'main')
+        session_key = auth_result.get('sessionKey') or f'agent:{agent_id}:{session_id}'
+        messages = chat_store.load(user_id, session_key)
 
         return web.json_response({
             'success': True,
@@ -533,7 +581,10 @@ async def handle_clear_history(request):
             return web.json_response(auth_result, status=401)
 
         user_id = auth_result.get('userId')
-        chat_store.clear(user_id)
+        agent_id = auth_result.get('agentId')
+        session_id = data.get('sessionId', 'main')
+        session_key = auth_result.get('sessionKey') or f'agent:{agent_id}:{session_id}'
+        chat_store.clear(user_id, session_key)
 
         return web.json_response({'success': True, 'cleared': True})
 
@@ -543,7 +594,7 @@ async def handle_clear_history(request):
 
 
 async def handle_new_conversation(request):
-    """新建对话：通过 /new 命令清除上下文（兼容 Lossless-Claw）"""
+    """新建对话：通过 sessions.create 创建新会话（官方 API，无消息残留）"""
     try:
         data = await request.json()
         token = data.get('token')
@@ -559,13 +610,9 @@ async def handle_new_conversation(request):
 
         user_id = auth_result.get('userId')
         agent_id = auth_result.get('agentId')
-        session_key = f'agent:{agent_id}:main'
+        main_session_key =auth_result.get('sessionKey') or f'agent:{agent_id}:main' 
         
-        # 步骤2：清除本地聊天记录（ChatStore）
-        chat_store.clear(user_id)
-        logger.info(f'✅ Cleared ChatStore for user: {user_id}')
-
-        # 步骤3：通过 WebSocket 发送 /new 命令（自动清理 OpenClaw + Lossless-Claw）
+        # 步骤2：通过 sessions.create 创建新会话
         try:
             async with aiohttp.ClientSession() as ws_session:
                 gateway_url = f'{GATEWAY_WS}?token={GATEWAY_TOKEN}'
@@ -576,13 +623,15 @@ async def handle_new_conversation(request):
                     heartbeat=30
                 ) as gateway_ws:
                     connected = False
-                    new_sent = False
+                    session_created = False
+                    new_session_key = None
                     
-                    # 设置超时
+                    ws_req_id = str(uuid.uuid4())
+                    
                     async def timeout_handler():
                         await asyncio.sleep(10)
-                        if not new_sent:
-                            logger.warning('WebSocket /new command timeout')
+                        if not session_created:
+                            logger.warning('WebSocket sessions.create timeout')
                     
                     timeout_task = asyncio.create_task(timeout_handler())
                     
@@ -595,7 +644,7 @@ async def handle_new_conversation(request):
                                 if ws_data.get('event') == 'connect.challenge' and not connected:
                                     connect_req = {
                                         'type': 'req',
-                                        'id': 'new_conv_connect',
+                                        'id': ws_req_id,
                                         'method': 'connect',
                                         'params': {
                                             'minProtocol': 4,
@@ -616,37 +665,111 @@ async def handle_new_conversation(request):
                                     }
                                     await gateway_ws.send_json(connect_req)
                                 
-                                # 握手成功，发送 /new
-                                elif ws_data.get('type') == 'res' and ws_data.get('id') == 'new_conv_connect':
+                                # 握手成功，调用 sessions.create（仅首次握手时）
+                                elif ws_data.get('type') == 'res' and ws_data.get('id') == ws_req_id and not connected:
                                     if ws_data.get('ok'):
                                         connected = True
-                                        msg_req = {
+                                        create_id = str(uuid.uuid4())
+                                        create_req = {
                                             'type': 'req',
-                                            'id': 'send_new',
-                                            'method': 'chat.send',
+                                            'id': create_id,
+                                            'method': 'sessions.create',
                                             'params': {
-                                                'sessionKey': session_key,
-                                                'message': '/new',
-                                                'idempotencyKey': str(uuid.uuid4())
+                                                'agentId': agent_id,
+                                                'parentSessionKey': main_session_key,
+                                                'emitCommandHooks': True
                                             }
                                         }
-                                        await gateway_ws.send_json(msg_req)
-                                        logger.info(f'📤 Sent /new command to {session_key}')
+                                        await gateway_ws.send_json(create_req)
+                                        logger.info(f'📤 Sent sessions.create for agent:{agent_id}')
+                                        ws_req_id = create_id
                                     else:
                                         logger.error(f'Handshake failed: {ws_data.get("error")}')
                                         break
                                 
-                                # /new 命令响应
-                                elif ws_data.get('type') == 'res' and ws_data.get('id') == 'send_new':
+                                # sessions.create 响应（payload 包裹）
+                                elif ws_data.get('type') == 'res' and ws_data.get('id') == ws_req_id:
                                     if ws_data.get('ok'):
-                                        logger.info(f'✅ /new command executed for {session_key}')
-                                        new_sent = True
+                                        payload = ws_data.get('payload', {})
+                                        new_session_key = payload.get('key', '')
+                                        new_session_id = payload.get('sessionId', '')
+                                        logger.info(f'✅ Session created: {new_session_key} (sessionId={new_session_id})')
+                                        session_created = True
+                                        break
                                     else:
-                                        logger.error(f'/new command failed: {ws_data.get("error")}')
-                                    break
+                                        error_msg = ws_data.get('error', {})
+                                        logger.warning(f'sessions.create failed: {error_msg}')
+                                        # unknown parent session → 查 sessions.list 找有效 parent 重试
+                                        if isinstance(error_msg, dict) and 'unknown parent' in error_msg.get('message', ''):
+                                            try:
+                                                list_id = str(uuid.uuid4())
+                                                await gateway_ws.send_json({
+                                                    'type': 'req',
+                                                    'id': list_id,
+                                                    'method': 'sessions.list',
+                                                    'params': {
+                                                        'agentId': agent_id,
+                                                        'includeUnknown': True,
+                                                        'configuredAgentsOnly': True,
+                                                        'includeGlobal': True,
+                                                        'limit': 50
+                                                    }
+                                                })
+                                                logger.info(f'📋 Querying sessions.list for agent:{agent_id}')
+                                                async for list_msg in gateway_ws:
+                                                    if list_msg.type != WSMsgType.TEXT:
+                                                        break
+                                                    list_data = json.loads(list_msg.data)
+                                                    if list_data.get('type') == 'res' and list_data.get('id') == list_id:
+                                                        sessions = list_data.get('payload', {}).get('sessions', [])
+                                                        # 优先找 agent:{agent_id}:main
+                                                        parent = None
+                                                        for s in sessions:
+                                                            if s.get('key') == main_session_key:
+                                                                parent = s
+                                                                break
+                                                        if not parent and sessions:
+                                                            # 回退：最近更新的 session
+                                                            parent = sessions[0]
+                                                        if parent:
+                                                            main_session_key = parent.get('key', main_session_key)
+                                                            logger.info(f'🔧 Retrying with parent: {main_session_key}')
+                                                            retry_id = str(uuid.uuid4())
+                                                            await gateway_ws.send_json({
+                                                                'type': 'req',
+                                                                'id': retry_id,
+                                                                'method': 'sessions.create',
+                                                                'params': {
+                                                                    'agentId': agent_id,
+                                                                    'parentSessionKey': main_session_key,
+                                                                    'emitCommandHooks': True
+                                                                }
+                                                            })
+                                                            ws_req_id = retry_id
+                                                            # 继续循环等重试响应
+                                                        else:
+                                                            # 完全没有 session，不传 parent
+                                                            logger.info(f'🔧 Retrying without parentSessionKey')
+                                                            retry_id = str(uuid.uuid4())
+                                                            await gateway_ws.send_json({
+                                                                'type': 'req',
+                                                                'id': retry_id,
+                                                                'method': 'sessions.create',
+                                                                'params': {
+                                                                    'agentId': agent_id,
+                                                                    'emitCommandHooks': True
+                                                                }
+                                                            })
+                                                            ws_req_id = retry_id
+                                                        break
+                                            except Exception as list_err:
+                                                logger.error(f'sessions.list fallback error: {list_err}')
+                                                break
+                                        else:
+                                            break
                             
                             elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                                logger.warning('WebSocket closed during /new')
+                                logger.warning('WebSocket closed during sessions.create')
                                 break
                     
                     finally:
@@ -656,29 +779,33 @@ async def handle_new_conversation(request):
                         except asyncio.CancelledError:
                             pass
             
-            if new_sent:
-                logger.info(f'🎉 Session reset via /new for: {user_id}, agent: {agent_id}')
+            if session_created:
+                # 为新 session 创建聊天文件（同名冲突则备份旧文件）
+                chat_store.new_conversation(user_id, new_session_key)
+                # 同步 sessionKey 到 webhook 用户配置
+                await sync_session_to_webhook(user_id, agent_id, new_session_key)
+                
+                logger.info(f'🎉 New session for user:{user_id}, agent:{agent_id} -> {new_session_key}')
                 return web.json_response({
                     'success': True,
-                    'cleared': True,
                     'sessionReset': True,
-                    'method': 'websocket_new_command',
+                    'method': 'sessions.create',
                     'userId': user_id,
                     'agentId': agent_id,
-                    'sessionKey': session_key,
+                    'newSessionKey': new_session_key,
                 })
             else:
-                logger.error('Failed to send /new command (timeout or error)')
+                logger.error('Failed to create session (timeout or error)')
                 return web.json_response({
                     'success': False,
-                    'error': 'Failed to reset session via /new command'
+                    'error': 'Failed to create new session'
                 }, status=500)
         
         except Exception as ws_error:
-            logger.error(f'WebSocket /new error: {ws_error}')
+            logger.error(f'WebSocket sessions.create error: {ws_error}')
             return web.json_response({
                 'success': False,
-                'error': f'Failed to send /new command: {str(ws_error)}'
+                'error': f'Failed to create session: {str(ws_error)}'
             }, status=500)
 
     except Exception as e:
@@ -711,16 +838,21 @@ async def handle_websocket(request):
     ws_client = web.WebSocketResponse()
     await ws_client.prepare(request)
 
-    session_key = request.query.get('sessionKey')
+    _session_key = request.query.get('sessionKey')
     user_id = request.query.get('userId')
     user_token = request.query.get('token')
     
-    if not session_key or not user_id:
+    if not _session_key or not user_id:
         await ws_client.send_json({'type': 'error', 'error': 'Missing parameters'})
         await ws_client.close()
         return ws_client
 
-    logger.info(f'WS connect: {session_key} (user: {user_id})')
+    # 可变容器，支持 switch_session 动态切换
+    session_key = [_session_key]
+    # 追踪 chat.abort 请求 ID，以便 Gateway 响应时通知前端
+    pending_abort_id = [None]
+    
+    logger.info(f'WS connect: {_session_key} (user: {user_id})')
     
     try:
         async with aiohttp.ClientSession() as http_session:
@@ -733,7 +865,7 @@ async def handle_websocket(request):
             ) as gateway_ws:
                 
                 # 完成握手
-                connect_id = f'conn_{session_key}'
+                connect_id = f'conn_{session_key[0]}'
                 connected = False
                 
                 # 握手逻辑
@@ -783,34 +915,64 @@ async def handle_websocket(request):
                             if msg.type == WSMsgType.TEXT:
                                 data = json.loads(msg.data)
                                 
-                                # 特殊处理：ping/pong 心跳
+                                # 心跳
                                 if data.get('type') == 'ping':
                                     await ws_client.send_json({'type': 'pong'})
                                     continue
                                 
-                                # 特殊处理：历史记录请求
+                                # 历史记录请求
                                 if data.get('type') == 'history':
-                                    messages = chat_store.load(user_id)
+                                    messages = chat_store.load(user_id, session_key[0])
                                     await ws_client.send_json({
                                         'type': 'history',
                                         'messages': messages
                                     })
                                     continue
                                 
+                                # 切换 session（新建对话后前端发来新 key）
+                                if data.get('type') == 'switch_session':
+                                    new_key = data.get('sessionKey', '').strip()
+                                    if new_key:
+                                        old_key = session_key[0]
+                                        session_key[0] = new_key
+                                        # 同步 sessionKey 到 webhook
+                                        await sync_session_to_webhook(user_id, '', new_key)
+                                        logger.info(f'🔄 Session switched: {old_key} -> {new_key}')
+                                        await ws_client.send_json({
+                                            'type': 'session_switched',
+                                            'sessionKey': new_key
+                                        })
+                                    continue
+                                
+                                # 停止输出（chat.abort）
+                                if data.get('method') == 'chat.abort':
+                                    abort_id = next_id()
+                                    pending_abort_id[0] = abort_id
+                                    abort_req = {
+                                        'type': 'req',
+                                        'id': abort_id,
+                                        'method': 'chat.abort',
+                                        'params': {
+                                            'sessionKey': session_key[0]
+                                        }
+                                    }
+                                    await gateway_ws.send_json(abort_req)
+                                    logger.info(f'🛑 Sent chat.abort for {session_key[0]} (id={abort_id})')
+                                    continue
+                                
                                 # 🔑 处理用户消息
                                 if data.get('type') == 'message':
-                                    message_text = data.get('text', '').strip()  # 前端用 'text' 字段
+                                    message_text = data.get('text', '').strip()
                                     if message_text:
                                         logger.info(f'💬 User message from {user_id}: {len(message_text)} chars')
-                                        chat_store.append(user_id, 'user', message_text)
+                                        chat_store.append(user_id, session_key[0], 'user', message_text)
                                         
-                                        # 使用正确的 RPC 格式发送到 Gateway
                                         rpc_msg = {
                                             'type': 'req',
                                             'id': next_id(),
                                             'method': 'chat.send',
                                             'params': {
-                                                'sessionKey': session_key,
+                                                'sessionKey': session_key[0],
                                                 'message': message_text,
                                                 'idempotencyKey': str(uuid.uuid4()),
                                             }
@@ -818,7 +980,7 @@ async def handle_websocket(request):
                                         await gateway_ws.send_json(rpc_msg)
                                     continue
                                 
-                                # 其他消息类型直接转发
+                                # 其他消息直接转发
                                 await gateway_ws.send_json(data)
                                 
                             elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
@@ -857,13 +1019,21 @@ async def handle_websocket(request):
                                                 'role': 'system',
                                                 'content': f'⚠️ 错误: {error_msg}',
                                             })
+                                        # chat.abort 响应：通知前端已收到并处理
+                                        if data.get('id') == pending_abort_id[0] and data.get('ok'):
+                                            pending_abort_id[0] = None
+                                            logger.info('✅ chat.abort acknowledged by Gateway')
+                                            await ws_client.send_json({
+                                                'type': 'aborted',
+                                                'sessionKey': session_key[0],
+                                            })
                                         continue
                                     
                                     # Event 消息
                                     if msg_type == 'event':
                                         msg_session_key = payload.get('sessionKey', '')
                                         
-                                        if session_key != msg_session_key:  # 忽略 sessionKey
+                                        if session_key[0] != msg_session_key:
                                             continue
                                         # 不过滤 sessionKey，接收所有消息
                                         
@@ -1037,7 +1207,6 @@ def create_app():
         logger.info('🧹 Cleaning up...')
         if global_listener:
             await global_listener.stop()
-        await cleanup_auth_session()
         logger.info('✅ Cleanup complete')
     
     app.on_startup.append(on_startup)

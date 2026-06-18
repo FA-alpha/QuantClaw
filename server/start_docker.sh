@@ -41,28 +41,55 @@ if [ -n "$MISSING_TOOLS" ] || [ -n "$MISSING_DEPS" ]; then
     echo "⚠️  Missing dependencies: $MISSING_TOOLS $MISSING_DEPS"
     echo "   Installing..."
     
-    if command -v apt-get &> /dev/null; then
-        # 系统工具
-        APT_TOOLS="$MISSING_TOOLS"
-        
-        # Python 包 → apt 包名（typer 通过 pip 安装）
-        APT_DEPS=$(echo "$MISSING_DEPS" | sed 's/\baiohttp\b/python3-aiohttp/g; s/\brequests\b/python3-requests/g; s/\bnumpy\b/python3-numpy/g; s/\btyper\b//g')
-        
-        # 合并安装
-        ALL_APT="$APT_TOOLS $APT_DEPS"
+    # 分类：有 apt 包的 vs 只能用 pip 的
+    # python3-aiohttp / python3-requests / python3-numpy 有 apt 包
+    # typer 没有 apt 包，必须走 pip
+    APT_DEPS=""
+    PIP_DEPS=""
+    for dep in $MISSING_DEPS; do
+        case "$dep" in
+            aiohttp)  APT_DEPS="$APT_DEPS python3-aiohttp" ;;
+            requests) APT_DEPS="$APT_DEPS python3-requests" ;;
+            numpy)    APT_DEPS="$APT_DEPS python3-numpy" ;;
+            *)        PIP_DEPS="$PIP_DEPS $dep" ;;
+        esac
+    done
+
+    # 安装系统工具 + apt Python 包
+    ALL_APT="$MISSING_TOOLS $APT_DEPS"
+    if command -v apt-get &> /dev/null && [ -n "$ALL_APT" ]; then
         echo "   Using apt-get (requires root)..."
         apt-get update -qq && apt-get install -y -qq $ALL_APT && echo "   ✓ Installed via apt" || {
-            echo "   ⚠️  apt-get failed, trying pip for Python packages..."
-            [ -n "$MISSING_DEPS" ] && python3 -m pip install --break-system-packages $MISSING_DEPS && echo "   ✓ Python packages installed via pip" || {
-                echo "❌ Failed to install dependencies"
-                exit 1
-            }
+            echo "   ⚠️  apt-get failed, moving remaining to pip..."
+            # apt 失败的包也加到 pip 安装列表
+            for dep in $MISSING_DEPS; do
+                PIP_DEPS="$PIP_DEPS $dep"
+            done
         }
-    else
-        # 尝试使用 pip 安装 Python 包
-        echo "   Using pip..."
-        python3 -m pip install --break-system-packages $MISSING_DEPS || {
-            echo "❌ Failed to install dependencies"
+    fi
+
+    # 安装 pip-only 的包（typer 等没有 apt 包的）
+    if [ -n "$PIP_DEPS" ]; then
+        echo "   Using pip for: $PIP_DEPS"
+
+        # 确保 pip 可用（Docker 精简镜像里可能没有）
+        if ! python3 -m pip --version &>/dev/null; then
+            if python3 -m ensurepip --upgrade &>/dev/null; then
+                echo "   ✓ boostrapped pip via ensurepip"
+            elif command -v apt-get &> /dev/null; then
+                echo "   Installing python3-pip via apt..."
+                apt-get update -qq && apt-get install -y -qq python3-pip || {
+                    echo "❌ Cannot install python3-pip"
+                    exit 1
+                }
+            else
+                echo "❌ No pip available and no apt to install it"
+                exit 1
+            fi
+        fi
+
+        python3 -m pip install --break-system-packages $PIP_DEPS && echo "   ✓ Installed via pip" || {
+            echo "❌ Failed to install pip packages: $PIP_DEPS"
             exit 1
         }
     fi
