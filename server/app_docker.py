@@ -53,6 +53,8 @@ logger.info(f'📁 Using data directory: {DATA_DIR}')
 
 # ============ 全局消息监听器 ============
 
+USER_REGISTRY_FILE = DATA_DIR / 'user_registry.json'
+
 class GlobalMessageListener:
     """
     全局消息监听器（重构版）
@@ -77,13 +79,31 @@ class GlobalMessageListener:
         
         # 消息缓存：{session_key: current_response}
         self.response_cache = {}
-        # 已注册用户：{agent_id: user_id}（handle_auth 时注册）
-        self._agent_user = {}
+        # 已注册用户：{agent_id: user_id}（handle_auth 时注册，磁盘持久化）
+        self._agent_user = self._load_registry()
         
         # 连接监控
         self.connection_count = 0  # 总连接次数
         self.reconnect_count = 0    # 重连次数
         self.last_connect_time = None
+    
+    def _load_registry(self) -> dict:
+        """从磁盘加载用户注册表"""
+        if USER_REGISTRY_FILE.exists():
+            try:
+                data = json.loads(USER_REGISTRY_FILE.read_text())
+                logger.info(f'📋 Loaded user registry: {len(data)} user(s)')
+                return data
+            except Exception as e:
+                logger.warning(f'Failed to load user registry: {e}, starting fresh')
+        return {}
+    
+    def _save_registry(self):
+        """保存用户注册表到磁盘"""
+        try:
+            USER_REGISTRY_FILE.write_text(json.dumps(self._agent_user, ensure_ascii=False))
+        except Exception as e:
+            logger.error(f'Failed to save user registry: {e}')
     
     async def start(self):
         """启动全局监听器"""
@@ -107,8 +127,9 @@ class GlobalMessageListener:
         logger.info('🌍 GlobalMessageListener stopped')
     
     def register_user(self, agent_id: str, user_id: str):
-        """注册用户：auth 时调用，agent_id -> user_id 映射"""
+        """注册用户：auth 时调用，agent_id -> user_id 映射，同步写磁盘"""
         self._agent_user[agent_id] = user_id
+        self._save_registry()
         logger.info(f'📋 Registered user: {agent_id} -> {user_id}')
     
     async def _listen_loop(self):
@@ -506,6 +527,13 @@ async def handle_auth(request):
         if not token:
             return web.json_response({'success': False, 'error': 'Missing token'}, status=400)
 
+        # 检查 GlobalListener 是否就绪（没启动好之前不走鉴权）
+        if not global_listener or not global_listener.running:
+            logger.warning('GlobalListener not ready, rejecting auth')
+            return web.json_response(
+                {'success': False, 'error': '服务未就绪，请稍后重试'}, status=503
+            )
+
         # 调用认证服务
         auth_result = await call_auth_service(token)
 
@@ -514,11 +542,12 @@ async def handle_auth(request):
 
         agent_id = auth_result.get('agentId')
         user_id = auth_result.get('userId')
+
         # 从 webhook 拿 sessionKey，不再本地拼接
         session_key = auth_result.get('sessionKey') or f'agent:{agent_id}:{session_id}'
 
         # 注册用户到 GlobalListener（agent_id -> user_id 映射）
-        if global_listener and agent_id and user_id:
+        if agent_id and user_id:
             global_listener.register_user(agent_id, user_id)
 
         return web.json_response({
@@ -945,7 +974,7 @@ async def handle_websocket(request):
                                     continue
                                 
                                 # 停止输出（chat.abort）
-                                if data.get('method') == 'chat.abort':
+                                if data.get('type') == 'chat.abort':
                                     abort_id = next_id()
                                     pending_abort_id[0] = abort_id
                                     abort_req = {
@@ -1013,11 +1042,6 @@ async def handle_websocket(request):
                                             await ws_client.send_json({
                                                 'type': 'error',
                                                 'error': error_msg,
-                                            })
-                                            await ws_client.send_json({
-                                                'type': 'message',
-                                                'role': 'system',
-                                                'content': f'⚠️ 错误: {error_msg}',
                                             })
                                         # chat.abort 响应：通知前端已收到并处理
                                         if data.get('id') == pending_abort_id[0] and data.get('ok'):
