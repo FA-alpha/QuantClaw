@@ -1707,6 +1707,21 @@ class SmartGroupRecommender:
         all_combinations = []
         n_strategies = len(all_selected)
         
+        # 策略太多时按 score 截断，避免 optimize_portfolio 全量 combinations OOM
+        if n_strategies > 30:
+            max_size = 7 if n_strategies >= 7 else (5 if n_strategies >= 5 else 3)
+            keep = max(30, max_size * 5)  # 至少保留 30 条
+            all_selected_truncated = sorted(
+                all_selected,
+                key=lambda s: float(s.get('score', 0) or 0),
+                reverse=True
+            )[:keep]
+            self.log(f"   ⚠️  策略过多({n_strategies})，按 score 截断到 {keep} 条")
+        else:
+            all_selected_truncated = all_selected
+        
+        n_strategies = len(all_selected_truncated)
+        
         # 获取最少策略数量要求
         min_strategies = preferences.get('min_strategies', 3)
         
@@ -1735,7 +1750,7 @@ class SmartGroupRecommender:
         for size in sizes:
             if size <= n_strategies:
                 combos = recommend_combinations(
-                    strategies=all_selected,
+                    strategies=all_selected_truncated,
                     group_size=size,
                     top_n=per_size,
                     preferences=preferences if preferences else None
