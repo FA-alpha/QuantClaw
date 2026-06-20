@@ -470,7 +470,7 @@ export default function register(api: any) {
     templatePath: cfg.templatePath || '~/work/QuantClaw/templates/agent-workspace',
     tokenValidation: {
       enabled: true,
-      apiUrl: 'https://www.fourieralpha.com/Mobile/Account/usage_info',
+      apiUrl: process.env.QUANTCLAW_TOKEN_API || 'http://52.53.212.195:7002/Mobile/Account/usage_info',
       apiMethod: 'POST',
       showType: 2,
       timeoutMs: 5000,

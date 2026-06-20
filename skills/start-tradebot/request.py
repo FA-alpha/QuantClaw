@@ -105,7 +105,7 @@ class TradeRequest:
         # 尝试获取用户令牌，如果失败会在后续请求中抛出错误
 
         self.token = get_user_token_by_agent_id(agent_id)
-        self.base_url = "https://www.fourieralpha.com/Mobile"
+        self.base_url = os.getenv("QUANTCLAW_API_BASE", "http://52.53.212.195:7002/Mobile")
         self.logger = logging.getLogger(__name__)
 
     def _validate_params(self, params: Dict[str, Any]) -> None:

@@ -10,12 +10,13 @@ API 通用请求模块 — fourieralpha 平台 HTTP 请求封装
 
 所有 skill 脚本应该通过此模块发请求，不再各自裸调 requests。
 """
+import os
 import requests
 from typing import Optional
 
 from qc_log import log_http_request, log_error
 
-BASE_URL = "https://www.fourieralpha.com/Mobile"
+BASE_URL = os.getenv("QUANTCLAW_API_BASE", "http://52.53.212.195:7002/Mobile")
 
 
 def api_post(
