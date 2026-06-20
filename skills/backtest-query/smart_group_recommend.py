@@ -1538,8 +1538,8 @@ class SmartGroupRecommender:
         2. 每个币种取 coin_strategies_count 个策略（默认 1）
         3. 每个币种调用 recommend_combinations 生成 top-N 子组合
         4. 跨币种拼装：
-           - 组合总数 ≤ max_combinations*10 → 笛卡尔积
-           - 超过 → zip（按 rank 对齐）
+           - 有净值曲线 → total_cross≤5000 笛卡尔积，否则 zip
+           - 无净值曲线 → total_cross≤100000 笛卡尔积，否则 zip
         5. score_portfolio 打分 → 排序 → 取 top max_combinations
         """
         _mem_checkpoint(f'coin_diversification start, {len(all_selected)} strategies')
@@ -1586,21 +1586,19 @@ class SmartGroupRecommender:
                 strategies = strategies[:max(20, need_count * 3)]
                 n = len(strategies)
 
-            # 估算组合数，决定子组合数量
+            # 每个币种固定生成 20 个子组合（给跨币种拼装留足选择空间）
             combo_size = need_count
+            top_n = 20
+            if combo_size == 0 or len(strategies) < combo_size:
+                top_n = 0
+
             from math import comb
             theoretical = comb(n, combo_size) if n >= combo_size else 0
-            if theoretical > 5000:
-                top_n = max_combinations * 3
-            elif theoretical > 1000:
-                top_n = max_combinations * 5
-            else:
-                top_n = max(theoretical, max_combinations * 3)
 
             sub_combos = recommend_combinations(
                 strategies=strategies,
                 group_size=combo_size,
-                top_n=min(top_n, max_combinations * 10),
+                top_n=top_n,
                 preferences=preferences if preferences else None
             )
             coin_subcombos[coin] = sub_combos
@@ -1617,9 +1615,13 @@ class SmartGroupRecommender:
         # 估算拼装总量
         import math
         total_cross = math.prod(len(sc) for sc in subcombo_lists)
-        self.log(f"   跨币种组合总数: {total_cross}")
 
-        if total_cross > max_combinations * 10:
+        # 笛卡尔阈值：有净值曲线→5000（风险/相关性分析贵），无→100000（纯字段评分便宜）
+        cross_threshold = 5000 if has_nv else 100000
+        max_merged = max_combinations * 30 if has_nv else max_combinations * 100
+        self.log(f"   跨币种组合总数: {total_cross} (阈值: {cross_threshold}, 净值: {has_nv})")
+
+        if total_cross > cross_threshold:
             # 量大 → zip 模式（按 rank 对齐）
             self.log(f"   使用 zip 模式（rank 对齐）")
             max_rank = min(len(sc) for sc in subcombo_lists)  # 最短的作为上限
@@ -1652,7 +1654,7 @@ class SmartGroupRecommender:
                             merged_strategies.append(match)
                 if merged_strategies:
                     merged_combos.append(merged_strategies)
-                if len(merged_combos) >= max_combinations * 10:
+                if len(merged_combos) >= max_merged:
                     break
 
         # Step 5: 打分排序
