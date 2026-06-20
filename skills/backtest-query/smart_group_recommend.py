@@ -25,11 +25,10 @@ from qc_log import log_error, ErrorType
 # ==================== JSONL 磁盘缓存 ====================
 
 # 策略骨架字段：下游分组/排序/筛选/输出需要的轻量字段
-# 对照 query.py format_result(json) + smart_group_recommend 实际读取的字段
+# 对照 query.py format_result(json) + smart_group_recommend 实际从策略 dict 读取的字段
 _SKELETON_FIELDS = frozenset([
     'back_id', 'id', 'name', 'coin', 'direction', 'strategy_type',
     'strategy_token', 'year_rate', 'sharp_rate', 'max_loss', 'win_rate',
-    'score', 'total_score', 'recommend_score', 'rating',
     'version', 'leverage',
 ])
 
