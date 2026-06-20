@@ -10,6 +10,9 @@ import json
 import argparse
 import itertools
 import time
+import atexit
+import tempfile
+import shutil
 from typing import List, Dict, Optional, Tuple, Set
 from datetime import datetime
 from threading import Lock
@@ -18,6 +21,60 @@ from query import query_backtest, get_backtest_detail, get_version_info
 from analysis import recommend_combinations
 
 from qc_log import log_error, ErrorType
+
+# ==================== JSONL 磁盘缓存 ====================
+
+# 策略骨架字段：下游分组/排序/筛选/输出需要的轻量字段
+_SKELETON_FIELDS = frozenset([
+    'back_id', 'id', 'name', 'coin', 'direction', 'strategy_type',
+    'strategy_token', 'year_rate', 'sharp_rate', 'max_loss',
+    'score', 'total_score', 'recommend_score', 'rating',
+    'version', 'search_pct', 'ai_time_id', 'leverage',
+    'search_amt_type', 'search_status',
+])
+
+# 详情缓存目录（会话级，进程退出自动清理）
+_DETAIL_CACHE_DIR = None
+
+
+def _get_cache_dir() -> str:
+    """获取当前会话的 JSONL 缓存目录（惰性创建）"""
+    global _DETAIL_CACHE_DIR
+    if _DETAIL_CACHE_DIR is None:
+        _DETAIL_CACHE_DIR = tempfile.mkdtemp(prefix='backtest_cache_')
+    return _DETAIL_CACHE_DIR
+
+
+def _slim_strategy(strategy: Dict) -> Dict:
+    """提取策略的骨架字段，丢弃大数组"""
+    return {k: strategy.get(k) for k in _SKELETON_FIELDS if k in strategy}
+
+
+def _load_strategy_by_back_id(back_id, cache_file: str) -> Optional[Dict]:
+    """
+    从 JSONL 缓存中按 back_id 查找完整策略数据。
+    用于下游需要完整字段时按需回读。
+    """
+    if not os.path.exists(cache_file):
+        return None
+    with open(cache_file, 'r') as f:
+        for line in f:
+            s = json.loads(line)
+            if s.get('back_id') == back_id:
+                return s
+    return None
+
+
+def _cleanup_cache():
+    """清理磁盘缓存"""
+    global _DETAIL_CACHE_DIR
+    if _DETAIL_CACHE_DIR and os.path.isdir(_DETAIL_CACHE_DIR):
+        shutil.rmtree(_DETAIL_CACHE_DIR, ignore_errors=True)
+        _DETAIL_CACHE_DIR = None
+
+
+# 进程退出时自动清理
+atexit.register(_cleanup_cache)
 
 
 # ==================== 全局日志控制 ====================
@@ -500,52 +557,6 @@ def build_detail_criteria(args) -> Optional[Dict]:
 
 # ==================== 批量查询 ====================
 
-def deduplicate_and_add(strategies: List[Dict], all_strategies: List[Dict], seen_ids: Set[str], seen_strategies: Dict[str, Dict] = None) -> int:
-    """
-    去重并添加策略（改进：不覆盖已有的 direction）
-    
-    Args:
-        strategies: 新策略列表
-        all_strategies: 总策略列表
-        seen_ids: 已见 back_id 集合
-        seen_strategies: 已见策略字典 {back_id: strategy}
-    
-    Returns:
-        新增数量
-    """
-    new_count = 0
-    
-    if seen_strategies is None:
-        # 兼容旧调用方式
-        for strategy in strategies:
-            back_id = strategy.get('back_id')
-            if back_id and back_id not in seen_ids:
-                seen_ids.add(back_id)
-                all_strategies.append(strategy)
-                new_count += 1
-        return new_count
-    
-    # 新逻辑：检查 direction 是否已存在
-    for strategy in strategies:
-        back_id = strategy.get('back_id')
-        if not back_id:
-            continue
-        
-        if back_id not in seen_ids:
-            # 全新策略，直接添加
-            seen_ids.add(back_id)
-            all_strategies.append(strategy)
-            seen_strategies[back_id] = strategy
-            new_count += 1
-        else:
-            # 已存在，保留第一次的 direction（不覆盖）
-            existing = seen_strategies.get(back_id)
-            if existing and not existing.get('direction') and strategy.get('direction'):
-                existing['direction'] = strategy.get('direction')
-    
-    return new_count
-
-
 class ParallelQueryExecutor:
     """并行查询执行器（专为 Agent 优化）"""
     
@@ -617,6 +628,10 @@ class ParallelQueryExecutor:
         seen_strategies = {}  # {back_id: strategy} 用于更新已存在的策略
         failed_count = 0
         failed_details = []  # 记录失败详情
+        
+        # JSONL 磁盘缓存：完整数据落盘，内存只保留骨架
+        _jsonl_path = os.path.join(_get_cache_dir(), 'strategies.jsonl')
+        _jsonl_fp = open(_jsonl_path, 'w')
         
         if self.verbose and self.log_level != "quiet":
             print(f"\n🚀 开始并行查询 {total} 个组合...", flush=True)
@@ -694,7 +709,22 @@ class ParallelQueryExecutor:
                             if not s.get('coin') and coin:
                                 s['coin'] = coin
                         
-                        new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids, seen_strategies)
+                        # ✅ 去重后：完整数据落盘 JSONL，内存只保留骨架
+                        for s in strategies:
+                            back_id = s.get('back_id')
+                            if not back_id:
+                                continue
+                            if back_id not in seen_back_ids:
+                                seen_back_ids.add(back_id)
+                                _jsonl_fp.write(json.dumps(s, ensure_ascii=False) + '\n')
+                                slim_s = _slim_strategy(s)
+                                all_strategies.append(slim_s)
+                                seen_strategies[back_id] = slim_s
+                            else:
+                                # 已存在：只更新 direction（不覆盖已有数据）
+                                existing = seen_strategies.get(back_id)
+                                if existing and not existing.get('direction') and s.get('direction'):
+                                    existing['direction'] = s.get('direction')
                 
                 except Exception as e:
                     failed_count += 1
@@ -708,11 +738,15 @@ class ParallelQueryExecutor:
                     progress = completed / total * 100
                     print(f"   进度: {progress:.0f}% ({completed}/{total})", flush=True)
         
+        # 关闭 JSONL 缓存文件
+        _jsonl_fp.close()
+        
         if self.verbose and self.log_level != "quiet":
             print(f"\n✅ 查询完成:", flush=True)
             print(f"   成功: {total - failed_count}/{total}", flush=True)
             print(f"   失败: {failed_count}", flush=True)
             print(f"   策略数: {len(all_strategies)} (去重后)", flush=True)
+            print(f"   缓存: {_jsonl_path}", flush=True)
             
             # 失败率过高时给出提示
             if failed_count > total * 0.3:
@@ -938,12 +972,11 @@ class SmartGroupRecommender:
                 
                 if "error" not in detail:
                     # 提取关键详情指标
+                    # 🚫 不存 time_line_list / coin_fee_list (全项目 0 次读取，单纯占内存)
                     info = detail.get('info', {})
                     strategy['_detail'] = {
                         'total_stat': info.get('total_stat', {}),
                         'recent_stat': info.get('recent_stat', {}),
-                        'coin_fee_list': info.get('coin_fee_list', []),
-                        'time_line_list': info.get('time_line_list', [])
                     }
                     enriched.append(strategy)
                 else:
