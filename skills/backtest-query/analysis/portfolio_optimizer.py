@@ -214,17 +214,23 @@ def _generate_combinations_with_coin_coverage(
 def optimize_portfolio(
     strategies: List[Dict],
     group_size: int = 3,
-    max_combinations: int = 1000,
+    max_combinations: int = 100000,
     preferences: Dict = None
 ) -> List[Dict]:
     """
     寻找最优组合。自动检测是否有净值曲线数据。
+    无净值曲线 → 候选池上限 100000（纯字段评分便宜）
+    有净值曲线 → 候选池上限 5000（相关性/风险分析较慢）
     """
     n = len(strategies)
     if n < group_size:
         raise ValueError(f"策略数量({n})少于组合大小({group_size})")
     
     has_net_value = _has_net_value_data(strategies)
+    
+    # 有净值曲线时评分开销大，自动限制候选池
+    if has_net_value:
+        max_combinations = min(max_combinations, 5000)
     
     required_coins = None
     if preferences and 'constraints' in preferences:
