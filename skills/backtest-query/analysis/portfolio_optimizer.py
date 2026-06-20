@@ -235,10 +235,17 @@ def optimize_portfolio(
             strategies, group_size, required_coins, max_combinations
         )
     else:
-        all_combinations = list(itertools.combinations(range(n), group_size))
-        if len(all_combinations) > max_combinations:
-            import random
-            all_combinations = random.sample(all_combinations, max_combinations)
+        # 流式随机采样，不 materialize 全量组合 (C(117,5) = 1.6亿 → OOM)
+        import random
+        all_combinations = set()
+        max_attempts = max_combinations * 50
+        attempts = 0
+        while len(all_combinations) < max_combinations and attempts < max_attempts:
+            attempts += 1
+            combo = tuple(sorted(random.sample(range(n), group_size)))
+            if len(combo) == group_size:
+                all_combinations.add(combo)
+        all_combinations = list(all_combinations)
     
     results = []
     for combo in all_combinations:
