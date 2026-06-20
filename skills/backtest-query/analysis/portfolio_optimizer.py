@@ -40,6 +40,11 @@ def score_portfolio(
         'max_drawdown': 20.0,
         'min_sharpe': 1.5,
         'risk_weight': 0.4,  # 40%权重给风险，60%给收益
+        # 二期权重偏好
+        'min_alpha': 0.0,
+        'min_odds': 0.5,
+        'max_recovery_days': 90,
+        'max_dd_10pct_count': 10,
     }
     if preferences:
         prefs.update(preferences)
@@ -49,35 +54,72 @@ def score_portfolio(
     risk = calculate_portfolio_risk(strategies, selected_indices, weights)
     overlap = analyze_drawdown_overlap(strategies, selected_indices)
     
+    # 组合级别的详情指标聚合
+    selected_strategies = [strategies[i] for i in selected_indices]
+    detail_keys = ['alpha', 'beta', 'odds', 'max_recovery_time', 'drawdown_over_10pct_count']
+    combo_detail = {}
+    for k in detail_keys:
+        vals = [s.get('_metrics', {}).get(k, 0) for s in selected_strategies]
+        combo_detail[k] = sum(vals) / len(vals) if vals else 0
+    
     # 评分组件
     score = 0.0
     
-    # 1. 夏普率得分（0-40分）
+    # 1. 夏普率得分（0-35分）
     sharpe = risk.get('sharpe_ratio', 0)
-    sharpe_score = min(sharpe / prefs['min_sharpe'] * 40, 40)
+    sharpe_score = min(sharpe / prefs['min_sharpe'] * 35, 35)
     score += sharpe_score
     
-    # 2. 回撤得分（0-30分）
+    # 2. 回撤得分（0-25分）
     drawdown = risk.get('max_drawdown', 100)
     if drawdown <= prefs['max_drawdown']:
-        drawdown_score = 30 * (1 - drawdown / prefs['max_drawdown'])
+        drawdown_score = 25 * (1 - drawdown / prefs['max_drawdown'])
     else:
         drawdown_score = 0
     score += drawdown_score
     
-    # 3. 相关性得分（0-20分）
+    # 3. 相关性得分（0-15分）
     if avg_corr <= prefs['max_correlation']:
-        corr_score = 20 * (1 - avg_corr / prefs['max_correlation'])
+        corr_score = 15 * (1 - avg_corr / prefs['max_correlation'])
     else:
         corr_score = 0
     score += corr_score
     
-    # 4. 回撤错位得分（0-10分）
+    # 4. 回撤错位得分（0-5分）
     overlap_ratio = overlap.get('overlap_ratio', 100)
     if overlap_ratio < 50:
-        overlap_score = 10 * (1 - overlap_ratio / 50)
+        overlap_score = 5 * (1 - overlap_ratio / 50)
     else:
         overlap_score = 0
+    score += overlap_score
+    
+    # === 二期权重：详情指标 ===
+    
+    # 5. Alpha 超额收益（0-10分）
+    alpha = combo_detail['alpha']
+    if alpha >= prefs['min_alpha']:
+        alpha_score = min(alpha / max(prefs['min_alpha'], 0.01) * 5, 10)
+    else:
+        alpha_score = 0
+    score += alpha_score
+    
+    # 6. 赔率 Odds（0-5分）
+    odds_val = combo_detail['odds']
+    if odds_val >= prefs['min_odds']:
+        odds_score = min(odds_val / prefs['min_odds'] * 3, 5)
+    else:
+        odds_score = 0
+    score += odds_score
+    
+    # 7. 鲁棒性：修复时间 + 大回撤次数（0-5分）
+    recovery_days = combo_detail['max_recovery_time']
+    dd_10pct = combo_detail['drawdown_over_10pct_count']
+    recovery_score = 0
+    if recovery_days <= prefs['max_recovery_days']:
+        recovery_score += 2.5 * (1 - recovery_days / prefs['max_recovery_days'])
+    if dd_10pct <= prefs['max_dd_10pct_count']:
+        recovery_score += 2.5 * (1 - dd_10pct / prefs['max_dd_10pct_count'])
+    score += recovery_score
     score += overlap_score
     
     return round(score, 2)

@@ -1015,6 +1015,13 @@ class SmartGroupRecommender:
             'total_win_rate': total_stat.get('win_rate', 0),
             'total_trade_count': total_trade_count,
             'total_max_drawdown': total_stat.get('max_loss', 100),
+            
+            # 二期权重指标
+            'alpha': total_stat.get('alpha', 0),
+            'beta': total_stat.get('beta', 1),
+            'odds': total_stat.get('odds', 0),
+            'max_recovery_time': total_stat.get('max_recovery_time', 0),
+            'drawdown_over_10pct_count': total_stat.get('drawdown_over_10pct_count', 0),
         }
         
         return metrics
