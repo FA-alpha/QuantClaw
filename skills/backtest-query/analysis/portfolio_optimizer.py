@@ -191,7 +191,13 @@ def _generate_combinations_with_coin_coverage(
     if not available_coins:
         return []
     if len(available_coins) > group_size:
-        return list(itertools.combinations(range(len(strategies)), group_size))[:max_combinations]
+        # 币种太多无法全覆盖，流式随机采样代替全量 combinations
+        import random
+        all_combos = set()
+        while len(all_combos) < max_combinations:
+            combo = tuple(sorted(random.sample(range(len(strategies)), group_size)))
+            all_combos.add(combo)
+        return list(all_combos)
     
     valid_combinations = set()
     attempts = 0
@@ -241,10 +247,18 @@ def optimize_portfolio(
             strategies, group_size, required_coins, max_combinations
         )
     else:
-        all_combinations = list(itertools.combinations(range(n), group_size))
-        if len(all_combinations) > max_combinations:
-            import random
-            all_combinations = random.sample(all_combinations, max_combinations)
+        # 流式随机采样，不物化全量组合避免 OOM
+        import math
+        import random
+        total = math.comb(n, group_size)
+        if total > max_combinations:
+            all_combinations = set()
+            while len(all_combinations) < max_combinations:
+                combo = tuple(sorted(random.sample(range(n), group_size)))
+                all_combinations.add(combo)
+            all_combinations = list(all_combinations)
+        else:
+            all_combinations = list(itertools.combinations(range(n), group_size))
     
     results = []
     for combo in all_combinations:
