@@ -1538,8 +1538,8 @@ class SmartGroupRecommender:
         2. 每个币种取 coin_strategies_count 个策略（默认 1）
         3. 每个币种调用 recommend_combinations 生成 top-N 子组合
         4. 跨币种拼装：
-           - 有净值曲线 → total_cross≤5000 笛卡尔积，否则 zip
-           - 无净值曲线 → total_cross≤100000 笛卡尔积，否则 zip
+           - 有净值曲线 → total_cross≤5000 笛卡尔积，否则 zip（rank对齐，不足循环复用）
+           - 无净值曲线 → total_cross≤100000 笛卡尔积，否则 zip（rank对齐，不足循环复用）
         5. score_portfolio 打分 → 排序 → 取 top max_combinations
         """
         _mem_checkpoint(f'coin_diversification start, {len(all_selected)} strategies')
@@ -1623,17 +1623,16 @@ class SmartGroupRecommender:
         self.log(f"   跨币种组合总数: {total_cross} (阈值: {cross_threshold}, 净值: {has_nv})")
 
         if total_cross > cross_threshold:
-            # 量大 → zip 模式（按 rank 对齐）
+            # 量大 → zip 模式（按 rank 对齐，不足的币种子组合循环复用）
             self.log(f"   使用 zip 模式（rank 对齐）")
-            max_rank = min(len(sc) for sc in subcombo_lists)  # 最短的作为上限
+            max_rank = max_combinations
             merged_combos = []
             for rank in range(max_rank):
                 merged_strategies = []
-                # 按 rank 取每个币种的子组合
                 for ci, coin in enumerate(coin_order):
-                    subc = subcombo_lists[ci][rank]
+                    subcombo_list = subcombo_lists[ci]
+                    subc = subcombo_list[rank % len(subcombo_list)]  # 循环复用
                     for s in subc['strategies']:
-                        # 通过 strategy_token 从 all_selected 定位完整策略
                         token = s.get('strategy_token')
                         match = next((x for x in all_selected if x.get('strategy_token') == token), None)
                         if match:
