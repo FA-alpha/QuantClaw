@@ -1108,13 +1108,11 @@ class SmartGroupRecommender:
             elif method == 'drawdown':
                 sorted_list = sorted(strategies, key=lambda s: s.get('max_loss', 100), reverse=False)
             elif method == 'win_rate':
-                sorted_list = sorted(strategies, key=lambda s: s.get('_metrics', {}).get('total_win_rate', 0), reverse=True)
-            elif method == 'stability':
-                sorted_list = sorted(strategies, key=lambda s: s.get('_metrics', {}).get('recent_stability', 0), reverse=True)
+                sorted_list = sorted(strategies, key=lambda s: s.get('win_rate', 0), reverse=True)
             elif method == 'score':
                 sorted_list = sorted(
                     strategies,
-                    key=lambda s: (s.get('score', 0) or s.get('total_score', 0) or s.get('recommend_score', 0) or s.get('rating', 0)),
+                    key=lambda s: s.get('score', 0),
                     reverse=True
                 )
             elif method.startswith('custom:'):
