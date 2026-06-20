@@ -1534,7 +1534,7 @@ class SmartGroupRecommender:
         币种分散模式：每个币种独立生成子组合，再跨币种拼装成大组合
         
         流程：
-        1. 按币种分组，组内按 sharp_rate 预排序
+        1. 按币种分组，组内按 score 预排序
         2. 每个币种取 coin_strategies_count 个策略（默认 1）
         3. 每个币种调用 recommend_combinations 生成 top-N 子组合
         4. 跨币种拼装：
@@ -1579,11 +1579,11 @@ class SmartGroupRecommender:
                 self.log(f"   ⚠️  {coin}: 策略不足 (需要{need_count}, 可用{len(strategies)})")
                 continue
 
-            # 策略少 → 全量组合；策略多 → 按 sharp_rate 截断
+            # 策略少 → 全量组合；策略多 → 按 score 截断
             n = len(strategies)
             if n > 20 and need_count > 0:
-                sorted_by_sharpe = sorted(strategies, key=lambda s: float(s.get('sharp_rate', 0) or 0), reverse=True)
-                strategies = sorted_by_sharpe[:max(20, need_count * 3)]
+                strategies = sorted(strategies, key=lambda s: float(s.get('score', 0) or 0), reverse=True)
+                strategies = strategies[:max(20, need_count * 3)]
                 n = len(strategies)
 
             # 估算组合数，决定子组合数量
