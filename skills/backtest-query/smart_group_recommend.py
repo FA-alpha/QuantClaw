@@ -1077,7 +1077,7 @@ class SmartGroupRecommender:
             去重后的策略列表
         """
         if not sort_methods:
-            sort_methods = ['sharpe', 'return', 'drawdown']
+            sort_methods = ['sharpe', 'return', 'drawdown', 'score']
         
         selected = {}  # 用 back_id 去重
         
@@ -1461,7 +1461,7 @@ class SmartGroupRecommender:
             "selected_summary": self._create_strategy_summary(all_selected),
             "combinations": combinations,
             "criteria": detail_criteria,
-            "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown']
+            "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown', 'score']
         }
     
     def _generate_default_combinations(self, all_selected: List[Dict], max_combinations: int, preferences: Dict) -> List[Dict]:
