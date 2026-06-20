@@ -1707,16 +1707,14 @@ class SmartGroupRecommender:
         all_combinations = []
         n_strategies = len(all_selected)
         
-        # 策略太多时按 score 截断，避免 optimize_portfolio 全量 combinations OOM
+        # 策略太多时按 score 截断到 20 条，避免 optimize_portfolio 全量 combinations OOM
         if n_strategies > 30:
-            max_size = 7 if n_strategies >= 7 else (5 if n_strategies >= 5 else 3)
-            keep = max(30, max_size * 5)  # 至少保留 30 条
             all_selected_truncated = sorted(
                 all_selected,
                 key=lambda s: float(s.get('score', 0) or 0),
                 reverse=True
-            )[:keep]
-            self.log(f"   ⚠️  策略过多({n_strategies})，按 score 截断到 {keep} 条")
+            )[:20]
+            self.log(f"   ⚠️  策略过多({n_strategies})，按 score 截断到 20 条")
         else:
             all_selected_truncated = all_selected
         
