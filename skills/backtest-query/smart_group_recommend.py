@@ -20,7 +20,7 @@ from datetime import datetime
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from query import query_backtest, get_version_info
-from analysis import recommend_combinations
+from analysis import recommend_combinations, score_portfolio, _has_net_value_data
 
 from qc_log import log_error, ErrorType
 
@@ -1488,6 +1488,13 @@ class SmartGroupRecommender:
                     all_selected, groups, group_by, max_combinations, preferences
                 )
             
+            elif strategy_goal == 'diversification' and diversity_priority == 'coin':
+                # 币种分散模式：每个币种独立生成子组合，再跨币种拼装
+                self.log(f"🎯 币种分散模式：{len(constraints.get('coins', []))} 币种多样策略")
+                all_combinations = self._generate_coin_diversification_combinations(
+                    all_selected, max_combinations, preferences
+                )
+            
             else:
                 # 其他意图：使用默认模式
                 all_combinations = self._generate_default_combinations(
@@ -1517,6 +1524,181 @@ class SmartGroupRecommender:
             "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown', 'score']
         }
     
+    def _generate_coin_diversification_combinations(
+        self,
+        all_selected: List[Dict],
+        max_combinations: int,
+        preferences: Dict
+    ) -> List[Dict]:
+        """
+        币种分散模式：每个币种独立生成子组合，再跨币种拼装成大组合
+        
+        流程：
+        1. 按币种分组，组内按 sharp_rate 预排序
+        2. 每个币种取 coin_strategies_count 个策略（默认 1）
+        3. 每个币种调用 recommend_combinations 生成 top-N 子组合
+        4. 跨币种拼装：
+           - 组合总数 ≤ max_combinations*10 → 笛卡尔积
+           - 超过 → zip（按 rank 对齐）
+        5. score_portfolio 打分 → 排序 → 取 top max_combinations
+        """
+        _mem_checkpoint(f'coin_diversification start, {len(all_selected)} strategies')
+
+        import itertools
+        from analysis import score_portfolio, _has_net_value_data
+
+        constraints = preferences.get('constraints', {})
+        coin_strategies_count = constraints.get('coin_strategies_count', {})
+        target_coins = constraints.get('coins', [])
+
+        # Step 1: 按币种分组，组内排序
+        coin_groups: Dict[str, List[Dict]] = {c: [] for c in target_coins}
+        for s in all_selected:
+            coin = s.get('coin')
+            if coin in coin_groups:
+                coin_groups[coin].append(s)
+
+        # Step 2: 每个币种需要的策略数
+        per_coin_counts: Dict[str, int] = {}
+        for coin in target_coins:
+            count = coin_strategies_count.get(coin, 1)
+            available = len(coin_groups[coin])
+            per_coin_counts[coin] = min(count, available) if available > 0 else 0
+
+        total_per_combo = sum(per_coin_counts.values())
+        self.log(f"   总策略数/组: {total_per_combo} ({', '.join(f'{c}x{n}' for c,n in per_coin_counts.items() if n>0)})")
+
+        # Step 3: 每个币种生成子组合
+        has_nv = _has_net_value_data(all_selected)
+        coin_subcombos: Dict[str, List[Dict]] = {}
+
+        for coin in target_coins:
+            strategies = coin_groups[coin]
+            need_count = per_coin_counts[coin]
+            if need_count == 0 or len(strategies) < need_count:
+                self.log(f"   ⚠️  {coin}: 策略不足 (需要{need_count}, 可用{len(strategies)})")
+                continue
+
+            # 策略少 → 全量组合；策略多 → 按 sharp_rate 截断
+            n = len(strategies)
+            if n > 20 and need_count > 0:
+                sorted_by_sharpe = sorted(strategies, key=lambda s: float(s.get('sharp_rate', 0) or 0), reverse=True)
+                strategies = sorted_by_sharpe[:max(20, need_count * 3)]
+                n = len(strategies)
+
+            # 估算组合数，决定子组合数量
+            combo_size = need_count
+            from math import comb
+            theoretical = comb(n, combo_size) if n >= combo_size else 0
+            if theoretical > 5000:
+                top_n = max_combinations * 3
+            elif theoretical > 1000:
+                top_n = max_combinations * 5
+            else:
+                top_n = max(theoretical, max_combinations * 3)
+
+            sub_combos = recommend_combinations(
+                strategies=strategies,
+                group_size=combo_size,
+                top_n=min(top_n, max_combinations * 10),
+                preferences=preferences if preferences else None
+            )
+            coin_subcombos[coin] = sub_combos
+            self.log(f"   {coin}: {len(sub_combos)} 子组合 ({n}策略 → C({n},{combo_size})={theoretical})")
+
+        if not coin_subcombos:
+            self.log(f"⚠️  没有币种有足够策略，降级为默认模式")
+            return self._generate_default_combinations(all_selected, max_combinations, preferences)
+
+        # Step 4: 跨币种拼装
+        coin_order = [c for c in target_coins if c in coin_subcombos]
+        subcombo_lists = [coin_subcombos[c] for c in coin_order]
+
+        # 估算拼装总量
+        import math
+        total_cross = math.prod(len(sc) for sc in subcombo_lists)
+        self.log(f"   跨币种组合总数: {total_cross}")
+
+        if total_cross > max_combinations * 10:
+            # 量大 → zip 模式（按 rank 对齐）
+            self.log(f"   使用 zip 模式（rank 对齐）")
+            max_rank = min(len(sc) for sc in subcombo_lists)  # 最短的作为上限
+            merged_combos = []
+            for rank in range(max_rank):
+                merged_strategies = []
+                # 按 rank 取每个币种的子组合
+                for ci, coin in enumerate(coin_order):
+                    subc = subcombo_lists[ci][rank]
+                    for s in subc['strategies']:
+                        # 通过 strategy_token 从 all_selected 定位完整策略
+                        token = s.get('strategy_token')
+                        match = next((x for x in all_selected if x.get('strategy_token') == token), None)
+                        if match:
+                            merged_strategies.append(match)
+
+                if merged_strategies:
+                    merged_combos.append(merged_strategies)
+        else:
+            # 量小 → 笛卡尔积
+            self.log(f"   使用笛卡尔积模式")
+            merged_combos = []
+            for cross in itertools.product(*subcombo_lists):
+                merged_strategies = []
+                for subc in cross:
+                    for s in subc['strategies']:
+                        token = s.get('strategy_token')
+                        match = next((x for x in all_selected if x.get('strategy_token') == token), None)
+                        if match:
+                            merged_strategies.append(match)
+                if merged_strategies:
+                    merged_combos.append(merged_strategies)
+                if len(merged_combos) >= max_combinations * 10:
+                    break
+
+        # Step 5: 打分排序
+        scored = []
+        for strategies in merged_combos:
+            indices = [all_selected.index(s) for s in strategies if s in all_selected]
+            if indices:
+                s = score_portfolio(
+                    all_selected, indices,
+                    preferences=preferences if preferences else None,
+                    has_net_value=has_nv
+                )
+                scored.append({
+                    'strategies': strategies,
+                    'score': s,
+                    'style': '多币种组合',
+                })
+
+        scored.sort(key=lambda x: x['score'], reverse=True)
+        _mem_checkpoint(f'coin_diversification done, {len(scored)} scored')
+
+        # 转换为统一格式
+        result = []
+        for i, entry in enumerate(scored[:max_combinations], 1):
+            result.append({
+                'rank': i,
+                'score': entry['score'],
+                'strategies': [
+                    {
+                        'name': s.get('name'),
+                        'coin': s.get('coin'),
+                        'direction': s.get('direction'),
+                        'year_rate': float(s.get('year_rate', 0)),
+                        'sharp_rate': float(s.get('sharp_rate', 0)),
+                        'max_loss': float(s.get('max_loss', 0)),
+                        'strategy_token': s.get('strategy_token'),
+                    }
+                    for s in entry['strategies']
+                ],
+                'style': entry['style'],
+                'diversity_type': 'coin',
+                'coins': list(set(s.get('coin') for s in entry['strategies'])),
+            })
+
+        return result
+
     def _generate_default_combinations(self, all_selected: List[Dict], max_combinations: int, preferences: Dict) -> List[Dict]:
         """默认组合生成逻辑（原有逻辑）"""
         _mem_checkpoint(f'default_combinations start, {len(all_selected)} strategies')
