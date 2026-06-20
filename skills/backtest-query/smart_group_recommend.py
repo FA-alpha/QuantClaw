@@ -1586,9 +1586,10 @@ class SmartGroupRecommender:
                 strategies = strategies[:max(20, need_count * 3)]
                 n = len(strategies)
 
-            # 每个币种固定生成 20 个子组合（给跨币种拼装留足选择空间）
+            # 每个币种子组合数 = max_combinations × 3，封顶 30
+            # 但如果 max_combinations 超过 30，直接用 max_combinations
             combo_size = need_count
-            top_n = 20
+            top_n = max(max_combinations, min(max_combinations * 3, 30))
             if combo_size == 0 or len(strategies) < combo_size:
                 top_n = 0
 
