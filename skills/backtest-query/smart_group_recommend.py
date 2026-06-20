@@ -14,6 +14,7 @@ import re
 import atexit
 import tempfile
 import shutil
+import tracemalloc
 from typing import List, Dict, Optional, Tuple, Set
 from datetime import datetime
 from threading import Lock
@@ -22,6 +23,23 @@ from query import query_backtest, get_version_info
 from analysis import recommend_combinations
 
 from qc_log import log_error, ErrorType
+
+# ==================== 内存监控 ====================
+
+_MEM_LOG_ENABLED = os.environ.get('MEM_LOG') == '1'
+
+
+def _mem_checkpoint(label: str):
+    """记录当前内存使用快照，仅在 MEM_LOG=1 时输出"""
+    if not _MEM_LOG_ENABLED:
+        return
+    snapshot = tracemalloc.take_snapshot()
+    stats = snapshot.statistics('lineno')
+    current, peak = tracemalloc.get_traced_memory()
+    print(f"\n📍 [MEM:{label}] current={current/1024/1024:.1f}MB peak={peak/1024/1024:.1f}MB", flush=True)
+    # 打印 top 5 内存分配位置
+    for stat in stats[:5]:
+        print(f"   {stat.size/1024/1024:.2f}MB: {stat.traceback.format()[-1].strip()}"[:160])
 
 # ==================== JSONL 磁盘缓存 ====================
 
@@ -1314,6 +1332,7 @@ class SmartGroupRecommender:
         
         # 3. 分组
         groups = self.classify_strategies(strategies, group_by)
+        _mem_checkpoint(f'classify done, {len(groups)} groups, {sum(len(v) for v in groups.values())} total')
         self.log(f"\n📦 分组结果: {len(groups)} 组")
         
         for key, group_strategies in groups.items():
@@ -1391,6 +1410,8 @@ class SmartGroupRecommender:
                 self.log(f"   筛选后剩余: {len(enriched)}/{before}")
             
             all_selected.extend(enriched)
+        
+        _mem_checkpoint(f'all_selected done, {len(all_selected)} strategies')
         
         self.log(f"\n✅ 总计选出 {len(all_selected)} 个优质策略")
         
@@ -1480,6 +1501,7 @@ class SmartGroupRecommender:
         
         # 按评分排序，取前 N 个
         all_combinations.sort(key=lambda x: x.get('score', 0), reverse=True)
+        _mem_checkpoint(f'combinations generated, {len(all_combinations)} total')
         combinations = all_combinations[:max_combinations]
         
         # 6. 返回结果
@@ -1497,6 +1519,7 @@ class SmartGroupRecommender:
     
     def _generate_default_combinations(self, all_selected: List[Dict], max_combinations: int, preferences: Dict) -> List[Dict]:
         """默认组合生成逻辑（原有逻辑）"""
+        _mem_checkpoint(f'default_combinations start, {len(all_selected)} strategies')
         all_combinations = []
         n_strategies = len(all_selected)
         
@@ -1557,17 +1580,8 @@ class SmartGroupRecommender:
     ) -> List[Dict]:
         """
         对冲模式组合生成：强制多空平衡
-        
-        Args:
-            all_selected: 所有筛选后的策略
-            groups: 分组结果
-            group_by: 分组维度
-            max_combinations: 最多生成几个组合
-            preferences: 偏好参数（包含 diversity_priority）
-        
-        Returns:
-            对冲组合列表
         """
+        _mem_checkpoint(f'hedging_combinations start, {len(all_selected)} strategies')
         # 找出 long 和 short 分组
         long_strategies = []
         short_strategies = []
@@ -1951,11 +1965,12 @@ class SmartGroupRecommender:
         print(f"\n🌟 推荐组合（前3个）:")
         for i, combo in enumerate(combinations[:3], 1):
             style = combo.get('style', '')
+            risk = combo.get('portfolio_risk', {})
             print(
                 f"  #{i} [{style}] "
                 f"评分{combo['score']:.1f} | "
                 f"收益{combo['expected_return']:.1f}% | "
-                f"回撤{combo['portfolio_risk']['max_drawdown']:.1f}% | "
+                f"回撤{risk.get('max_drawdown', 0):.1f}% | "
                 f"{len(combo['strategies'])}策略"
             )
         
@@ -2054,6 +2069,8 @@ def parse_arguments():
 
 def main():
     """主函数"""
+    tracemalloc.start()
+    
     # 1. 解析参数
     args = parse_arguments()
     
@@ -2165,6 +2182,7 @@ def main():
             log_level="quiet" if args.quiet else args.log_level
         )
         strategies = executor.batch_query_parallel(token, combinations, base_params)
+        _mem_checkpoint('batch_query done')
     except Exception as e:
         error_result = {
             "error": "批量查询失败",
@@ -2206,6 +2224,8 @@ def main():
     # 8. 智能推荐
     recommender = SmartGroupRecommender(token, verbose=not args.quiet, agent_id=args.agent_id)
     
+    _mem_checkpoint('before smart_recommend')
+    
     try:
         result = recommender.smart_recommend(
             query_text=args.query,
@@ -2217,6 +2237,7 @@ def main():
             api_sort_type=args.api_sort,
             intent=intent  # 传递 intent
         )
+        _mem_checkpoint('smart_recommend done')
     except Exception as e:
         error_result = {
             "error": "推荐流程失败",
