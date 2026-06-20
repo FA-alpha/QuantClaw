@@ -542,14 +542,8 @@ def build_detail_criteria(args) -> Optional[Dict]:
     
     if args.min_total_win_rate:
         criteria['min_total_win_rate'] = args.min_total_win_rate
-    if args.min_recent_profit_rate:
-        criteria['min_recent_profit_rate'] = args.min_recent_profit_rate
-    if args.max_recent_drawdown:
-        criteria['max_recent_drawdown'] = args.max_recent_drawdown
     if args.min_trade_count:
         criteria['min_trade_count'] = args.min_trade_count
-    if args.min_stability:
-        criteria['min_stability'] = args.min_stability
     
     return criteria if criteria else None
 
@@ -975,7 +969,6 @@ class SmartGroupRecommender:
                     info = detail.get('info', {})
                     strategy['_detail'] = {
                         'total_stat': info.get('total_stat', {}),
-                        'recent_stat': info.get('recent_stat', {}),
                     }
                     enriched.append(strategy)
                 else:
@@ -999,7 +992,6 @@ class SmartGroupRecommender:
         """
         detail = strategy.get('_detail', {})
         total_stat = detail.get('total_stat', {})
-        recent_stat = detail.get('recent_stat', {})
         
         metrics = {
             # 基础指标（列表数据）
@@ -1012,19 +1004,7 @@ class SmartGroupRecommender:
             'total_win_rate': total_stat.get('win_rate', 0),
             'total_trade_count': total_stat.get('trade_count', 0),
             'total_max_drawdown': total_stat.get('max_loss', 100),
-            
-            # 近期指标（recent_stat）
-            'recent_profit_rate': recent_stat.get('profit_rate', 0),
-            'recent_win_rate': recent_stat.get('win_rate', 0),
-            'recent_trade_count': recent_stat.get('trade_count', 0),
-            'recent_max_drawdown': recent_stat.get('max_loss', 100),
         }
-        
-        # 计算稳定性指标
-        if metrics['total_profit_rate'] > 0:
-            metrics['recent_stability'] = metrics['recent_profit_rate'] / metrics['total_profit_rate']
-        else:
-            metrics['recent_stability'] = 0
         
         return metrics
     
@@ -1049,20 +1029,8 @@ class SmartGroupRecommender:
                 if metrics['total_win_rate'] < criteria['min_total_win_rate']:
                     passed = False
             
-            if 'min_recent_profit_rate' in criteria:
-                if metrics['recent_profit_rate'] < criteria['min_recent_profit_rate']:
-                    passed = False
-            
-            if 'max_recent_drawdown' in criteria:
-                if metrics['recent_max_drawdown'] > criteria['max_recent_drawdown']:
-                    passed = False
-            
             if 'min_trade_count' in criteria:
                 if metrics['total_trade_count'] < criteria['min_trade_count']:
-                    passed = False
-            
-            if 'min_stability' in criteria:
-                if metrics['recent_stability'] < criteria['min_stability']:
                     passed = False
             
             if passed:
@@ -1413,10 +1381,6 @@ class SmartGroupRecommender:
         
         # 构建偏好参数
         preferences = {}
-        if detail_criteria:
-            if 'max_recent_drawdown' in detail_criteria:
-                preferences['max_drawdown'] = detail_criteria['max_recent_drawdown']
-            # 可以根据其他筛选条件动态调整偏好
         
         # 分支：根据 intent 决定组合生成方式
         all_combinations = []
@@ -2026,10 +1990,7 @@ def parse_arguments():
     
     # 详情筛选条件
     parser.add_argument("--min-total-win-rate", type=float, help="最小总胜率")
-    parser.add_argument("--min-recent-profit-rate", type=float, help="最小近期收益率")
-    parser.add_argument("--max-recent-drawdown", type=float, help="最大近期回撤")
     parser.add_argument("--min-trade-count", type=int, help="最小交易次数")
-    parser.add_argument("--min-stability", type=float, help="最小稳定性")
     
     # 输出参数
     parser.add_argument("--output", type=str, help="输出文件路径")
