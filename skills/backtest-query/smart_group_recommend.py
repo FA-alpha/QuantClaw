@@ -29,7 +29,7 @@ from qc_log import log_error, ErrorType
 _SKELETON_FIELDS = frozenset([
     'back_id', 'id', 'name', 'coin', 'direction', 'strategy_type',
     'strategy_token', 'year_rate', 'sharp_rate', 'max_loss', 'win_rate',
-    'version', 'leverage',
+    'score', 'version', 'leverage',
 ])
 
 # 详情缓存目录（会话级，进程退出自动清理）
