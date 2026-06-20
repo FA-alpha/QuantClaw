@@ -18,12 +18,39 @@ from typing import List, Dict, Optional, Tuple, Set
 from datetime import datetime
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from query import query_backtest, get_backtest_detail, get_version_info
+from query import query_backtest, get_version_info
 from analysis import recommend_combinations
 
 from qc_log import log_error, ErrorType
 
 # ==================== JSONL 磁盘缓存 ====================
+
+# 需要从列表API的 metrics.total 中提取的详情字段（只取标量，丢弃大数组）
+_METRICS_DETAIL_FIELDS = [
+    'profit_rate', 'win_rate', 'buy_num', 'sell_num', 'max_loss',
+    'alpha', 'beta', 'odds', 'max_recovery_time',
+    'drawdown_over_10pct_count',
+]
+
+
+def _parse_detail_metrics(metrics_str: str) -> Optional[Dict]:
+    """
+    从列表API的 metrics JSON 字符串中提取需要的详情指标。
+    只取标量字段，丢弃 drawdown_over_10pct_periods 等大数组。
+    """
+    if not metrics_str:
+        return None
+    try:
+        metrics = json.loads(metrics_str)
+        total = metrics.get('total', {})
+        parsed = {}
+        for k in _METRICS_DETAIL_FIELDS:
+            v = total.get(k)
+            if v is not None:
+                parsed[k] = v
+        return parsed
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return None
 
 # 策略骨架字段：下游分组/排序/筛选/输出需要的轻量字段
 # 对照 query.py format_result(json) + smart_group_recommend 实际从策略 dict 读取的字段
@@ -35,6 +62,26 @@ _SKELETON_FIELDS = frozenset([
 
 # 详情缓存目录（会话级，进程退出自动清理）
 _DETAIL_CACHE_DIR = None
+
+# metrics 索引缓存 {back_id: metrics_raw_str}，从 JSONL 懒加载一次
+_METRICS_INDEX = None
+
+
+def _get_metrics_index() -> Dict:
+    """从 JSONL 缓存建立 back_id → metrics 字符串索引（仅首次扫描）"""
+    global _METRICS_INDEX
+    if _METRICS_INDEX is not None:
+        return _METRICS_INDEX
+    _METRICS_INDEX = {}
+    jsonl_path = os.path.join(_get_cache_dir(), 'strategies.jsonl')
+    if os.path.exists(jsonl_path):
+        with open(jsonl_path, 'r') as f:
+            for line in f:
+                s = json.loads(line)
+                bid = s.get('back_id')
+                if bid and s.get('metrics'):
+                    _METRICS_INDEX[bid] = s['metrics']
+    return _METRICS_INDEX
 
 
 def _get_cache_dir() -> str:
@@ -48,21 +95,6 @@ def _get_cache_dir() -> str:
 def _slim_strategy(strategy: Dict) -> Dict:
     """提取策略的骨架字段，丢弃大数组"""
     return {k: strategy.get(k) for k in _SKELETON_FIELDS if k in strategy}
-
-
-def _load_strategy_by_back_id(back_id, cache_file: str) -> Optional[Dict]:
-    """
-    从 JSONL 缓存中按 back_id 查找完整策略数据。
-    用于下游需要完整字段时按需回读。
-    """
-    if not os.path.exists(cache_file):
-        return None
-    with open(cache_file, 'r') as f:
-        for line in f:
-            s = json.loads(line)
-            if s.get('back_id') == back_id:
-                return s
-    return None
 
 
 def _cleanup_cache():
@@ -941,19 +973,23 @@ class SmartGroupRecommender:
     
     def fetch_detail_data(self, strategies: List[Dict], max_fetch: int = 30) -> List[Dict]:
         """
-        批量获取详情数据
+        从 JSONL 缓存中读取列表API返回的 metrics 字段，解析为详情指标。
+        不再调用 Backtrack/stat_info API。
         
         Args:
-            strategies: 策略列表
-            max_fetch: 最多获取数量
+            strategies: 策略列表（骨架字段）
+            max_fetch: 最多处理数量
         
         Returns:
-            包含详情的策略列表
+            包含 _detail.total_stat 的策略列表
         """
         enriched = []
         failed = 0
         
-        self.log(f"\n📊 获取详情数据（最多 {max_fetch} 个）...")
+        self.log(f"\n📊 解析详情指标（最多 {max_fetch} 个）...")
+        
+        # 懒加载：从 JSONL 扫描一次建立 back_id → metrics 索引
+        metrics_index = _get_metrics_index()
         
         for i, strategy in enumerate(strategies[:max_fetch], 1):
             back_id = strategy.get('back_id')
@@ -961,22 +997,17 @@ class SmartGroupRecommender:
                 failed += 1
                 continue
             
-            try:
-                detail = get_backtest_detail(self.token, back_id, agent_id=self.agent_id)
-                
-                if "error" not in detail:
-                    # 提取关键详情指标
-                    # 🚫 不存 time_line_list / coin_fee_list (全项目 0 次读取，单纯占内存)
-                    info = detail.get('info', {})
-                    strategy['_detail'] = {
-                        'total_stat': info.get('total_stat', {}),
-                    }
-                    enriched.append(strategy)
-                else:
-                    failed += 1
-            except Exception as e:
+            metrics_str = metrics_index.get(back_id)
+            if not metrics_str:
                 failed += 1
                 continue
+            
+            parsed = _parse_detail_metrics(metrics_str)
+            if parsed:
+                strategy['_detail'] = {'total_stat': parsed}
+                enriched.append(strategy)
+            else:
+                failed += 1
         
         self.log(f"   完成: {len(enriched)}/{min(len(strategies), max_fetch)} 成功, {failed} 失败")
         return enriched
