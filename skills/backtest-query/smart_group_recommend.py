@@ -10,6 +10,7 @@ import json
 import argparse
 import itertools
 import time
+import re
 import atexit
 import tempfile
 import shutil
@@ -993,6 +994,16 @@ class SmartGroupRecommender:
         detail = strategy.get('_detail', {})
         total_stat = detail.get('total_stat', {})
         
+        # 从 buy_num/sell_num 解析交易次数（格式如 "1263, 分仓:373"，取开头数字）
+        def _parse_leading_int(val):
+            if not val:
+                return 0
+            s = str(val)
+            m = re.match(r'^\d+', s.strip())
+            return int(m.group()) if m else 0
+        
+        total_trade_count = _parse_leading_int(total_stat.get('buy_num', 0)) + _parse_leading_int(total_stat.get('sell_num', 0))
+        
         metrics = {
             # 基础指标（列表数据）
             'year_rate': strategy.get('year_rate', 0),
@@ -1002,7 +1013,7 @@ class SmartGroupRecommender:
             # 详情指标（total_stat）
             'total_profit_rate': total_stat.get('profit_rate', 0),
             'total_win_rate': total_stat.get('win_rate', 0),
-            'total_trade_count': total_stat.get('trade_count', 0),
+            'total_trade_count': total_trade_count,
             'total_max_drawdown': total_stat.get('max_loss', 100),
         }
         
