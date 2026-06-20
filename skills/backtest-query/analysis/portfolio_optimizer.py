@@ -190,38 +190,24 @@ def _generate_combinations_with_coin_coverage(
     
     if not available_coins:
         return []
-
-    # ================================================================
-    # 保证每个组合中币种覆盖最大化
-    # ================================================================
+    if len(available_coins) > group_size:
+        return list(itertools.combinations(range(len(strategies)), group_size))[:max_combinations]
+    
     valid_combinations = set()
     attempts = 0
-    max_attempts = max_combinations * 10
-
-    if len(available_coins) > group_size:
-        # 币种数 > 组合大小：不能覆盖全部币种，但最大化多样性
-        # 每次随机选 group_size 个币种，每个币种取至少 1 个策略
-        while len(valid_combinations) < max_combinations and attempts < max_attempts:
-            attempts += 1
-            sampled_coins = random.sample(available_coins, group_size)
-            selected = [random.choice(coin_strategies[c]) for c in sampled_coins]
-            combo_tuple = tuple(sorted(selected))
-            if len(combo_tuple) == group_size:
-                valid_combinations.add(combo_tuple)
-    else:
-        # 币种数 ≤ 组合大小：每个币种至少一个，剩余位置随机填
-        while len(valid_combinations) < max_combinations and attempts < max_attempts:
-            attempts += 1
-            selected = [random.choice(coin_strategies[c]) for c in available_coins]
-            remaining_slots = group_size - len(selected)
-            if remaining_slots > 0:
-                all_indices = [i for i in range(len(strategies)) if i not in selected]
-                if len(all_indices) >= remaining_slots:
-                    selected.extend(random.sample(all_indices, remaining_slots))
-            combo_tuple = tuple(sorted(selected))
-            if len(combo_tuple) == group_size:
-                valid_combinations.add(combo_tuple)
-
+    
+    while len(valid_combinations) < max_combinations and attempts < max_combinations * 10:
+        attempts += 1
+        selected = [random.choice(coin_strategies[c]) for c in available_coins]
+        remaining_slots = group_size - len(selected)
+        if remaining_slots > 0:
+            all_indices = [i for i in range(len(strategies)) if i not in selected]
+            if len(all_indices) >= remaining_slots:
+                selected.extend(random.sample(all_indices, remaining_slots))
+        combo_tuple = tuple(sorted(selected))
+        if len(combo_tuple) == group_size:
+            valid_combinations.add(combo_tuple)
+    
     return list(valid_combinations)
 
 
@@ -240,22 +226,16 @@ def optimize_portfolio(
     
     has_net_value = _has_net_value_data(strategies)
     
-    # 自动检测币种：多币种时强制每个币种至少一个策略，避免随机采样漏掉币种
     required_coins = None
     if preferences and 'constraints' in preferences:
         required_coins = preferences['constraints'].get('coins')
-    if not required_coins:
-        coins_in_strategies = list(set(s.get('coin') for s in strategies if s.get('coin')))
-        if len(coins_in_strategies) > 1:
-            required_coins = coins_in_strategies
     
     if required_coins and len(required_coins) > 1:
-        # 多币种场景：调用币种覆盖算法（内部处理 group_size >=/< coin_count 两种情况）
         all_combinations = _generate_combinations_with_coin_coverage(
             strategies, group_size, required_coins, max_combinations
         )
     else:
-        # 单币种或无币种信息：流式随机采样
+        # 流式随机采样，不 materialize 全量组合 (C(117,5) = 1.6亿 → OOM)
         import random
         all_combinations = set()
         max_attempts = max_combinations * 50

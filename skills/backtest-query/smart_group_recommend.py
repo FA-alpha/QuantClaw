@@ -1481,14 +1481,6 @@ class SmartGroupRecommender:
                     all_selected, groups, group_by, max_combinations, preferences
                 )
             
-            elif strategy_goal == 'diversification' and diversity_priority == 'coin':
-                # 币种分散模式：每个币种各取 1 条，组装多组
-                required_coins = constraints.get('coins', [])
-                self.log(f"🎯 币种分散模式：{len(required_coins)} 币种各取最佳策略")
-                all_combinations = self._generate_coin_diversification_combinations(
-                    all_selected, required_coins, max_combinations, preferences
-                )
-            
             elif strategy_goal == 'diversification' and diversity_priority == 'strategy_type':
                 # 策略类型分散模式
                 self.log(f"🎯 策略类型分散模式：生成多策略组合")
@@ -1525,129 +1517,16 @@ class SmartGroupRecommender:
             "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown', 'score']
         }
     
-    def _generate_coin_diversification_combinations(
-        self,
-        all_selected: List[Dict],
-        required_coins: List[str],
-        max_combinations: int,
-        preferences: Dict
-    ) -> List[Dict]:
-        """
-        币种分散组合：每个币种各取 1 条最佳策略，组装多组跨币种组合。
-        
-        逻辑：
-        1. 按 coin 分组
-        2. 每组内按 score 降序排列（取各币种 top N）
-        3. 采样跨币种笛卡尔积 → score_portfolio 评分 → 排序返回
-        
-        示例: 7币种 × 每币种5条 → 从 5^7=78,125 种可能中采样
-        """
-        _mem_checkpoint(f'coin_diversification start, {len(all_selected)} strategies, {len(required_coins)} coins')
-        
-        # 按币种分组 + 排序
-        coin_groups = {}
-        for s in all_selected:
-            coin = s.get('coin')
-            if coin in required_coins:
-                if coin not in coin_groups:
-                    coin_groups[coin] = []
-                coin_groups[coin].append(s)
-        
-        # 每组按 score 降序
-        for coin in coin_groups:
-            coin_groups[coin].sort(key=lambda s: s.get('score', 0), reverse=True)
-        
-        # 每个币种取 top N（至少取到有足够候选量）
-        per_coin = 5
-        for coin in required_coins:
-            if coin in coin_groups:
-                coin_groups[coin] = coin_groups[coin][:per_coin]
-            else:
-                self.log(f"⚠️  币种 {coin} 无可用策略")
-        
-        # 跨币种采样: 从每个币种随机选 1 条，拼成一组
-        import random
-        sampled_combos = set()
-        max_samples = max_combinations * 100
-        attempts = 0
-        
-        group_size = len(required_coins)
-        
-        while len(sampled_combos) < max_samples and attempts < max_samples * 5:
-            attempts += 1
-            indices = []
-            for coin in required_coins:
-                strategies = coin_groups.get(coin, [])
-                if strategies:
-                    s = random.choice(strategies)
-                    # 找到该策略在 all_selected 中的索引
-                    for idx, candidate in enumerate(all_selected):
-                        if candidate.get('back_id') == s.get('back_id'):
-                            indices.append(idx)
-                            break
-            
-            if len(indices) == group_size:
-                sampled_combos.add(tuple(sorted(indices)))
-        
-        self.log(f"   采样 {len(sampled_combos)} 组跨币种组合")
-        
-        # 直接评分（不调 recommend_combinations，避免回归到 itertools.combinations）
-        from analysis.portfolio_optimizer import score_portfolio
-        all_combinations = []
-        for combo_indices in sampled_combos:
-            indices = list(combo_indices)
-            try:
-                score = score_portfolio(all_selected, indices, preferences=preferences)
-                selected = [all_selected[idx] for idx in indices]
-                all_combinations.append({
-                    'rank': 0,
-                    'score': score,
-                    'expected_return': 0,
-                    'strategies': [
-                        {
-                            'name': s.get('name'),
-                            'coin': s.get('coin'),
-                            'direction': s.get('direction'),
-                            'year_rate': float(s.get('year_rate', 0)),
-                            'sharp_rate': float(s.get('sharp_rate', 0)),
-                            'max_loss': float(s.get('max_loss', 0)),
-                            'strategy_token': s.get('strategy_token'),
-                        }
-                        for s in selected
-                    ],
-                    'correlation': 0,
-                    'portfolio_risk': {},
-                    'drawdown_overlap': 0,
-                    'style': '币种分散',
-                    'coin_coverage': required_coins,
-                })
-            except Exception:
-                continue
-        
-        # 按评分排序
-        all_combinations.sort(key=lambda x: x.get('score', 0), reverse=True)
-        for i, combo in enumerate(all_combinations, 1):
-            combo['rank'] = i
-        
-        return all_combinations
-    
     def _generate_default_combinations(self, all_selected: List[Dict], max_combinations: int, preferences: Dict) -> List[Dict]:
         """默认组合生成逻辑（原有逻辑）"""
         _mem_checkpoint(f'default_combinations start, {len(all_selected)} strategies')
         all_combinations = []
         n_strategies = len(all_selected)
-
+        
         # 获取最少策略数量要求
         min_strategies = preferences.get('min_strategies', 3)
-
-        # 检测币种数量：确保至少有一个 size 能覆盖全部币种
-        constraints = preferences.get('constraints', {})
-        required_coins = constraints.get('coins', [])
-        if not required_coins:
-            required_coins = list(set(s.get('coin') for s in all_selected if s.get('coin')))
-        coin_count = len(required_coins)
-
-        # 根据策略数量决定组合大小（尊重 min_strategies 和币种覆盖）
+        
+        # 根据策略数量决定组合大小（尊重 min_strategies）
         if n_strategies >= 7:
             # 策略充足：生成3种大小（保守、稳健、激进）
             sizes = [max(3, min_strategies), 5, 7]
@@ -1660,13 +1539,9 @@ class SmartGroupRecommender:
         else:
             # 策略太少，使用全部
             sizes = [n_strategies]
-
-        # 确保至少有一个 size ≥ coin_count（保证币种全覆盖组合）
-        if coin_count > 1 and all(s < coin_count for s in sizes) and coin_count <= n_strategies:
-            sizes.append(coin_count)
-
-        # 过滤掉超出可用策略数的大小，去重排序
-        sizes = sorted(set(s for s in sizes if s <= n_strategies))
+        
+        # 过滤掉超出可用策略数的大小
+        sizes = [s for s in sizes if s <= n_strategies]
         if not sizes:
             sizes = [n_strategies]
         
