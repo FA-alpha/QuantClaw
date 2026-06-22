@@ -362,6 +362,11 @@ class TradeRequest:
                     "each_capital": specific_params.get("each_capital")
                 })
             
+            elif strategy_type == 7:  # 星辰V1
+                if "extend" not in specific_params:
+                    raise TradeRequestError(f"策略类型{strategy_type}必须提供extend参数", "MISSING_STRATEGY_PARAMS")
+                params["extend"] = specific_params.get("extend")
+            
             elif strategy_type == 8:  # 策略类型8
                 required_params = ["trade_model", "trade_buy_type", "initial_capital"]
                 for param in required_params:
@@ -957,7 +962,8 @@ def cli_support():
         max_grid_size: Optional[int] = typer.Option(None, help="最大加仓次数"),
         initial_capital: Optional[float] = typer.Option(None, help="总投资金额"),
         trade_buy_type: Optional[str] = typer.Option(None, help="买入类型（market/limit）"),
-        trade_model: Optional[str] = typer.Option(None, help="交易类型（all/long/short）")
+        trade_model: Optional[str] = typer.Option(None, help="交易类型（all/long/short）"),
+        extend: Optional[str] = typer.Option(None, help="扩展参数（JSON格式，用于type=7星辰V1）")
     ):
         """
         添加交易机器人
@@ -980,7 +986,7 @@ def cli_support():
         
         # 准备策略特定参数
         specific_params = {}
-        if strategy_type in [1, 2, 11]:  # 现货/合约马丁
+        if strategy_type in [1, 2, 11]:  # 现货/合约马丁/风霆V4
             if fst_capital is not None:
                 specific_params['fst_capital'] = fst_capital
             if each_capital is not None:
@@ -992,26 +998,35 @@ def cli_support():
             if initial_capital is not None:
                 specific_params['initial_capital'] = initial_capital
         
-        elif strategy_type == 4:  # 策略类型4
+        elif strategy_type == 4:  # 鲲鹏V1
             if initial_capital is not None:
                 specific_params['initial_capital'] = initial_capital
             if trade_buy_type is not None:
                 specific_params['trade_buy_type'] = trade_buy_type
         
-        elif strategy_type == 5:  # 策略类型5
+        elif strategy_type == 5:  # 鲲鹏V3
             if initial_capital is not None:
                 specific_params['initial_capital'] = initial_capital
             if each_capital is not None:
                 specific_params['each_capital'] = each_capital
         
-        elif strategy_type == 8:  # 策略类型8
+        elif strategy_type == 7:  # 星辰V1
+            if extend is not None:
+                try:
+                    # 解析 JSON 字符串为字典
+                    specific_params['extend'] = json.loads(extend)
+                except json.JSONDecodeError:
+                    print("❌ extend 参数必须是有效的JSON格式")
+                    raise typer.Exit(code=1)
+        
+        elif strategy_type == 8:  # 鲲鹏V4
             if trade_model is not None:
                 specific_params['trade_model'] = trade_model
             if trade_buy_type is not None:
                 specific_params['trade_buy_type'] = trade_buy_type
             if initial_capital is not None:
                 specific_params['initial_capital'] = initial_capital
-        elif strategy_type in [25,28]:
+        elif strategy_type in [25,28]: #反脆弱V1,V2
             if initial_capital is not None:
                 specific_params['initial_capital'] = initial_capital
 

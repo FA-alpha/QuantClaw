@@ -25,7 +25,7 @@ from pathlib import Path
 # 是否开启接口请求日志记录
 # True - 开启日志，所有接口请求和响应会写入 ~/.quantclaw/logs/{agent_id}/yyyy-mm-dd.log
 # False - 关闭日志（默认）
-ENABLE_DEBUG_LOG = False
+ENABLE_DEBUG_LOG = True
 
 # 接口请求失败时的固定提示词
 # 当接口返回 status != 1 时，会在错误信息前显示此提示
@@ -934,7 +934,7 @@ def get_user_token_by_agent_id(agent_id: str) -> Optional[str]:
             if user.get('agentId') == agent_id:
                 return user.get('token')
         
-        print(f"❌ 未找到AgentID为 {agent_id} 的UserToken")
+        # print(f"❌ 未找到AgentID为 {agent_id} 的UserToken")
         return None
     
     except json.JSONDecodeError:
