@@ -187,7 +187,9 @@ def enrich_netvalues(strategies: List[Dict], token: str) -> int:
             s['_detail']['total_stat'] = ts
             cached += 1
         else:
-            need_fetch.append((s, back_id))
+            # API 需要完整 id（如 806794##2##2），back_id 只用于缓存 key
+            sid = s.get('id') or back_id
+            need_fetch.append((s, bid, sid))
 
     if not need_fetch:
         return cached
@@ -202,15 +204,15 @@ def enrich_netvalues(strategies: List[Dict], token: str) -> int:
     lock = Lock()
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
-            executor.submit(get_backtest_detail, token, bid): (s, bid)
-            for s, bid in need_fetch
+            executor.submit(get_backtest_detail, token, sid): (s, bid)
+            for s, bid, sid in need_fetch
         }
         for future in as_completed(futures):
             s, bid = futures[future]
             try:
                 resp = future.result()
-                if resp and 'data' in resp:
-                    ts = resp['data'].get('total_stat', {})
+                if resp and 'info' in resp:
+                    ts = resp['info'].get('total_stat', {})
                     if ts:
                         with lock:
                             _save_netvalue(str(bid), ts)
