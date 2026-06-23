@@ -1974,6 +1974,9 @@ class SmartGroupRecommender:
 
         self.log(f"   截断后: long={len(long_strategies)} short={len(short_strategies)}, 每币种<= {max(2, 40 // num_coins) if require_different_coins else '(N/A)'}")
 
+        # 拉取净值数据（兜底：先从缓存获取，缓存未命中则调 API）
+        enrich_netvalues(long_strategies + short_strategies, self.token)
+
         # 生成对冲组合：从 long 和 short 中各取部分
         
         # 根据 min_strategies 决定组合策略
