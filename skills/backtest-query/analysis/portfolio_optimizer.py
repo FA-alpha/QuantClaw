@@ -260,6 +260,8 @@ def optimize_portfolio(
         else:
             all_combinations = list(itertools.combinations(range(n), group_size))
     
+    from .risk_analyzer import calculate_portfolio_risk, analyze_drawdown_overlap
+    
     results = []
     for combo in all_combinations:
         indices = list(combo)
@@ -267,16 +269,14 @@ def optimize_portfolio(
             score = score_portfolio(strategies, indices, preferences=preferences, has_net_value=has_net_value)
             
             entry = {'indices': indices, 'score': score}
+            entry['risk'] = calculate_portfolio_risk(strategies, indices)
             
             if has_net_value:
                 from .correlation import get_avg_correlation
-                from .risk_analyzer import analyze_drawdown_overlap, calculate_portfolio_risk
                 entry['correlation'] = round(get_avg_correlation(strategies, indices), 3)
-                entry['risk'] = calculate_portfolio_risk(strategies, indices)
                 entry['overlap'] = analyze_drawdown_overlap(strategies, indices)
             else:
                 entry['correlation'] = 0
-                entry['risk'] = {}
                 entry['overlap'] = {'overlap_ratio': 100}
             
             results.append(entry)
@@ -319,6 +319,7 @@ def recommend_combinations(
                     'sharp_rate': float(s.get('sharp_rate', 0)),
                     'max_loss': float(s.get('max_loss', 0)),
                     'strategy_token': s.get('strategy_token'),
+                    '_detail': s.get('_detail', {}),
                 }
                 for s in selected
             ],
