@@ -36,6 +36,23 @@ python3 -c "import requests" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS requests
 python3 -c "import numpy" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS numpy"
 python3 -c "import typer" 2>/dev/null || MISSING_DEPS="$MISSING_DEPS typer"
 
+# apt-get 重试包装：等待其他 apt 进程释放锁
+_apt_retry() {
+    for i in $(seq 1 30); do
+        if "$@" 2>/tmp/apt_stderr.txt; then
+            return 0
+        fi
+        # 只对锁错误重试，其他错误直接失败
+        if grep -qE 'Could not get lock|Unable to lock' /tmp/apt_stderr.txt 2>/dev/null; then
+            echo "   Waiting for apt lock (attempt $i/30)..."
+            sleep 2
+        else
+            return 1
+        fi
+    done
+    return 1
+}
+
 # 安装缺失的工具和依赖
 if [ -n "$MISSING_TOOLS" ] || [ -n "$MISSING_DEPS" ]; then
     echo "⚠️  Missing dependencies: $MISSING_TOOLS $MISSING_DEPS"
@@ -59,7 +76,8 @@ if [ -n "$MISSING_TOOLS" ] || [ -n "$MISSING_DEPS" ]; then
     ALL_APT="$MISSING_TOOLS $APT_DEPS"
     if command -v apt-get &> /dev/null && [ -n "$ALL_APT" ]; then
         echo "   Using apt-get (requires root)..."
-        apt-get update -qq && apt-get install -y -qq $ALL_APT && echo "   ✓ Installed via apt" || {
+
+        _apt_retry apt-get update -qq && _apt_retry apt-get install -y -qq $ALL_APT && echo "   ✓ Installed via apt" || {
             echo "   ⚠️  apt-get failed, moving remaining to pip..."
             # apt 失败的包也加到 pip 安装列表
             for dep in $MISSING_DEPS; do
@@ -78,7 +96,7 @@ if [ -n "$MISSING_TOOLS" ] || [ -n "$MISSING_DEPS" ]; then
                 echo "   ✓ boostrapped pip via ensurepip"
             elif command -v apt-get &> /dev/null; then
                 echo "   Installing python3-pip via apt..."
-                apt-get update -qq && apt-get install -y -qq python3-pip || {
+                _apt_retry apt-get update -qq && _apt_retry apt-get install -y -qq python3-pip || {
                     echo "❌ Cannot install python3-pip"
                     exit 1
                 }
