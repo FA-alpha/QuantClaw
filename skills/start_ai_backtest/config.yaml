@@ -1,0 +1,56 @@
+# OKX 1m Add Service Configuration
+# 配置文件：统一管理数据库、接口等配置
+
+# 数据库连接配置(获取币价)
+database:
+  host: fa02-backtrack.cp2608aa2gcx.us-west-1.rds.amazonaws.com
+  port: 3306
+  user: ai_backtrack_test
+  password: ai_backtrack_test@2026
+  database: quantify
+
+# 回测优化器路径与基础配置(写入回测内容)
+backtest_optimizer:
+  host: fa02-backtrack.cp2608aa2gcx.us-west-1.rds.amazonaws.com
+  port: 3306
+  user: ai_backtrack_test
+  password: ai_backtrack_test@2026
+  database: fourieralpha_test
+
+
+
+# AI 回测服务配置
+ai_backtest:
+  host: 127.0.0.1
+  port: 7025
+  endpoint: /optimize
+  timeout: 720000  # 超时时间（秒）
+
+# Lark 通知配置
+lark:
+  webhook: https://open.larksuite.com/open-apis/bot/v2/hook/f8885941-7224-4bfc-87b4-d1fcf63c1408
+
+# OKX API 配置
+okx:
+  flag: "0"  # 实盘:0 , 模拟盘：1
+
+# 市场验证规则
+validation_rules:
+  熊市:
+    price_drop_pct: 50  # 跌幅 >50%
+    min_days: 90        # 最少天数 ≥90
+  牛市:
+    price_rise_pct: 50  # 涨幅 >50%
+    min_days: 90        # 最少天数 ≥90
+  震荡市:
+    price_change_pct: 20  # 变化 <20%
+    min_days: 180         # 最少天数 ≥180
+
+# 服务运行配置
+service:
+  host: 0.0.0.0
+  port: 8001
+  min_year: 2019  # 最早获取年份
+
+# 循环模式配置（可选，作为纯 API 服务时此列表为空）
+coin_pairs: []
