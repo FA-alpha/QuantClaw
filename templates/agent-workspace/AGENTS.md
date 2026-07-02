@@ -82,6 +82,19 @@ exec python3 ./skills/backtest-query/query.py --coin BTC
 # ❌ 错误：不要用全局路径（慢）
 read /home/ubuntu/.npm-global/lib/node_modules/clawdbot/skills/backtest-query/SKILL.md
 ```
+---
+### start-tradebot - 创建交易机器人
+**📄 详见**: `./skills/start-tradebot/SKILL.md`
+
+**何时使用**：用户需要在 fourieralpha 平台新建交易机器人时。使用前先读取 SKILL.md。
+
+---
+
+### trade-bot - 交易机器人管理
+
+**📄 详见**: `./skills/trade-bot/SKILL.md`
+
+**何时使用**：用户需要管理 fourieralpha 平台的交易机器人时（查看/停止/加仓/调整保证金/编辑策略参数等）。使用前先读取 SKILL.md。
 
 ---
 

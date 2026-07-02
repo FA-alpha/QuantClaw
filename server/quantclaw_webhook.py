@@ -709,7 +709,7 @@ async def init_app():
         'defaultModel': os.getenv('QUANTCLAW_DEFAULT_MODEL', 'openrouter/anthropic/claude-sonnet-4-5'),
         'autoRegister': os.getenv('QUANTCLAW_AUTO_REGISTER', 'true').lower() == 'true',
         'tokenValidation': {
-            'apiUrl': os.getenv('QUANTCLAW_TOKEN_API', 'https://www.fourieralpha.com/Mobile/Account/usage_info'),
+            'apiUrl': os.getenv('QUANTCLAW_TOKEN_API', 'http://52.53.212.195:7002/Mobile/Account/usage_info'),
             'timeoutMs': int(os.getenv('QUANTCLAW_TOKEN_TIMEOUT', '5000'))
         }
     }

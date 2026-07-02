@@ -36,14 +36,14 @@ class ErrorType:
 
 def get_agent_id() -> str:
     """
-    获取当前 agent ID
+    获取当前 agent ID（回退逻辑）
+    
+    ⚠️ 注意：这是回退方案，应该优先使用显式传入的 agent_id 参数。
     
     优先级：
     1. 环境变量 CLAWDBOT_AGENT_ID 或 AGENT_ID
-    2. 从 PWD 环境变量提取（工作区路径）
-    3. 从当前路径提取
-    
-    工作区通常是：/home/ubuntu/{agent_id}
+    2. 从 PWD 提取最后一个匹配 clawd-/qc- 的目录（离当前最近）
+    3. 使用 "unknown"
     """
     # 尝试从环境变量获取
     agent_id = os.environ.get('CLAWDBOT_AGENT_ID') or os.environ.get('AGENT_ID')
@@ -53,16 +53,23 @@ def get_agent_id() -> str:
     # 从 PWD 环境变量提取
     pwd = os.environ.get('PWD', os.getcwd())
     
-    # 向上查找，直到找到 /home/ubuntu 的直接子目录
-    current = pwd
-    while current and current != '/' and current != '/home/ubuntu':
-        parent = os.path.dirname(current)
-        if parent == '/home/ubuntu':
-            return os.path.basename(current)
-        current = parent
+    # 分解路径，查找包含 agent ID 的目录
+    # 优先级：qc- > clawd- (标准化为统一格式)
+    parts = pwd.split(os.sep)
     
-    # 回退：使用当前目录名
-    return os.path.basename(pwd) or "default"
+    # 第一遍：优先查找 qc- 前缀
+    for part in reversed(parts):
+        if part.startswith('qc-'):
+            return part
+    
+    # 第二遍：查找 clawd- 前缀，但去掉 clawd- 前缀，只保留 qc- 部分
+    for part in reversed(parts):
+        if part.startswith('clawd-'):
+            # clawd-qc-xxx → qc-xxx
+            return part.replace('clawd-', '', 1)
+    
+    # 无法推断，返回 unknown
+    return "unknown"
 
 
 def get_log_file_path(agent_id: str = None) -> str:

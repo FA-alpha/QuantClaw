@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 from datetime import datetime
-from api_logger import get_agent_id, get_log_file_path, get_recent_logs, clear_logs, LOG_BASE_DIR
+from .api_logger import get_agent_id, get_log_file_path, get_recent_logs, clear_logs, LOG_BASE_DIR
 
 
 def format_timestamp(ts_str: str) -> str:

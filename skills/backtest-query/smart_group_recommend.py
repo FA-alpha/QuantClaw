@@ -9,15 +9,225 @@ import os
 import json
 import argparse
 import itertools
+from math import comb, prod
 import time
+import re
+import atexit
+import tempfile
+import shutil
+import tracemalloc
 from typing import List, Dict, Optional, Tuple, Set
 from datetime import datetime
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from query import query_backtest, get_backtest_detail, get_version_info
-from analysis import recommend_combinations
+from query import query_backtest, get_version_info
+from analysis import recommend_combinations, score_portfolio, _has_net_value_data
 
 from qc_log import log_error, ErrorType
+
+# ==================== 内存监控 ====================
+
+_MEM_LOG_ENABLED = os.environ.get('MEM_LOG') == '1'
+
+
+def _mem_checkpoint(label: str):
+    """记录当前内存使用快照，仅在 MEM_LOG=1 时输出"""
+    if not _MEM_LOG_ENABLED:
+        return
+    snapshot = tracemalloc.take_snapshot()
+    stats = snapshot.statistics('lineno')
+    current, peak = tracemalloc.get_traced_memory()
+    print(f"\n📍 [MEM:{label}] current={current/1024/1024:.1f}MB peak={peak/1024/1024:.1f}MB", flush=True)
+    # 打印 top 5 内存分配位置
+    for stat in stats[:5]:
+        print(f"   {stat.size/1024/1024:.2f}MB: {stat.traceback.format()[-1].strip()}"[:160])
+
+# ==================== JSONL 磁盘缓存 ====================
+
+# 需要从列表API的 metrics.total 中提取的详情字段（只取标量，丢弃大数组）
+_METRICS_DETAIL_FIELDS = [
+    'profit_rate', 'win_rate', 'buy_num', 'sell_num', 'max_loss',
+    'alpha', 'beta', 'odds', 'max_recovery_time',
+    'drawdown_over_10pct_count',
+]
+
+
+def _parse_detail_metrics(metrics_str: str) -> Optional[Dict]:
+    """
+    从列表API的 metrics JSON 字符串中提取需要的详情指标。
+    只取标量字段，丢弃 drawdown_over_10pct_periods 等大数组。
+    """
+    if not metrics_str:
+        return None
+    try:
+        metrics = json.loads(metrics_str)
+        total = metrics.get('total', {})
+        parsed = {}
+        for k in _METRICS_DETAIL_FIELDS:
+            v = total.get(k)
+            if v is not None:
+                parsed[k] = v
+        return parsed
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return None
+
+# 策略骨架字段：下游分组/排序/筛选/输出需要的轻量字段
+# 对照 query.py format_result(json) + smart_group_recommend 实际从策略 dict 读取的字段
+_SKELETON_FIELDS = frozenset([
+    'back_id', 'id', 'name', 'coin', 'direction', 'strategy_type',
+    'strategy_token', 'year_rate', 'sharp_rate', 'max_loss', 'win_rate',
+    'score', 'version', 'leverage',
+])
+
+# 详情缓存目录（会话级，进程退出自动清理）
+_DETAIL_CACHE_DIR = None
+
+# metrics 索引缓存 {back_id: metrics_raw_str}，从 JSONL 懒加载一次
+_METRICS_INDEX = None
+
+
+def _get_metrics_index() -> Dict:
+    """从 JSONL 缓存建立 back_id → metrics 字符串索引（仅首次扫描）"""
+    global _METRICS_INDEX
+    if _METRICS_INDEX is not None:
+        return _METRICS_INDEX
+    _METRICS_INDEX = {}
+    jsonl_path = os.path.join(_get_cache_dir(), 'strategies.jsonl')
+    if os.path.exists(jsonl_path):
+        with open(jsonl_path, 'r') as f:
+            for line in f:
+                s = json.loads(line)
+                bid = s.get('back_id')
+                if bid and s.get('metrics'):
+                    _METRICS_INDEX[bid] = s['metrics']
+    return _METRICS_INDEX
+
+
+def _get_cache_dir() -> str:
+    """获取当前会话的 JSONL 缓存目录（惰性创建）"""
+    global _DETAIL_CACHE_DIR
+    if _DETAIL_CACHE_DIR is None:
+        _DETAIL_CACHE_DIR = tempfile.mkdtemp(prefix='backtest_cache_')
+    return _DETAIL_CACHE_DIR
+
+
+def _slim_strategy(strategy: Dict) -> Dict:
+    """提取策略的骨架字段，丢弃大数组"""
+    return {k: strategy.get(k) for k in _SKELETON_FIELDS if k in strategy}
+
+
+def _cleanup_cache():
+    """清理磁盘缓存"""
+    global _DETAIL_CACHE_DIR
+    if _DETAIL_CACHE_DIR and os.path.isdir(_DETAIL_CACHE_DIR):
+        shutil.rmtree(_DETAIL_CACHE_DIR, ignore_errors=True)
+        _DETAIL_CACHE_DIR = None
+
+
+# 进程退出时自动清理
+atexit.register(_cleanup_cache)
+
+# ==================== 净值曲线持久化缓存 ====================
+# 交易策略净值一旦生成就不会变，持久化到磁盘避免重复调 API
+
+_NETVALUE_CACHE_DIR = os.path.join(os.path.expanduser('~'), '.quantclaw', 'cache', 'bot_details')
+
+
+def _get_netvalue_cache_dir() -> str:
+    os.makedirs(_NETVALUE_CACHE_DIR, exist_ok=True)
+    return _NETVALUE_CACHE_DIR
+
+
+def _get_cached_netvalue(back_id: str) -> Optional[dict]:
+    """查询缓存的 total_stat：磁盘文件存在则读取，不存在返回 None"""
+    fpath = os.path.join(_NETVALUE_CACHE_DIR, f'{back_id}.json')
+    if not os.path.exists(fpath):
+        return None
+    try:
+        with open(fpath, 'r') as f:
+            data = json.load(f)
+        if 'total_stat' in data:
+            return data['total_stat']
+        elif 'net_value' in data:
+            return data
+    except (json.JSONDecodeError, OSError):
+        pass
+    return None
+
+
+def _save_netvalue(back_id: str, total_stat: dict):
+    """持久化写入净值缓存（原子写：tmp + rename）"""
+    cache_dir = _get_netvalue_cache_dir()
+    fpath = os.path.join(cache_dir, f'{back_id}.json')
+    tmp = fpath + '.tmp'
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(total_stat, f)
+        os.replace(tmp, fpath)
+    except OSError:
+        pass
+
+
+def enrich_netvalues(strategies: List[Dict], token: str) -> int:
+    if not strategies or not token:
+        return 0
+
+    from query import get_backtest_detail
+
+    cached = 0
+    need_fetch = []
+    for s in strategies:
+        back_id = s.get('back_id')
+        if not back_id:
+            continue
+        bid = str(back_id)
+        ts = _get_cached_netvalue(bid)
+        if ts:
+            s['_detail'] = s.get('_detail', {})
+            s['_detail']['total_stat'] = ts
+            cached += 1
+        else:
+            # API 需要完整 id（如 806794##2##2），back_id 只用于缓存 key
+            sid = s.get('id') or back_id
+            need_fetch.append((s, bid, sid))
+
+    if not need_fetch:
+        return cached
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from threading import Lock
+
+    total = len(need_fetch)
+    print(f"   📡 获取净值数据: {cached} 命中缓存, {total} 条拉取中...", flush=True)
+
+    fetched = 0
+    lock = Lock()
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(get_backtest_detail, token, sid): (s, bid)
+            for s, bid, sid in need_fetch
+        }
+        for future in as_completed(futures):
+            s, bid = futures[future]
+            try:
+                resp = future.result()
+                if resp and 'info' in resp:
+                    ts = resp['info'].get('total_stat', {})
+                    if ts:
+                        with lock:
+                            _save_netvalue(str(bid), ts)
+                            s['_detail'] = s.get('_detail', {})
+                            s['_detail']['total_stat'] = ts
+                            fetched += 1
+            except Exception:
+                pass
+
+    if total > 0:
+        total_cached = cached + fetched
+        print(f"   ✅ 净值拉取完成: {fetched}/{total} 成功, 累计缓存 {total_cached} 条", flush=True)
+
+    return cached + fetched
+
 
 
 # ==================== 全局日志控制 ====================
@@ -486,65 +696,13 @@ def build_detail_criteria(args) -> Optional[Dict]:
     
     if args.min_total_win_rate:
         criteria['min_total_win_rate'] = args.min_total_win_rate
-    if args.min_recent_profit_rate:
-        criteria['min_recent_profit_rate'] = args.min_recent_profit_rate
-    if args.max_recent_drawdown:
-        criteria['max_recent_drawdown'] = args.max_recent_drawdown
     if args.min_trade_count:
         criteria['min_trade_count'] = args.min_trade_count
-    if args.min_stability:
-        criteria['min_stability'] = args.min_stability
     
     return criteria if criteria else None
 
 
 # ==================== 批量查询 ====================
-
-def deduplicate_and_add(strategies: List[Dict], all_strategies: List[Dict], seen_ids: Set[str], seen_strategies: Dict[str, Dict] = None) -> int:
-    """
-    去重并添加策略（改进：不覆盖已有的 direction）
-    
-    Args:
-        strategies: 新策略列表
-        all_strategies: 总策略列表
-        seen_ids: 已见 back_id 集合
-        seen_strategies: 已见策略字典 {back_id: strategy}
-    
-    Returns:
-        新增数量
-    """
-    new_count = 0
-    
-    if seen_strategies is None:
-        # 兼容旧调用方式
-        for strategy in strategies:
-            back_id = strategy.get('back_id')
-            if back_id and back_id not in seen_ids:
-                seen_ids.add(back_id)
-                all_strategies.append(strategy)
-                new_count += 1
-        return new_count
-    
-    # 新逻辑：检查 direction 是否已存在
-    for strategy in strategies:
-        back_id = strategy.get('back_id')
-        if not back_id:
-            continue
-        
-        if back_id not in seen_ids:
-            # 全新策略，直接添加
-            seen_ids.add(back_id)
-            all_strategies.append(strategy)
-            seen_strategies[back_id] = strategy
-            new_count += 1
-        else:
-            # 已存在，保留第一次的 direction（不覆盖）
-            existing = seen_strategies.get(back_id)
-            if existing and not existing.get('direction') and strategy.get('direction'):
-                existing['direction'] = strategy.get('direction')
-    
-    return new_count
-
 
 class ParallelQueryExecutor:
     """并行查询执行器（专为 Agent 优化）"""
@@ -617,6 +775,10 @@ class ParallelQueryExecutor:
         seen_strategies = {}  # {back_id: strategy} 用于更新已存在的策略
         failed_count = 0
         failed_details = []  # 记录失败详情
+        
+        # JSONL 磁盘缓存：完整数据落盘，内存只保留骨架
+        _jsonl_path = os.path.join(_get_cache_dir(), 'strategies.jsonl')
+        _jsonl_fp = open(_jsonl_path, 'w')
         
         if self.verbose and self.log_level != "quiet":
             print(f"\n🚀 开始并行查询 {total} 个组合...", flush=True)
@@ -694,7 +856,22 @@ class ParallelQueryExecutor:
                             if not s.get('coin') and coin:
                                 s['coin'] = coin
                         
-                        new_count = deduplicate_and_add(strategies, all_strategies, seen_back_ids, seen_strategies)
+                        # ✅ 去重后：完整数据落盘 JSONL，内存只保留骨架
+                        for s in strategies:
+                            back_id = s.get('back_id')
+                            if not back_id:
+                                continue
+                            if back_id not in seen_back_ids:
+                                seen_back_ids.add(back_id)
+                                _jsonl_fp.write(json.dumps(s, ensure_ascii=False) + '\n')
+                                slim_s = _slim_strategy(s)
+                                all_strategies.append(slim_s)
+                                seen_strategies[back_id] = slim_s
+                            else:
+                                # 已存在：只更新 direction（不覆盖已有数据）
+                                existing = seen_strategies.get(back_id)
+                                if existing and not existing.get('direction') and s.get('direction'):
+                                    existing['direction'] = s.get('direction')
                 
                 except Exception as e:
                     failed_count += 1
@@ -708,11 +885,15 @@ class ParallelQueryExecutor:
                     progress = completed / total * 100
                     print(f"   进度: {progress:.0f}% ({completed}/{total})", flush=True)
         
+        # 关闭 JSONL 缓存文件
+        _jsonl_fp.close()
+        
         if self.verbose and self.log_level != "quiet":
             print(f"\n✅ 查询完成:", flush=True)
             print(f"   成功: {total - failed_count}/{total}", flush=True)
             print(f"   失败: {failed_count}", flush=True)
             print(f"   策略数: {len(all_strategies)} (去重后)", flush=True)
+            print(f"   缓存: {_jsonl_path}", flush=True)
             
             # 失败率过高时给出提示
             if failed_count > total * 0.3:
@@ -911,21 +1092,25 @@ class SmartGroupRecommender:
     
     # ==================== 详情深度分析 ====================
     
-    def fetch_detail_data(self, strategies: List[Dict], max_fetch: int = 30) -> List[Dict]:
+    def load_cached_metrics(self, strategies: List[Dict], max_fetch: int = 30) -> List[Dict]:
         """
-        批量获取详情数据
+        从 JSONL 本地缓存中读取 metrics 字段，解析为详情指标。
+        纯本地缓存读取，不调 API。
         
         Args:
-            strategies: 策略列表
-            max_fetch: 最多获取数量
+            strategies: 策略列表（骨架字段）
+            max_fetch: 最多处理数量
         
         Returns:
-            包含详情的策略列表
+            包含 _detail.total_stat 的策略列表
         """
         enriched = []
         failed = 0
         
-        self.log(f"\n📊 获取详情数据（最多 {max_fetch} 个）...")
+        self.log(f"\n📊 解析详情指标（最多 {max_fetch} 个）...")
+        
+        # 懒加载：从 JSONL 扫描一次建立 back_id → metrics 索引
+        metrics_index = _get_metrics_index()
         
         for i, strategy in enumerate(strategies[:max_fetch], 1):
             back_id = strategy.get('back_id')
@@ -933,24 +1118,17 @@ class SmartGroupRecommender:
                 failed += 1
                 continue
             
-            try:
-                detail = get_backtest_detail(self.token, back_id, agent_id=self.agent_id)
-                
-                if "error" not in detail:
-                    # 提取关键详情指标
-                    info = detail.get('info', {})
-                    strategy['_detail'] = {
-                        'total_stat': info.get('total_stat', {}),
-                        'recent_stat': info.get('recent_stat', {}),
-                        'coin_fee_list': info.get('coin_fee_list', []),
-                        'time_line_list': info.get('time_line_list', [])
-                    }
-                    enriched.append(strategy)
-                else:
-                    failed += 1
-            except Exception as e:
+            metrics_str = metrics_index.get(back_id)
+            if not metrics_str:
                 failed += 1
                 continue
+            
+            parsed = _parse_detail_metrics(metrics_str)
+            if parsed:
+                strategy['_detail'] = {'total_stat': parsed}
+                enriched.append(strategy)
+            else:
+                failed += 1
         
         self.log(f"   完成: {len(enriched)}/{min(len(strategies), max_fetch)} 成功, {failed} 失败")
         return enriched
@@ -967,7 +1145,16 @@ class SmartGroupRecommender:
         """
         detail = strategy.get('_detail', {})
         total_stat = detail.get('total_stat', {})
-        recent_stat = detail.get('recent_stat', {})
+        
+        # 从 buy_num/sell_num 解析交易次数（格式如 "1263, 分仓:373"，取开头数字）
+        def _parse_leading_int(val):
+            if not val:
+                return 0
+            s = str(val)
+            m = re.match(r'^\d+', s.strip())
+            return int(m.group()) if m else 0
+        
+        total_trade_count = _parse_leading_int(total_stat.get('buy_num', 0)) + _parse_leading_int(total_stat.get('sell_num', 0))
         
         metrics = {
             # 基础指标（列表数据）
@@ -978,21 +1165,16 @@ class SmartGroupRecommender:
             # 详情指标（total_stat）
             'total_profit_rate': total_stat.get('profit_rate', 0),
             'total_win_rate': total_stat.get('win_rate', 0),
-            'total_trade_count': total_stat.get('trade_count', 0),
+            'total_trade_count': total_trade_count,
             'total_max_drawdown': total_stat.get('max_loss', 100),
             
-            # 近期指标（recent_stat）
-            'recent_profit_rate': recent_stat.get('profit_rate', 0),
-            'recent_win_rate': recent_stat.get('win_rate', 0),
-            'recent_trade_count': recent_stat.get('trade_count', 0),
-            'recent_max_drawdown': recent_stat.get('max_loss', 100),
+            # 二期权重指标
+            'alpha': total_stat.get('alpha', 0),
+            'beta': total_stat.get('beta', 1),
+            'odds': total_stat.get('odds', 0),
+            'max_recovery_time': total_stat.get('max_recovery_time', 0),
+            'drawdown_over_10pct_count': total_stat.get('drawdown_over_10pct_count', 0),
         }
-        
-        # 计算稳定性指标
-        if metrics['total_profit_rate'] > 0:
-            metrics['recent_stability'] = metrics['recent_profit_rate'] / metrics['total_profit_rate']
-        else:
-            metrics['recent_stability'] = 0
         
         return metrics
     
@@ -1017,20 +1199,8 @@ class SmartGroupRecommender:
                 if metrics['total_win_rate'] < criteria['min_total_win_rate']:
                     passed = False
             
-            if 'min_recent_profit_rate' in criteria:
-                if metrics['recent_profit_rate'] < criteria['min_recent_profit_rate']:
-                    passed = False
-            
-            if 'max_recent_drawdown' in criteria:
-                if metrics['recent_max_drawdown'] > criteria['max_recent_drawdown']:
-                    passed = False
-            
             if 'min_trade_count' in criteria:
                 if metrics['total_trade_count'] < criteria['min_trade_count']:
-                    passed = False
-            
-            if 'min_stability' in criteria:
-                if metrics['recent_stability'] < criteria['min_stability']:
                     passed = False
             
             if passed:
@@ -1070,24 +1240,22 @@ class SmartGroupRecommender:
         for method in sort_methods:
             
             if method == 'sharpe':
-                sorted_list = sorted(strategies, key=lambda s: s.get('sharp_rate', 0), reverse=True)
+                sorted_list = sorted(strategies, key=lambda s: float(s.get('sharp_rate') or 0), reverse=True)
             elif method == 'return':
-                sorted_list = sorted(strategies, key=lambda s: s.get('year_rate', 0), reverse=True)
+                sorted_list = sorted(strategies, key=lambda s: float(s.get('year_rate') or 0), reverse=True)
             elif method == 'drawdown':
-                sorted_list = sorted(strategies, key=lambda s: s.get('max_loss', 100), reverse=False)
+                sorted_list = sorted(strategies, key=lambda s: float(s.get('max_loss') or 100), reverse=False)
             elif method == 'win_rate':
-                sorted_list = sorted(strategies, key=lambda s: s.get('_metrics', {}).get('total_win_rate', 0), reverse=True)
-            elif method == 'stability':
-                sorted_list = sorted(strategies, key=lambda s: s.get('_metrics', {}).get('recent_stability', 0), reverse=True)
+                sorted_list = sorted(strategies, key=lambda s: float(s.get('win_rate') or 0), reverse=True)
             elif method == 'score':
                 sorted_list = sorted(
                     strategies,
-                    key=lambda s: (s.get('score', 0) or s.get('total_score', 0) or s.get('recommend_score', 0) or s.get('rating', 0)),
+                    key=lambda s: float(s.get('score') or 0),
                     reverse=True
                 )
             elif method.startswith('custom:'):
                 field_name = method.split(':', 1)[1]
-                sorted_list = sorted(strategies, key=lambda s: s.get(field_name, 0), reverse=True)
+                sorted_list = sorted(strategies, key=lambda s: float(s.get(field_name) or 0), reverse=True)
                 self.log(f"      📌 自定义字段: {field_name}")
             else:
                 self.log(f"      ⚠️  未知排序方式: {method}")
@@ -1267,6 +1435,7 @@ class SmartGroupRecommender:
         
         # 3. 分组
         groups = self.classify_strategies(strategies, group_by)
+        _mem_checkpoint(f'classify done, {len(groups)} groups, {sum(len(v) for v in groups.values())} total')
         self.log(f"\n📦 分组结果: {len(groups)} 组")
         
         for key, group_strategies in groups.items():
@@ -1334,7 +1503,7 @@ class SmartGroupRecommender:
             self.log(f"📊 去重后选择 {len(top_strategies)} 个策略")
             
             # 获取详情
-            enriched = self.fetch_detail_data(top_strategies, max_fetch=len(top_strategies))
+            enriched = self.load_cached_metrics(top_strategies, max_fetch=len(top_strategies))
             
             # 基于详情筛选
             if detail_criteria:
@@ -1344,6 +1513,8 @@ class SmartGroupRecommender:
                 self.log(f"   筛选后剩余: {len(enriched)}/{before}")
             
             all_selected.extend(enriched)
+        
+        _mem_checkpoint(f'all_selected done, {len(all_selected)} strategies')
         
         self.log(f"\n✅ 总计选出 {len(all_selected)} 个优质策略")
         
@@ -1383,10 +1554,6 @@ class SmartGroupRecommender:
         
         # 构建偏好参数
         preferences = {}
-        if detail_criteria:
-            if 'max_recent_drawdown' in detail_criteria:
-                preferences['max_drawdown'] = detail_criteria['max_recent_drawdown']
-            # 可以根据其他筛选条件动态调整偏好
         
         # 分支：根据 intent 决定组合生成方式
         all_combinations = []
@@ -1424,6 +1591,13 @@ class SmartGroupRecommender:
                     all_selected, groups, group_by, max_combinations, preferences
                 )
             
+            elif strategy_goal == 'diversification' and diversity_priority == 'coin':
+                # 币种分散模式：每个币种独立生成子组合，再跨币种拼装
+                self.log(f"🎯 币种分散模式：{len(constraints.get('coins', []))} 币种多样策略")
+                all_combinations = self._generate_coin_diversification_combinations(
+                    all_selected, max_combinations, preferences
+                )
+            
             else:
                 # 其他意图：使用默认模式
                 all_combinations = self._generate_default_combinations(
@@ -1436,7 +1610,8 @@ class SmartGroupRecommender:
             )
         
         # 按评分排序，取前 N 个
-        all_combinations.sort(key=lambda x: x.get('score', 0), reverse=True)
+        all_combinations.sort(key=lambda x: float(x.get('score') or 0), reverse=True)
+        _mem_checkpoint(f'combinations generated, {len(all_combinations)} total')
         combinations = all_combinations[:max_combinations]
         
         # 6. 返回结果
@@ -1452,10 +1627,208 @@ class SmartGroupRecommender:
             "sort_methods": sort_methods if sort_methods else ['sharpe', 'return', 'drawdown']
         }
     
+    def _generate_coin_diversification_combinations(
+        self,
+        all_selected: List[Dict],
+        max_combinations: int,
+        preferences: Dict
+    ) -> List[Dict]:
+        """
+        币种分散模式：每个币种独立生成子组合，再跨币种拼装成大组合
+        
+        流程：
+        1. 按币种分组，组内按 score 预排序
+        2. 每个币种取 coin_strategies_count 个策略（默认 1）
+        3. 每个币种调用 recommend_combinations 生成 top-N 子组合
+        4. 跨币种拼装：
+           - 有净值曲线 → total_cross≤5000 笛卡尔积，否则 zip（rank对齐，不足循环复用）
+           - 无净值曲线 → total_cross≤100000 笛卡尔积，否则 zip（rank对齐，不足循环复用）
+        5. score_portfolio 打分 → 排序 → 取 top max_combinations
+        """
+        _mem_checkpoint(f'coin_diversification start, {len(all_selected)} strategies')
+
+        constraints = preferences.get('constraints', {})
+        coin_strategies_count = constraints.get('coin_strategies_count', {})
+        target_coins = constraints.get('coins', [])
+
+        # Step 1: 按币种分组，组内排序
+        coin_groups: Dict[str, List[Dict]] = {c: [] for c in target_coins}
+        for s in all_selected:
+            coin = s.get('coin')
+            if coin in coin_groups:
+                coin_groups[coin].append(s)
+
+        # Step 2: 每个币种需要的策略数
+        per_coin_counts: Dict[str, int] = {}
+        for coin in target_coins:
+            count = coin_strategies_count.get(coin, 1)
+            available = len(coin_groups[coin])
+            per_coin_counts[coin] = min(count, available) if available > 0 else 0
+
+        total_per_combo = sum(per_coin_counts.values())
+        self.log(f"   总策略数/组: {total_per_combo} ({', '.join(f'{c}x{n}' for c,n in per_coin_counts.items() if n>0)})")
+
+        # Step 3: 每个币种生成子组合
+        has_nv = _has_net_value_data(all_selected)
+        coin_subcombos: Dict[str, List[Dict]] = {}
+
+        for coin in target_coins:
+            strategies = coin_groups[coin]
+            need_count = per_coin_counts[coin]
+            if need_count == 0 or len(strategies) < need_count:
+                self.log(f"   ⚠️  {coin}: 策略不足 (需要{need_count}, 可用{len(strategies)})")
+                continue
+
+            # 策略少 → 全量组合；策略多 → 按 score 截断
+            n = len(strategies)
+            if n > 20 and need_count > 0:
+                strategies = sorted(strategies, key=lambda s: float(s.get('score', 0) or 0), reverse=True)
+                strategies = strategies[:max(20, need_count * 3)]
+                n = len(strategies)
+
+            # 每个币种子组合数 = max_combinations × 3，封顶 30
+            # 但如果 max_combinations 超过 30，直接用 max_combinations
+            combo_size = need_count
+            top_n = max(max_combinations, min(max_combinations * 3, 30))
+            if combo_size == 0 or len(strategies) < combo_size:
+                top_n = 0
+
+            theoretical = comb(n, combo_size) if n >= combo_size else 0
+
+            sub_combos = recommend_combinations(
+                strategies=strategies,
+                group_size=combo_size,
+                top_n=top_n,
+                preferences=preferences if preferences else None
+            )
+            coin_subcombos[coin] = sub_combos
+            self.log(f"   {coin}: {len(sub_combos)} 子组合 ({n}策略 → C({n},{combo_size})={theoretical})")
+
+        if not coin_subcombos:
+            self.log(f"⚠️  没有币种有足够策略，降级为默认模式")
+            return self._generate_default_combinations(all_selected, max_combinations, preferences)
+
+        # Step 4: 跨币种拼装
+        coin_order = [c for c in target_coins if c in coin_subcombos]
+        subcombo_lists = [coin_subcombos[c] for c in coin_order]
+
+        # 估算拼装总量
+        total_cross = prod(len(sc) for sc in subcombo_lists)
+
+        # 笛卡尔阈值：有净值曲线→5000（风险/相关性分析贵），无→100000（纯字段评分便宜）
+        cross_threshold = 5000 if has_nv else 100000
+        max_merged = max_combinations * 30 if has_nv else max_combinations * 100
+        self.log(f"   跨币种组合总数: {total_cross} (阈值: {cross_threshold}, 净值: {has_nv})")
+
+        if total_cross > cross_threshold:
+            # 量大 → zip 模式（按 rank 对齐，不足的币种子组合循环复用）
+            self.log(f"   使用 zip 模式（rank 对齐）")
+            max_rank = max_combinations
+            merged_combos = []
+            for rank in range(max_rank):
+                merged_strategies = []
+                for ci, coin in enumerate(coin_order):
+                    subcombo_list = subcombo_lists[ci]
+                    subc = subcombo_list[rank % len(subcombo_list)]  # 循环复用
+                    for s in subc['strategies']:
+                        token = s.get('strategy_token')
+                        match = next((x for x in all_selected if x.get('strategy_token') == token), None)
+                        if match:
+                            merged_strategies.append(match)
+
+                if merged_strategies:
+                    merged_combos.append(merged_strategies)
+        else:
+            # 量小 → 笛卡尔积
+            self.log(f"   使用笛卡尔积模式")
+            merged_combos = []
+            for cross in itertools.product(*subcombo_lists):
+                merged_strategies = []
+                for subc in cross:
+                    for s in subc['strategies']:
+                        token = s.get('strategy_token')
+                        match = next((x for x in all_selected if x.get('strategy_token') == token), None)
+                        if match:
+                            merged_strategies.append(match)
+                if merged_strategies:
+                    merged_combos.append(merged_strategies)
+                if len(merged_combos) >= max_merged:
+                    break
+
+        # Step 5: 打分排序
+        scored = []
+        for strategies in merged_combos:
+            indices = [all_selected.index(s) for s in strategies if s in all_selected]
+            if indices:
+                s = score_portfolio(
+                    all_selected, indices,
+                    preferences=preferences if preferences else None,
+                    has_net_value=has_nv
+                )
+                scored.append({
+                    'strategies': strategies,
+                    'score': s,
+                    'style': '多币种组合',
+                })
+
+        scored.sort(key=lambda x: x['score'], reverse=True)
+        _mem_checkpoint(f'coin_diversification done, {len(scored)} scored')
+
+        # 转换为统一格式
+        result = []
+        for i, entry in enumerate(scored[:max_combinations], 1):
+            strategies_list = entry['strategies']
+            year_rates = [float(s.get('year_rate', 0)) for s in strategies_list]
+            avg_return = sum(year_rates) / len(year_rates) if year_rates else 0
+            max_losses = [float(s.get('max_loss', 0)) for s in strategies_list]
+            avg_drawdown = sum(max_losses) / len(max_losses) if max_losses else 0
+            avg_sharpe = sum(float(s.get('sharp_rate', 0)) for s in strategies_list) / len(strategies_list) if strategies_list else 0
+            result.append({
+                'rank': i,
+                'score': entry['score'],
+                'expected_return': round(avg_return, 2),
+                'strategies': [
+                    {
+                        'name': s.get('name'),
+                        'coin': s.get('coin'),
+                        'direction': s.get('direction'),
+                        'year_rate': float(s.get('year_rate', 0)),
+                        'sharp_rate': float(s.get('sharp_rate', 0)),
+                        'max_loss': float(s.get('max_loss', 0)),
+                        'strategy_token': s.get('strategy_token'),
+                    }
+                    for s in strategies_list
+                ],
+                'portfolio_risk': {
+                    'expected_return': round(avg_return, 2),
+                    'max_drawdown': round(avg_drawdown, 2),
+                    'sharpe_ratio': round(avg_sharpe, 2),
+                },
+                'style': entry['style'],
+                'diversity_type': 'coin',
+                'coins': list(set(s.get('coin') for s in strategies_list)),
+            })
+
+        return result
+
     def _generate_default_combinations(self, all_selected: List[Dict], max_combinations: int, preferences: Dict) -> List[Dict]:
         """默认组合生成逻辑（原有逻辑）"""
+        _mem_checkpoint(f'default_combinations start, {len(all_selected)} strategies')
         all_combinations = []
         n_strategies = len(all_selected)
+        
+        # 策略太多时按 score 截断到 20 条，避免 optimize_portfolio 全量 combinations OOM
+        if n_strategies > 30:
+            all_selected_truncated = sorted(
+                all_selected,
+                key=lambda s: float(s.get('score', 0) or 0),
+                reverse=True
+            )[:20]
+            self.log(f"   ⚠️  策略过多({n_strategies})，按 score 截断到 20 条")
+        else:
+            all_selected_truncated = all_selected
+        
+        n_strategies = len(all_selected_truncated)
         
         # 获取最少策略数量要求
         min_strategies = preferences.get('min_strategies', 3)
@@ -1485,7 +1858,7 @@ class SmartGroupRecommender:
         for size in sizes:
             if size <= n_strategies:
                 combos = recommend_combinations(
-                    strategies=all_selected,
+                    strategies=all_selected_truncated,
                     group_size=size,
                     top_n=per_size,
                     preferences=preferences if preferences else None
@@ -1514,31 +1887,47 @@ class SmartGroupRecommender:
     ) -> List[Dict]:
         """
         对冲模式组合生成：强制多空平衡
-        
-        Args:
-            all_selected: 所有筛选后的策略
-            groups: 分组结果
-            group_by: 分组维度
-            max_combinations: 最多生成几个组合
-            preferences: 偏好参数（包含 diversity_priority）
-        
-        Returns:
-            对冲组合列表
         """
+        _mem_checkpoint(f'hedging_combinations start, {len(all_selected)} strategies')
+        import heapq
+        _hedge_heap = []
+        def _push_combo(combo):
+            score = combo.get('score', 0)
+            if len(_hedge_heap) < max_combinations:
+                heapq.heappush(_hedge_heap, (score, combo))
+            elif score > _hedge_heap[0][0]:
+                heapq.heapreplace(_hedge_heap, (score, combo))
+        def _push_combos(combos):
+            for c in combos:
+                _push_combo(c)
+        def _heap_sorted():
+            return [c for _, c in sorted(_hedge_heap, key=lambda x: x[0], reverse=True)]
         # 找出 long 和 short 分组
         long_strategies = []
         short_strategies = []
         
+        # 一次遍历：按 direction 拆 long/short + 按 coin 分组 + 收集币种
+        from collections import defaultdict
+        direction_idx = group_by.index('direction') if 'direction' in group_by else -1
+        coin_idx = group_by.index('coin') if 'coin' in group_by else -1
+        _hedge_long_by_coin = defaultdict(list)
+        _hedge_short_by_coin = defaultdict(list)
+        all_coins_set = set()
+
         for key, group_strategies in groups.items():
-            # key 是 tuple，例如 ('long', 'BTC') 或 ('short', 'SOL')
-            direction_idx = group_by.index('direction') if 'direction' in group_by else -1
-            
             if direction_idx >= 0:
                 direction = key[direction_idx]
+                coin = key[coin_idx] if coin_idx >= 0 else None
+                if coin:
+                    all_coins_set.add(coin)
                 if direction == 'long':
                     long_strategies.extend(group_strategies)
+                    if coin:
+                        _hedge_long_by_coin[coin].extend(group_strategies)
                 elif direction == 'short':
                     short_strategies.extend(group_strategies)
+                    if coin:
+                        _hedge_short_by_coin[coin].extend(group_strategies)
         
         self.log(f"   做多策略: {len(long_strategies)} 个")
         self.log(f"   做空策略: {len(short_strategies)} 个")
@@ -1555,16 +1944,42 @@ class SmartGroupRecommender:
         min_strategies = preferences.get('min_strategies', 2)
         
         if require_different_coins:
-            # 统计涉及的币种数量
-            all_coins = set(s['coin'] for s in all_selected)
-            if len(all_coins) > 1:
-                self.log(f"   跨币种对冲模式：强制不同币种 ({', '.join(all_coins)})")
+            if len(all_coins_set) > 1:
+                self.log(f"   跨币种对冲模式：强制不同币种 ({', '.join(sorted(all_coins_set))})")
             else:
                 self.log(f"   ⚠️  只有单个币种，无法跨币种对冲，降级为同币种多空")
                 require_different_coins = False
-        
+
+        # 截断控制：按 score 排序，限制参与组合的策略数量
+        num_coins = len(all_coins_set) or 1
+        _score_key = lambda s: float(s.get('score') or 0)
+
+        if require_different_coins:
+            # 跨币种：每币种配额随币种数缩放，总量 ≤ 40/方向
+            per_coin = max(2, 40 // num_coins)
+            # 对每个币种的 long/short 分别按 score 排序后截断
+            for coin in list(_hedge_long_by_coin.keys()):
+                _hedge_long_by_coin[coin].sort(key=_score_key, reverse=True)
+                _hedge_long_by_coin[coin] = _hedge_long_by_coin[coin][:per_coin]
+            for coin in list(_hedge_short_by_coin.keys()):
+                _hedge_short_by_coin[coin].sort(key=_score_key, reverse=True)
+                _hedge_short_by_coin[coin] = _hedge_short_by_coin[coin][:per_coin]
+            long_strategies = [s for lst in _hedge_long_by_coin.values() for s in lst]
+            short_strategies = [s for lst in _hedge_short_by_coin.values() for s in lst]
+        else:
+            # 同币种：每方向 top 30（score 越高组合质量越好）
+            per_dir = min(30, 40 // num_coins * 2)
+            long_strategies.sort(key=_score_key, reverse=True)
+            short_strategies.sort(key=_score_key, reverse=True)
+            long_strategies = long_strategies[:per_dir]
+            short_strategies = short_strategies[:per_dir]
+
+        self.log(f"   截断后: long={len(long_strategies)} short={len(short_strategies)}, 每币种<= {max(2, 40 // num_coins) if require_different_coins else '(N/A)'}")
+
+        # 拉取净值数据（兜底：先从缓存获取，缓存未命中则调 API）
+        enrich_netvalues(long_strategies + short_strategies, self.token)
+
         # 生成对冲组合：从 long 和 short 中各取部分
-        all_combinations = []
         
         # 根据 min_strategies 决定组合策略
         if min_strategies <= 2:
@@ -1572,19 +1987,13 @@ class SmartGroupRecommender:
             self.log(f"   生成简单对冲组合（2个策略）")
             
             if require_different_coins:
-                # 跨币种对冲：按币种分组后各取一个
-                from collections import defaultdict
-                long_by_coin = defaultdict(list)
-                short_by_coin = defaultdict(list)
-                
-                for s in long_strategies:
-                    long_by_coin[s['coin']].append(s)
-                for s in short_strategies:
-                    short_by_coin[s['coin']].append(s)
-                
+                # 跨币种对冲：使用函数入口处构建的统一币种分组
+                long_by_coin = _hedge_long_by_coin
+                short_by_coin = _hedge_short_by_coin
+
                 self.log(f"   Long 币种: {list(long_by_coin.keys())}")
                 self.log(f"   Short 币种: {list(short_by_coin.keys())}")
-                
+
                 # 跨币种配对
                 for long_coin, long_list in long_by_coin.items():
                     for short_coin, short_list in short_by_coin.items():
@@ -1604,16 +2013,8 @@ class SmartGroupRecommender:
                                 for combo in combos:
                                     combo['style'] = '跨币种对冲'
                                     combo['hedging_type'] = 'simple'
-                                all_combinations.extend(combos)
-                                
-                                if len(all_combinations) >= max_combinations * 3:
-                                    break
-                            if len(all_combinations) >= max_combinations * 3:
-                                break
-                        if len(all_combinations) >= max_combinations * 3:
+                                _push_combos(combos)
                             break
-                    if len(all_combinations) >= max_combinations * 3:
-                        break
             else:
                 # 同币种对冲：直接取前N个
                 for l_strat in long_strategies[:3]:
@@ -1628,38 +2029,39 @@ class SmartGroupRecommender:
                         for combo in combos:
                             combo['style'] = '对冲型'
                             combo['hedging_type'] = 'simple'
-                        all_combinations.extend(combos)
+                        _push_combos(combos)
         
         # 策略2：强化对冲（2 long + 2 short = 4个策略）
         if min_strategies >= 4 and len(long_strategies) >= 2 and len(short_strategies) >= 2:
             self.log(f"   生成强化对冲组合（4个策略）")
-            import itertools
             
             if require_different_coins:
-                # 跨币种对冲：从每个币种中分别取
-                from collections import defaultdict
-                long_by_coin = defaultdict(list)
-                short_by_coin = defaultdict(list)
-                
-                for s in long_strategies:
-                    long_by_coin[s['coin']].append(s)
-                for s in short_strategies:
-                    short_by_coin[s['coin']].append(s)
-                
+                # 跨币种对冲：使用函数入口处构建的统一币种分组
+                long_by_coin = _hedge_long_by_coin
+                short_by_coin = _hedge_short_by_coin
+
                 # 确保至少有2个币种
                 if len(long_by_coin) >= 2 or len(short_by_coin) >= 2:
-                    # 尝试构建包含多个币种的组合
-                    for long_coins in itertools.combinations(list(long_by_coin.keys()), min(2, len(long_by_coin))):
-                        for short_coins in itertools.combinations(list(short_by_coin.keys()), min(2, len(short_by_coin))):
-                            # 从每个选定的币种中取一个策略
-                            long_combo = [long_by_coin[c][0] for c in long_coins]
-                            short_combo = [short_by_coin[c][0] for c in short_coins]
-                            
-                            # 确保币种不完全重叠
+                    # 币种爆炸保护：随机采样配对，币种全保留但不全量枚举
+                    import random
+                    long_coins_list = list(long_by_coin.keys())
+                    short_coins_list = list(short_by_coin.keys())
+                    random.shuffle(long_coins_list)
+                    random.shuffle(short_coins_list)
+                    MAX_PAIRS = 30
+                    pair_count = 0
+                    for lc in long_coins_list:
+                        for sc in short_coins_list:
+                            if lc == sc:
+                                continue
+                            if pair_count >= MAX_PAIRS:
+                                break
+                            pair_count += 1
+                            long_combo = [long_by_coin[lc][0], long_by_coin[lc][1]] if len(long_by_coin[lc]) >= 2 else [long_by_coin[lc][0]]
+                            short_combo = [short_by_coin[sc][0], short_by_coin[sc][1]] if len(short_by_coin[sc]) >= 2 else [short_by_coin[sc][0]]
                             all_coins_in_combo = set(s['coin'] for s in long_combo + short_combo)
                             if len(all_coins_in_combo) == 1:
                                 continue
-                            
                             combo_strategies = long_combo + short_combo
                             if len(combo_strategies) >= 4:
                                 combos = recommend_combinations(
@@ -1671,12 +2073,10 @@ class SmartGroupRecommender:
                                 for combo in combos:
                                     combo['style'] = '稳健对冲'
                                     combo['hedging_type'] = 'balanced'
-                                all_combinations.extend(combos)
-                                
-                                if len(all_combinations) >= max_combinations * 3:
-                                    break
-                        if len(all_combinations) >= max_combinations * 3:
+                                _push_combos(combos)
+                        if pair_count >= MAX_PAIRS:
                             break
+                    self.log(f"   币种配对枚举 {pair_count} 次 (long={len(long_coins_list)} short={len(short_coins_list)})")
             else:
                 # 同币种对冲：直接组合
                 for long_pair in itertools.combinations(long_strategies[:5], 2):
@@ -1691,17 +2091,10 @@ class SmartGroupRecommender:
                         for combo in combos:
                             combo['style'] = '稳健对冲'
                             combo['hedging_type'] = 'balanced'
-                        all_combinations.extend(combos)
-                        
-                        if len(all_combinations) >= max_combinations * 3:
-                            break
-                    if len(all_combinations) >= max_combinations * 3:
-                        break
-        
+                        _push_combos(combos)
         # 策略3：自定义数量对冲（min_strategies = 3, 5, 6等）
         if min_strategies == 3 or min_strategies > 4:
             self.log(f"   生成自定义对冲组合（{min_strategies}个策略）")
-            import itertools
             
             # 计算 long 和 short 的分配（尽量平衡）
             long_count = min_strategies // 2
@@ -1709,28 +2102,28 @@ class SmartGroupRecommender:
             
             if len(long_strategies) >= long_count and len(short_strategies) >= short_count:
                 if require_different_coins:
-                    # 跨币种：按币种分组选择
-                    from collections import defaultdict
-                    long_by_coin = defaultdict(list)
-                    short_by_coin = defaultdict(list)
-                    
-                    for s in long_strategies:
-                        long_by_coin[s['coin']].append(s)
-                    for s in short_strategies:
-                        short_by_coin[s['coin']].append(s)
-                    
-                    # 从多个币种中选择
-                    for long_coins in itertools.combinations(list(long_by_coin.keys()), min(long_count, len(long_by_coin))):
-                        for short_coins in itertools.combinations(list(short_by_coin.keys()), min(short_count, len(short_by_coin))):
-                            # 检查币种不完全相同
+                    # 跨币种：使用函数入口处构建的统一币种分组
+                    long_by_coin = _hedge_long_by_coin
+                    short_by_coin = _hedge_short_by_coin
+
+                    # 币种爆炸保护：随机采样配对，币种全保留但不全量枚举
+                    import random
+                    long_coins_list = list(long_by_coin.keys())
+                    short_coins_list = list(short_by_coin.keys())
+                    random.shuffle(long_coins_list)
+                    random.shuffle(short_coins_list)
+                    MAX_PAIRS = 30
+                    pair_count = 0
+                    for long_coins in itertools.combinations(long_coins_list, min(long_count, len(long_coins_list))):
+                        for short_coins in itertools.combinations(short_coins_list, min(short_count, len(short_coins_list))):
+                            if pair_count >= MAX_PAIRS:
+                                break
                             all_coins_in_combo = set(long_coins) | set(short_coins)
                             if len(all_coins_in_combo) == 1:
                                 continue
-                            
-                            # 从每个币种中取一个策略
+                            pair_count += 1
                             long_combo = [long_by_coin[c][0] for c in long_coins]
                             short_combo = [short_by_coin[c][0] for c in short_coins]
-                            
                             combo_strategies = long_combo + short_combo
                             if len(combo_strategies) >= min_strategies:
                                 combos = recommend_combinations(
@@ -1742,12 +2135,10 @@ class SmartGroupRecommender:
                                 for combo in combos:
                                     combo['style'] = f'{min_strategies}策略对冲'
                                     combo['hedging_type'] = 'custom'
-                                all_combinations.extend(combos)
-                                
-                                if len(all_combinations) >= max_combinations * 3:
-                                    break
-                        if len(all_combinations) >= max_combinations * 3:
+                                _push_combos(combos)
+                        if pair_count >= MAX_PAIRS:
                             break
+                    self.log(f"   币种配对枚举 {pair_count} 次 (long={len(long_coins_list)} short={len(short_coins_list)})")
                 else:
                     # 同币种：直接组合
                     for long_combo in itertools.combinations(long_strategies[:6], long_count):
@@ -1762,16 +2153,11 @@ class SmartGroupRecommender:
                             for combo in combos:
                                 combo['style'] = f'{min_strategies}策略对冲'
                                 combo['hedging_type'] = 'custom'
-                            all_combinations.extend(combos)
-                            
-                            if len(all_combinations) >= max_combinations * 3:
-                                break
-                        if len(all_combinations) >= max_combinations * 3:
-                            break
+                            _push_combos(combos)
             else:
                 self.log(f"   ⚠️  策略数量不足（需要{long_count}多+{short_count}空），降级为简单对冲")
         
-        return all_combinations
+        return _heap_sorted()
     
     def _generate_strategy_type_combinations(
         self,
@@ -1815,7 +2201,6 @@ class SmartGroupRecommender:
         
         # 生成组合：从每个类型中取策略
         all_combinations = []
-        import itertools
         
         # 计算每个类型取几个策略
         num_types = len(type_groups)
@@ -1908,13 +2293,17 @@ class SmartGroupRecommender:
         print(f"\n🌟 推荐组合（前3个）:")
         for i, combo in enumerate(combinations[:3], 1):
             style = combo.get('style', '')
-            print(
-                f"  #{i} [{style}] "
-                f"评分{combo['score']:.1f} | "
-                f"收益{combo['expected_return']:.1f}% | "
-                f"回撤{combo['portfolio_risk']['max_drawdown']:.1f}% | "
-                f"{len(combo['strategies'])}策略"
-            )
+            parts = [f"  #{i}"]
+            if style:
+                parts.append(f"[{style}]")
+            parts.append(f"评分{combo['score']:.1f}")
+            if 'expected_return' in combo:
+                parts.append(f"收益{combo['expected_return']:.1f}%")
+            risk = combo.get('portfolio_risk')
+            if risk and 'max_drawdown' in risk:
+                parts.append(f"回撤{risk['max_drawdown']:.1f}%")
+            parts.append(f"{len(combo['strategies'])}策略")
+            print(" | ".join(parts))
         
         # 提示：完整数据在 JSON 输出中
         print(f"\n💡 提示: 完整策略详情和创建命令见 JSON 输出或使用 --output 保存")
@@ -1996,10 +2385,7 @@ def parse_arguments():
     
     # 详情筛选条件
     parser.add_argument("--min-total-win-rate", type=float, help="最小总胜率")
-    parser.add_argument("--min-recent-profit-rate", type=float, help="最小近期收益率")
-    parser.add_argument("--max-recent-drawdown", type=float, help="最大近期回撤")
     parser.add_argument("--min-trade-count", type=int, help="最小交易次数")
-    parser.add_argument("--min-stability", type=float, help="最小稳定性")
     
     # 输出参数
     parser.add_argument("--output", type=str, help="输出文件路径")
@@ -2014,6 +2400,8 @@ def parse_arguments():
 
 def main():
     """主函数"""
+    tracemalloc.start()
+    
     # 1. 解析参数
     args = parse_arguments()
     
@@ -2125,6 +2513,7 @@ def main():
             log_level="quiet" if args.quiet else args.log_level
         )
         strategies = executor.batch_query_parallel(token, combinations, base_params)
+        _mem_checkpoint('batch_query done')
     except Exception as e:
         error_result = {
             "error": "批量查询失败",
@@ -2166,6 +2555,8 @@ def main():
     # 8. 智能推荐
     recommender = SmartGroupRecommender(token, verbose=not args.quiet, agent_id=args.agent_id)
     
+    _mem_checkpoint('before smart_recommend')
+    
     try:
         result = recommender.smart_recommend(
             query_text=args.query,
@@ -2177,6 +2568,7 @@ def main():
             api_sort_type=args.api_sort,
             intent=intent  # 传递 intent
         )
+        _mem_checkpoint('smart_recommend done')
     except Exception as e:
         error_result = {
             "error": "推荐流程失败",

@@ -15,7 +15,7 @@ import requests
 from qc_log import log_http_request, log_error
 
 # API 配置
-API_BASE = "https://www.fourieralpha.com/Mobile"
+API_BASE = os.getenv("QUANTCLAW_API_BASE", "http://52.53.212.195:7002/Mobile")
 
 # 缓存配置
 CACHE_DIR = os.path.expanduser("~/.quantclaw/cache")

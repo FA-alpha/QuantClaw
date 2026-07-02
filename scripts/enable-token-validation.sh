@@ -26,7 +26,7 @@ jq '.plugins.entries["quantclaw-auth"].config += {
   "templatePath": "/home/ubuntu/work/QuantClaw/templates/agent-workspace",
   "tokenValidation": {
     "enabled": true,
-    "apiUrl": "https://www.fourieralpha.com/Mobile/Account/usage_info",
+    "apiUrl": "http://52.53.212.195:7002/Mobile/Account/usage_info",
     "apiMethod": "POST",
     "showType": 2,
     "timeoutMs": 5000
